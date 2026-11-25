@@ -1,0 +1,1619 @@
+import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import * as esbuild from 'esbuild';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+type DocData = Record<string, unknown>;
+
+interface MockDocSnap {
+  id: string;
+  exists: boolean;
+  ref: MockDocRef;
+  data: () => DocData | undefined;
+}
+
+interface MockDocRef {
+  id: string;
+  collectionName: string;
+  path: string;
+  get: () => Promise<MockDocSnap>;
+  set: (data: DocData, options?: { merge?: boolean }) => Promise<void>;
+  update: (data: DocData) => Promise<void>;
+  delete: () => Promise<void>;
+}
+
+function createInMemoryFirestore() {
+  const store = new Map<string, Map<string, DocData>>();
+  const versions = new Map<string, number>();
+
+  const getVersion = (docPath: string): number => versions.get(docPath) || 0;
+  const bumpVersion = (docPath: string) => {
+    versions.set(docPath, getVersion(docPath) + 1);
+  };
+
+  const getColMap = (name: string): Map<string, DocData> => {
+    let map = store.get(name);
+    if (!map) {
+      map = new Map<string, DocData>();
+      store.set(name, map);
+    }
+    return map;
+  };
+
+  const resolveValues = (obj: DocData): DocData => {
+    const out: DocData = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (v && typeof v === 'object' && (v as { __serverTimestamp?: boolean }).__serverTimestamp) {
+        out[k] = '2026-11-25T14:00:00.000Z';
+      } else {
+        out[k] = structuredClone(v);
+      }
+    }
+    return out;
+  };
+
+  const makeDocRef = (collectionName: string, docId: string): MockDocRef => {
+    const docPath = `${collectionName}/${docId}`;
+    const ref: MockDocRef = {
+      id: docId,
+      collectionName,
+      path: docPath,
+      async get() {
+        const col = getColMap(collectionName);
+        const existing = col.get(docId);
+        return {
+          id: docId,
+          exists: existing !== undefined,
+          ref,
+          data: () => (existing ? structuredClone(existing) : undefined),
+        };
+      },
+      async set(data: DocData, options?: { merge?: boolean }) {
+        const col = getColMap(collectionName);
+        const resolved = resolveValues(data);
+        if (options?.merge && col.has(docId)) {
+          col.set(docId, { ...col.get(docId)!, ...resolved });
+        } else {
+          col.set(docId, resolved);
+        }
+        bumpVersion(docPath);
+      },
+      async update(data: DocData) {
+        const col = getColMap(collectionName);
+        if (!col.has(docId)) {
+          throw new Error(`Document ${collectionName}/${docId} does not exist for update.`);
+        }
+        col.set(docId, { ...col.get(docId)!, ...resolveValues(data) });
+        bumpVersion(docPath);
+      },
+      async delete() {
+        getColMap(collectionName).delete(docId);
+        bumpVersion(docPath);
+      },
+    };
+    return ref;
+  };
+
+  let autoIdCounter = 0;
+
+  class MockFirestore {
+    databaseId: string;
+    projectId: string;
+
+    constructor(opts: { projectId: string; databaseId: string }) {
+      this.projectId = opts.projectId;
+      this.databaseId = opts.databaseId;
+    }
+
+    collection(name: string) {
+      return {
+        doc: (id?: string) => {
+          const finalId = id || `auto_${++autoIdCounter}`;
+          return makeDocRef(name, finalId);
+        },
+        get: async () => {
+          const col = getColMap(name);
+          const docs = Array.from(col.entries()).map(([id, data]) => {
+            const ref = makeDocRef(name, id);
+            return {
+              id,
+              exists: true,
+              ref,
+              data: () => structuredClone(data),
+            };
+          });
+          return { docs, empty: docs.length === 0, size: docs.length };
+        },
+        where: (field: string, op: string, value: unknown) => {
+          const filters: Array<{ field: string; op: string; value: unknown }> = [
+            { field, op, value },
+          ];
+          let maxLimit = Number.POSITIVE_INFINITY;
+          const queryObj = {
+            where: (f2: string, o2: string, v2: unknown) => {
+              filters.push({ field: f2, op: o2, value: v2 });
+              return queryObj;
+            },
+            limit: (n: number) => {
+              maxLimit = n;
+              return queryObj;
+            },
+            get: async () => {
+              const col = getColMap(name);
+              const matched: MockDocSnap[] = [];
+              for (const [id, data] of col.entries()) {
+                const ok = filters.every((f) => f.op === '==' && data[f.field] === f.value);
+                if (ok) {
+                  const ref = makeDocRef(name, id);
+                  matched.push({
+                    id,
+                    exists: true,
+                    ref,
+                    data: () => structuredClone(data),
+                  });
+                }
+                if (matched.length >= maxLimit) break;
+              }
+              return { docs: matched, empty: matched.length === 0, size: matched.length };
+            },
+          };
+          return queryObj;
+        },
+      };
+    }
+
+    async runTransaction<T>(fn: (tx: {
+      get: (ref: MockDocRef) => Promise<MockDocSnap>;
+      set: (ref: MockDocRef, data: DocData, options?: { merge?: boolean }) => void;
+      update: (ref: MockDocRef, data: DocData) => void;
+      delete: (ref: MockDocRef) => void;
+    }) => Promise<T>): Promise<T> {
+      const maxAttempts = 5;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        let wrote = false;
+        const readVersions = new Map<string, number>();
+        const pendingOps: Array<() => Promise<void>> = [];
+        const tx = {
+          get: async (ref: MockDocRef) => {
+            if (wrote) {
+              throw new Error('Firestore transactions require all reads to be executed before writes.');
+            }
+            if (!readVersions.has(ref.path)) {
+              readVersions.set(ref.path, getVersion(ref.path));
+            }
+            return ref.get();
+          },
+          set: (ref: MockDocRef, data: DocData, options?: { merge?: boolean }) => {
+            wrote = true;
+            pendingOps.push(() => ref.set(data, options));
+          },
+          update: (ref: MockDocRef, data: DocData) => {
+            wrote = true;
+            pendingOps.push(() => ref.update(data));
+          },
+          delete: (ref: MockDocRef) => {
+            wrote = true;
+            pendingOps.push(() => ref.delete());
+          },
+        };
+        const result = await fn(tx);
+        let conflicted = false;
+        for (const [docPath, expectedVer] of readVersions.entries()) {
+          if (getVersion(docPath) !== expectedVer) {
+            conflicted = true;
+            break;
+          }
+        }
+        if (conflicted) {
+          if (attempt === maxAttempts) {
+            throw new Error('Transaction contention retry limit exceeded.');
+          }
+          continue;
+        }
+        for (const op of pendingOps) {
+          await op();
+        }
+        return result;
+      }
+      throw new Error('Unreachable transaction exit.');
+    }
+  }
+
+  return {
+    store,
+    MockFirestore,
+    seedDoc: (col: string, id: string, data: DocData) => {
+      getColMap(col).set(id, structuredClone(data));
+      bumpVersion(`${col}/${id}`);
+    },
+    readDoc: (col: string, id: string) => {
+      const val = getColMap(col).get(id);
+      return val ? structuredClone(val) : undefined;
+    },
+    clearAll: () => {
+      store.clear();
+      versions.clear();
+    },
+  };
+}
+
+class MockHttpsError extends Error {
+  code: string;
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+    this.name = 'HttpsError';
+  }
+}
+
+interface WrappedCallable {
+  (req: { auth?: { uid: string; token?: Record<string, unknown> } | null; data?: unknown }): Promise<
+    Record<string, unknown>
+  >;
+  __cfOptions?: { secrets?: Array<{ name: string }> };
+}
+
+interface WrappedRequest {
+  (
+    req: {
+      method: string;
+      headers: Record<string, string | undefined>;
+      rawBody?: Buffer | string;
+    },
+    res: {
+      status: (code: number) => { json: (body: unknown) => void; send: (body: unknown) => void };
+      json: (body: unknown) => void;
+    }
+  ): Promise<void>;
+  __cfOptions?: { secrets?: Array<{ name: string }> };
+}
+
+interface FunctionsExports {
+  createUserProfile: WrappedCallable;
+  generateAdminQr: WrappedCallable;
+  exportAdminReport: WrappedCallable;
+  createPaymentOrder: WrappedCallable;
+  verifyPayment: WrappedCallable;
+  razorpayWebhook: WrappedRequest;
+}
+
+const FUNCTIONS_SOURCE_PATH = path.resolve(__dirname, '../functions/src/index.ts');
+let cachedCjsCode: string | null = null;
+
+function loadFunctionsWithMocks(mockDbState: ReturnType<typeof createInMemoryFirestore>): FunctionsExports {
+  if (!cachedCjsCode) {
+    const tsSource = fs.readFileSync(FUNCTIONS_SOURCE_PATH, 'utf8');
+    cachedCjsCode = esbuild.transformSync(tsSource, {
+      loader: 'ts',
+      format: 'cjs',
+      target: 'node22',
+    }).code;
+  }
+
+  const moduleMap: Record<string, unknown> = {
+    'firebase-admin/app': {
+      getApps: () => [],
+      getApp: () => ({ options: { projectId: 'gen-lang-client-0847571180' } }),
+      initializeApp: (opts: { projectId?: string }) => ({ options: opts }),
+    },
+    'firebase-admin/auth': {
+      getAuth: () => ({}),
+    },
+    'firebase-admin/storage': {
+      getStorage: () => ({
+        bucket: () => ({ file: () => ({ save: async () => {} }) }),
+      }),
+    },
+    '@google-cloud/firestore': {
+      Firestore: mockDbState.MockFirestore,
+      FieldValue: {
+        serverTimestamp: () => ({ __serverTimestamp: true }),
+      },
+    },
+    'firebase-functions/params': {
+      defineSecret: (name: string) => ({
+        name,
+        value: () => process.env[name] || '',
+      }),
+    },
+    'firebase-functions/v2/https': {
+      HttpsError: MockHttpsError,
+      onCall: (
+        optsOrHandler: Record<string, unknown> | ((req: unknown) => unknown),
+        maybeHandler?: (req: unknown) => unknown
+      ) => {
+        const handler = typeof optsOrHandler === 'function' ? optsOrHandler : maybeHandler!;
+        const options = typeof optsOrHandler === 'function' ? {} : optsOrHandler;
+        return Object.assign(handler, { __cfOptions: options, __cfType: 'onCall' });
+      },
+      onRequest: (
+        optsOrHandler: Record<string, unknown> | ((req: unknown, res: unknown) => unknown),
+        maybeHandler?: (req: unknown, res: unknown) => unknown
+      ) => {
+        const handler = typeof optsOrHandler === 'function' ? optsOrHandler : maybeHandler!;
+        const options = typeof optsOrHandler === 'function' ? {} : optsOrHandler;
+        return Object.assign(handler, { __cfOptions: options, __cfType: 'onRequest' });
+      },
+    },
+    crypto,
+    qrcode: {
+      toString: async () => '<svg></svg>',
+      toBuffer: async () => Buffer.from([]),
+    },
+    jspdf: {
+      jsPDF: class {},
+    },
+  };
+
+  const cjsModule = { exports: {} as FunctionsExports };
+  const customRequire = (id: string) => {
+    if (id in moduleMap) return moduleMap[id];
+    throw new Error(`Unexpected module import in functions/src/index.ts test harness: ${id}`);
+  };
+
+  const fn = new Function('exports', 'require', 'module', cachedCjsCode);
+  fn(cjsModule.exports, customRequire, cjsModule);
+  return cjsModule.exports;
+}
+
+const KEY_ID = 'rzp_live_tapnex123456';
+const KEY_SECRET = 'rzp_secret_unit_test_abcdef123456';
+const WEBHOOK_SECRET = 'whsec_unit_test_secret_987654';
+
+function signPayment(razorpayOrderId: string, razorpayPaymentId: string, secret = KEY_SECRET): string {
+  return crypto.createHmac('sha256', secret).update(`${razorpayOrderId}|${razorpayPaymentId}`).digest('hex');
+}
+
+function signWebhook(rawBody: Buffer, secret = WEBHOOK_SECRET): string {
+  return crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+}
+
+function createMockRes() {
+  let statusCode = 200;
+  let body: unknown = undefined;
+  const res = {
+    status(code: number) {
+      statusCode = code;
+      return res;
+    },
+    json(payload: unknown) {
+      body = payload;
+    },
+    send(payload: unknown) {
+      body = payload;
+    },
+    getStatus: () => statusCode,
+    getBody: () => body,
+  };
+  return res;
+}
+
+function seedBaselineCatalog(mockDbState: ReturnType<typeof createInMemoryFirestore>) {
+  mockDbState.seedDoc('appSettings', 'global', {
+    settingId: 'global',
+    taxRatePercent: 18,
+    shippingFeeInr: 99,
+    paymentGateways: {
+      razorpay: { id: 'razorpay', enabled: true, mode: 'live' },
+    },
+  });
+
+  mockDbState.seedDoc('cardTemplates', 'minimal-white', {
+    templateId: 'minimal-white',
+    name: 'Minimal Crisp White',
+    category: 'Minimal',
+    designTier: 'minimal',
+    pricingMode: 'card_tiers',
+    priceInr: 999,
+    active: true,
+  });
+
+  mockDbState.seedDoc('cardTemplates', 'premium-navy', {
+    templateId: 'premium-navy',
+    name: 'Executive Navy Obsidian',
+    category: 'Executive',
+    designTier: 'designer',
+    pricingMode: 'card_tiers',
+    priceInr: 1499,
+    active: true,
+  });
+
+  mockDbState.seedDoc('cardTemplates', 'pet-dog-tag-classic', {
+    templateId: 'pet-dog-tag-classic',
+    name: 'Classic Dog Tag',
+    category: 'Pets Recovery',
+    designTier: 'designer',
+    pricingMode: 'fixed_pack',
+    priceInr: 599,
+    active: true,
+  });
+
+  mockDbState.seedDoc('shopProducts', 'prod-helmet-safety-tag', {
+    productId: 'prod-helmet-safety-tag',
+    name: 'Helmet & Bike QR Sticker Pack',
+    priceInr: 299,
+    visibleOnShop: true,
+    inStock: true,
+  });
+
+  mockDbState.seedDoc('shopProducts', 'prod-pet-collar-tag', {
+    productId: 'prod-pet-collar-tag',
+    name: 'Guardian Dog Tags (Pack of 2)',
+    priceInr: 599,
+    visibleOnShop: true,
+    inStock: true,
+  });
+}
+
+describe('Phase 2A Razorpay Backend Security & Pricing', () => {
+  const mockDbState = createInMemoryFirestore();
+  let mod: FunctionsExports;
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    mockDbState.clearAll();
+    process.env.RAZORPAY_KEY_ID = KEY_ID;
+    process.env.RAZORPAY_KEY_SECRET = KEY_SECRET;
+    process.env.RAZORPAY_WEBHOOK_SECRET = WEBHOOK_SECRET;
+    delete process.env.FIREBASE_PROJECT_ID;
+    delete process.env.GOOGLE_CLOUD_PROJECT;
+    delete process.env.GCLOUD_PROJECT;
+    delete process.env.FIRESTORE_DATABASE_ID;
+    mod = loadFunctionsWithMocks(mockDbState);
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it('binds Razorpay Secret Manager params only to the payment Cloud Functions', () => {
+    const createSecrets = (mod.createPaymentOrder.__cfOptions?.secrets || []).map((s) => s.name);
+    const verifySecrets = (mod.verifyPayment.__cfOptions?.secrets || []).map((s) => s.name);
+    const webhookSecrets = (mod.razorpayWebhook.__cfOptions?.secrets || []).map((s) => s.name);
+
+    expect(createSecrets).toEqual(['RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET']);
+    expect(verifySecrets).toEqual(['RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET']);
+    expect(webhookSecrets).toEqual([
+      'RAZORPAY_WEBHOOK_SECRET',
+      'RAZORPAY_KEY_ID',
+      'RAZORPAY_KEY_SECRET',
+    ]);
+
+    expect(mod.createUserProfile.__cfOptions?.secrets).toBeUndefined();
+    expect(mod.generateAdminQr.__cfOptions?.secrets).toBeUndefined();
+    expect(mod.exportAdminReport.__cfOptions?.secrets).toBeUndefined();
+  });
+
+  describe('createPaymentOrder', () => {
+    it('rejects unauthenticated requests and non-owners', async () => {
+      seedBaselineCatalog(mockDbState);
+      mockDbState.seedDoc('orders', 'ord_1', {
+        orderId: 'ord_1',
+        uid: 'user_owner',
+        designId: 'des_1',
+        quantity: 1,
+        currency: 'INR',
+        paymentStatus: 'Pending',
+        orderStatus: 'Awaiting Payment',
+        total: 688,
+      });
+
+      await expect(mod.createPaymentOrder({ auth: null, data: { orderId: 'ord_1' } })).rejects.toMatchObject({
+        code: 'unauthenticated',
+      });
+
+      await expect(
+        mod.createPaymentOrder({ auth: { uid: 'user_attacker' }, data: { orderId: 'ord_1' } })
+      ).rejects.toMatchObject({
+        code: 'permission-denied',
+      });
+    });
+
+    it('fails closed when authoritative appSettings/global, cardTemplates, or shopProducts are missing', async () => {
+      mockDbState.seedDoc('orders', 'ord_missing_settings', {
+        orderId: 'ord_missing_settings',
+        uid: 'user_1',
+        designId: 'des_1',
+        quantity: 1,
+        currency: 'INR',
+        paymentStatus: 'Pending',
+        orderStatus: 'Awaiting Payment',
+        total: 688,
+      });
+
+      await expect(
+        mod.createPaymentOrder({ auth: { uid: 'user_1' }, data: { orderId: 'ord_missing_settings' } })
+      ).rejects.toThrow(/appSettings\/global/);
+
+      seedBaselineCatalog(mockDbState);
+      mockDbState.seedDoc('cardDesigns', 'des_missing_tpl', {
+        designId: 'des_missing_tpl',
+        uid: 'user_1',
+        orderId: 'ord_missing_tpl',
+        locked: true,
+        templateId: 'nonexistent-tpl',
+        cardTechnology: 'qr_only',
+      });
+      mockDbState.seedDoc('orders', 'ord_missing_tpl', {
+        orderId: 'ord_missing_tpl',
+        uid: 'user_1',
+        designId: 'des_missing_tpl',
+        quantity: 1,
+        currency: 'INR',
+        paymentStatus: 'Pending',
+        orderStatus: 'Awaiting Payment',
+        total: 688,
+      });
+
+      await expect(
+        mod.createPaymentOrder({ auth: { uid: 'user_1' }, data: { orderId: 'ord_missing_tpl' } })
+      ).rejects.toThrow(/cardTemplates\/nonexistent-tpl/);
+
+      mockDbState.seedDoc('orders', 'ord_missing_prod', {
+        orderId: 'ord_missing_prod',
+        uid: 'user_1',
+        designId: 'shop_direct',
+        orderSource: 'shop',
+        quantity: 1,
+        shopItems: [{ productId: 'prod-deleted', quantity: 1, priceInr: 1 }],
+        currency: 'INR',
+        paymentStatus: 'Pending',
+        orderStatus: 'Awaiting Payment',
+        total: 1,
+      });
+
+      await expect(
+        mod.createPaymentOrder({ auth: { uid: 'user_1' }, data: { orderId: 'ord_missing_prod' } })
+      ).rejects.toThrow(/shopProducts\/prod-deleted/);
+    });
+
+    it('rejects invalid currency, quantity, and non-pending order status', async () => {
+      seedBaselineCatalog(mockDbState);
+      mockDbState.seedDoc('cardDesigns', 'des_1', {
+        designId: 'des_1',
+        uid: 'user_1',
+        orderId: 'ord_zero_qty',
+        locked: true,
+        templateId: 'minimal-white',
+        cardTechnology: 'qr_only',
+      });
+
+      mockDbState.seedDoc('orders', 'ord_usd', {
+        orderId: 'ord_usd',
+        uid: 'user_1',
+        designId: 'des_1',
+        quantity: 1,
+        currency: 'USD',
+        paymentStatus: 'Pending',
+        orderStatus: 'Awaiting Payment',
+      });
+      await expect(
+        mod.createPaymentOrder({ auth: { uid: 'user_1' }, data: { orderId: 'ord_usd' } })
+      ).rejects.toMatchObject({ code: 'failed-precondition' });
+
+      mockDbState.seedDoc('orders', 'ord_paid', {
+        orderId: 'ord_paid',
+        uid: 'user_1',
+        designId: 'des_1',
+        quantity: 1,
+        currency: 'INR',
+        paymentStatus: 'Verified',
+        orderStatus: 'Payment Successful',
+      });
+      await expect(
+        mod.createPaymentOrder({ auth: { uid: 'user_1' }, data: { orderId: 'ord_paid' } })
+      ).rejects.toMatchObject({ code: 'failed-precondition' });
+
+      mockDbState.seedDoc('orders', 'ord_zero_qty', {
+        orderId: 'ord_zero_qty',
+        uid: 'user_1',
+        designId: 'des_1',
+        quantity: 0,
+        currency: 'INR',
+        paymentStatus: 'Pending',
+        orderStatus: 'Awaiting Payment',
+      });
+      await expect(
+        mod.createPaymentOrder({ auth: { uid: 'user_1' }, data: { orderId: 'ord_zero_qty' } })
+      ).rejects.toMatchObject({ code: 'invalid-argument' });
+    });
+
+    it('ignores browser amountInr and tampered orders.total, derives authoritative Studio pricing, and calls Razorpay Orders API', async () => {
+      seedBaselineCatalog(mockDbState);
+      mockDbState.seedDoc('cardDesigns', 'des_studio', {
+        designId: 'des_studio',
+        uid: 'user_1',
+        orderId: 'ord_studio_tampered',
+        locked: true,
+        templateId: 'premium-navy',
+        cardTechnology: 'qr_smart', // Designer Smart Card = 1499 INR
+      });
+      // Tampered order total = ₹10 (instead of 1499 * 2 = 2998 + 540 GST + 99 shipping = 3637)
+      mockDbState.seedDoc('orders', 'ord_studio_tampered', {
+        orderId: 'ord_studio_tampered',
+        orderNumber: 'TNX-2026-10001',
+        uid: 'user_1',
+        profileId: 'prof_1',
+        profileSlug: 'aarav',
+        designId: 'des_studio',
+        quantity: 2,
+        total: 10,
+        currency: 'INR',
+        paymentStatus: 'Pending',
+        orderStatus: 'Awaiting Payment',
+      });
+
+      const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+        const sent = JSON.parse(String(init?.body || '{}'));
+        expect(sent.amount).toBe(363700);
+        expect(sent.currency).toBe('INR');
+        return new Response(
+          JSON.stringify({
+            id: 'order_RzpStudio12345',
+            amount: 363700,
+            currency: 'INR',
+            status: 'created',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      });
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+      const res = await mod.createPaymentOrder({
+        auth: { uid: 'user_1' },
+        data: { orderId: 'ord_studio_tampered', amountInr: 1 },
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(res).toMatchObject({
+        gatewayOrderId: 'order_RzpStudio12345',
+        amountPaise: 363700,
+        currency: 'INR',
+        keyId: KEY_ID,
+        subtotal: 2998,
+        tax: 540,
+        shipping: 99,
+        total: 3637,
+      });
+
+      const savedOrder = mockDbState.readDoc('orders', 'ord_studio_tampered');
+      expect(savedOrder?.razorpayOrderId).toBe('order_RzpStudio12345');
+      expect(savedOrder?.razorpayAmountPaise).toBe(363700);
+      expect(savedOrder?.total).toBe(3637);
+
+      const savedPay = mockDbState.readDoc('payments', 'ord_studio_tampered');
+      expect(savedPay?.status).toBe('Created');
+      expect(savedPay?.gatewayOrderId).toBe('order_RzpStudio12345');
+      expect(savedPay?.amountPaise).toBe(363700);
+    });
+
+    it('derives authoritative Shop pricing from shopProducts ignoring client line prices', async () => {
+      seedBaselineCatalog(mockDbState);
+      // 2x 299 + 1x 599 = 1197 subtotal -> round(1197*0.18)=215 GST + 99 shipping = 1511 INR
+      mockDbState.seedDoc('orders', 'ord_shop_1', {
+        orderId: 'ord_shop_1',
+        orderNumber: 'TNX-SHOP-9001',
+        uid: 'user_shop',
+        designId: 'shop_direct',
+        orderSource: 'shop',
+        quantity: 3,
+        shopItems: [
+          { productId: 'prod-helmet-safety-tag', quantity: 2, priceInr: 1 },
+          { productId: 'prod-pet-collar-tag', quantity: 1, priceInr: 1 },
+        ],
+        total: 3,
+        currency: 'INR',
+        paymentStatus: 'Pending',
+        orderStatus: 'Awaiting Payment',
+      });
+
+      globalThis.fetch = vi.fn(async (_url: string, init?: RequestInit) => {
+        const sent = JSON.parse(String(init?.body || '{}'));
+        expect(sent.amount).toBe(151100);
+        return new Response(
+          JSON.stringify({ id: 'order_RzpShop998877', amount: 151100, currency: 'INR' }),
+          { status: 200 }
+        );
+      }) as unknown as typeof fetch;
+
+      const res = await mod.createPaymentOrder({
+        auth: { uid: 'user_shop' },
+        data: { orderId: 'ord_shop_1', amountInr: 3 },
+      });
+
+      expect(res.gatewayOrderId).toBe('order_RzpShop998877');
+      expect(res.amountPaise).toBe(151100);
+      expect(mockDbState.readDoc('orders', 'ord_shop_1')?.total).toBe(1511);
+    });
+
+    it('rejects unlocked or incorrectly linked Studio designs while Shop orders remain unaffected', async () => {
+      seedBaselineCatalog(mockDbState);
+      const fetchMock = vi.fn();
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+      mockDbState.seedDoc('cardDesigns', 'des_unlocked', {
+        designId: 'des_unlocked',
+        uid: 'user_1',
+        orderId: 'ord_unlocked',
+        locked: false,
+        templateId: 'minimal-white',
+        cardTechnology: 'qr_only',
+      });
+      mockDbState.seedDoc('orders', 'ord_unlocked', {
+        orderId: 'ord_unlocked',
+        uid: 'user_1',
+        designId: 'des_unlocked',
+        quantity: 1,
+        currency: 'INR',
+        paymentStatus: 'Pending',
+        orderStatus: 'Awaiting Payment',
+      });
+
+      await expect(
+        mod.createPaymentOrder({ auth: { uid: 'user_1' }, data: { orderId: 'ord_unlocked' } })
+      ).rejects.toThrow(/must be locked/i);
+
+      mockDbState.seedDoc('cardDesigns', 'des_other_order', {
+        designId: 'des_other_order',
+        uid: 'user_1',
+        orderId: 'ord_different_999',
+        locked: true,
+        templateId: 'minimal-white',
+        cardTechnology: 'qr_only',
+      });
+      mockDbState.seedDoc('orders', 'ord_wrong_link', {
+        orderId: 'ord_wrong_link',
+        uid: 'user_1',
+        designId: 'des_other_order',
+        quantity: 1,
+        currency: 'INR',
+        paymentStatus: 'Pending',
+        orderStatus: 'Awaiting Payment',
+      });
+
+      await expect(
+        mod.createPaymentOrder({ auth: { uid: 'user_1' }, data: { orderId: 'ord_wrong_link' } })
+      ).rejects.toThrow(/not linked to order ord_wrong_link/i);
+
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('reuses an existing valid Razorpay order after API verification without creating a replacement', async () => {
+      seedBaselineCatalog(mockDbState);
+      mockDbState.seedDoc('cardDesigns', 'des_reuse', {
+        designId: 'des_reuse',
+        uid: 'user_1',
+        orderId: 'ord_reuse_1',
+        locked: true,
+        templateId: 'minimal-white',
+        cardTechnology: 'qr_only', // 499 + round(499*0.18=90) + 99 = 688 INR (68800 paise)
+      });
+      mockDbState.seedDoc('orders', 'ord_reuse_1', {
+        orderId: 'ord_reuse_1',
+        uid: 'user_1',
+        designId: 'des_reuse',
+        quantity: 1,
+        currency: 'INR',
+        paymentStatus: 'Pending',
+        orderStatus: 'Awaiting Payment',
+        razorpayOrderId: 'order_RzpExisting111',
+        razorpayAmountPaise: 68800,
+        total: 688,
+      });
+
+      const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+        expect(url).toBe('https://api.razorpay.com/v1/orders/order_RzpExisting111');
+        expect(init?.method).toBe('GET');
+        return new Response(
+          JSON.stringify({
+            id: 'order_RzpExisting111',
+            amount: 68800,
+            amount_paid: 0,
+            currency: 'INR',
+            status: 'created',
+          }),
+          { status: 200 }
+        );
+      });
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+      const res = await mod.createPaymentOrder({
+        auth: { uid: 'user_1' },
+        data: { orderId: 'ord_reuse_1' },
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(res).toMatchObject({
+        gatewayOrderId: 'order_RzpExisting111',
+        amountPaise: 68800,
+        currency: 'INR',
+        reused: true,
+      });
+      expect(mockDbState.readDoc('orders', 'ord_reuse_1')?.razorpayOrderId).toBe(
+        'order_RzpExisting111'
+      );
+    });
+
+    it('rejects already-paid, attempted, or amount-mismatched existing Razorpay orders without overwriting', async () => {
+      seedBaselineCatalog(mockDbState);
+      mockDbState.seedDoc('cardDesigns', 'des_conflict', {
+        designId: 'des_conflict',
+        uid: 'user_1',
+        orderId: 'ord_existing_paid',
+        locked: true,
+        templateId: 'minimal-white',
+        cardTechnology: 'qr_only', // 68800 paise
+      });
+      mockDbState.seedDoc('orders', 'ord_existing_paid', {
+        orderId: 'ord_existing_paid',
+        uid: 'user_1',
+        designId: 'des_conflict',
+        quantity: 1,
+        currency: 'INR',
+        paymentStatus: 'Pending',
+        orderStatus: 'Awaiting Payment',
+        razorpayOrderId: 'order_RzpAlreadyPaid1',
+        razorpayAmountPaise: 68800,
+      });
+
+      globalThis.fetch = vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            id: 'order_RzpAlreadyPaid1',
+            amount: 68800,
+            amount_paid: 68800,
+            currency: 'INR',
+            status: 'paid',
+          }),
+          { status: 200 }
+        )
+      ) as unknown as typeof fetch;
+
+      await expect(
+        mod.createPaymentOrder({ auth: { uid: 'user_1' }, data: { orderId: 'ord_existing_paid' } })
+      ).rejects.toMatchObject({ code: 'already-exists' });
+      expect(mockDbState.readDoc('orders', 'ord_existing_paid')?.razorpayOrderId).toBe(
+        'order_RzpAlreadyPaid1'
+      );
+
+      globalThis.fetch = vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            id: 'order_RzpAlreadyPaid1',
+            amount: 50000, // Mismatch vs 68800
+            amount_paid: 0,
+            currency: 'INR',
+            status: 'created',
+          }),
+          { status: 200 }
+        )
+      ) as unknown as typeof fetch;
+
+      await expect(
+        mod.createPaymentOrder({ auth: { uid: 'user_1' }, data: { orderId: 'ord_existing_paid' } })
+      ).rejects.toMatchObject({ code: 'failed-precondition' });
+      expect(mockDbState.readDoc('orders', 'ord_existing_paid')?.razorpayOrderId).toBe(
+        'order_RzpAlreadyPaid1'
+      );
+
+      // Ambiguous attempted status must also fail closed and never create a replacement
+      globalThis.fetch = vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            id: 'order_RzpAlreadyPaid1',
+            amount: 68800,
+            amount_paid: 0,
+            currency: 'INR',
+            status: 'attempted',
+          }),
+          { status: 200 }
+        )
+      ) as unknown as typeof fetch;
+
+      await expect(
+        mod.createPaymentOrder({ auth: { uid: 'user_1' }, data: { orderId: 'ord_existing_paid' } })
+      ).rejects.toMatchObject({ code: 'failed-precondition' });
+      expect(mockDbState.readDoc('orders', 'ord_existing_paid')?.razorpayOrderId).toBe(
+        'order_RzpAlreadyPaid1'
+      );
+    });
+
+    it('prevents two simultaneous create-order requests from creating multiple Razorpay orders', async () => {
+      seedBaselineCatalog(mockDbState);
+      mockDbState.seedDoc('cardDesigns', 'des_race', {
+        designId: 'des_race',
+        uid: 'user_1',
+        orderId: 'ord_race_1',
+        locked: true,
+        templateId: 'minimal-white',
+        cardTechnology: 'qr_only',
+      });
+      mockDbState.seedDoc('orders', 'ord_race_1', {
+        orderId: 'ord_race_1',
+        uid: 'user_1',
+        designId: 'des_race',
+        quantity: 1,
+        currency: 'INR',
+        paymentStatus: 'Pending',
+        orderStatus: 'Awaiting Payment',
+      });
+
+      let postCalls = 0;
+      globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+        if (init?.method === 'POST' && url.endsWith('/orders')) {
+          postCalls += 1;
+          await new Promise((r) => setTimeout(r, 25));
+          return new Response(
+            JSON.stringify({
+              id: 'order_RzpConcurrent1',
+              amount: 68800,
+              currency: 'INR',
+              status: 'created',
+            }),
+            { status: 200 }
+          );
+        }
+        throw new Error(`Unexpected fetch call: ${init?.method} ${url}`);
+      }) as unknown as typeof fetch;
+
+      const settled = await Promise.allSettled([
+        mod.createPaymentOrder({ auth: { uid: 'user_1' }, data: { orderId: 'ord_race_1' } }),
+        mod.createPaymentOrder({ auth: { uid: 'user_1' }, data: { orderId: 'ord_race_1' } }),
+      ]);
+
+      const fulfilled = settled.filter(
+        (s): s is PromiseFulfilledResult<Record<string, unknown>> => s.status === 'fulfilled'
+      );
+      const rejected = settled.filter(
+        (s): s is PromiseRejectedResult => s.status === 'rejected'
+      );
+
+      expect(postCalls).toBe(1);
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect((rejected[0].reason as { code?: string }).code).toBe('aborted');
+      expect(fulfilled[0].value.gatewayOrderId).toBe('order_RzpConcurrent1');
+      expect(mockDbState.readDoc('orders', 'ord_race_1')?.razorpayOrderId).toBe(
+        'order_RzpConcurrent1'
+      );
+      expect(mockDbState.readDoc('orders', 'ord_race_1')?.razorpayOrderLock).toBeNull();
+    });
+
+    it('releases the creation lock safely on Razorpay API failure and fails closed on ambiguous states', async () => {
+      seedBaselineCatalog(mockDbState);
+      mockDbState.seedDoc('cardDesigns', 'des_retry', {
+        designId: 'des_retry',
+        uid: 'user_1',
+        orderId: 'ord_retry_1',
+        locked: true,
+        templateId: 'minimal-white',
+        cardTechnology: 'qr_only',
+      });
+      mockDbState.seedDoc('orders', 'ord_retry_1', {
+        orderId: 'ord_retry_1',
+        uid: 'user_1',
+        designId: 'des_retry',
+        quantity: 1,
+        currency: 'INR',
+        paymentStatus: 'Pending',
+        orderStatus: 'Awaiting Payment',
+      });
+
+      // First attempt fails cleanly at Razorpay API (HTTP 502) -> lock must be released
+      globalThis.fetch = vi.fn(async () =>
+        new Response(JSON.stringify({ error: { description: 'Gateway error' } }), { status: 502 })
+      ) as unknown as typeof fetch;
+
+      await expect(
+        mod.createPaymentOrder({ auth: { uid: 'user_1' }, data: { orderId: 'ord_retry_1' } })
+      ).rejects.toMatchObject({ code: 'failed-precondition' });
+
+      expect(mockDbState.readDoc('orders', 'ord_retry_1')?.razorpayOrderLock).toBeNull();
+      expect(mockDbState.readDoc('orders', 'ord_retry_1')?.razorpayOrderId).toBeUndefined();
+
+      // Subsequent retry succeeds cleanly after lock release
+      globalThis.fetch = vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            id: 'order_RzpAfterRetry1',
+            amount: 68800,
+            currency: 'INR',
+            status: 'created',
+          }),
+          { status: 200 }
+        )
+      ) as unknown as typeof fetch;
+
+      const recovered = await mod.createPaymentOrder({
+        auth: { uid: 'user_1' },
+        data: { orderId: 'ord_retry_1' },
+      });
+      expect(recovered.gatewayOrderId).toBe('order_RzpAfterRetry1');
+
+      // Separate order: HTTP 200 with mismatched payload marks ambiguous & blocks replacement
+      mockDbState.seedDoc('cardDesigns', 'des_ambig', {
+        designId: 'des_ambig',
+        uid: 'user_1',
+        orderId: 'ord_ambig_1',
+        locked: true,
+        templateId: 'minimal-white',
+        cardTechnology: 'qr_only',
+      });
+      mockDbState.seedDoc('orders', 'ord_ambig_1', {
+        orderId: 'ord_ambig_1',
+        uid: 'user_1',
+        designId: 'des_ambig',
+        quantity: 1,
+        currency: 'INR',
+        paymentStatus: 'Pending',
+        orderStatus: 'Awaiting Payment',
+      });
+
+      globalThis.fetch = vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            id: 'order_RzpBadAmount1',
+            amount: 100, // wrong amount in 200 response -> ambiguous
+            currency: 'INR',
+            status: 'created',
+          }),
+          { status: 200 }
+        )
+      ) as unknown as typeof fetch;
+
+      await expect(
+        mod.createPaymentOrder({ auth: { uid: 'user_1' }, data: { orderId: 'ord_ambig_1' } })
+      ).rejects.toMatchObject({ code: 'failed-precondition' });
+
+      const ambigLock = mockDbState.readDoc('orders', 'ord_ambig_1')?.razorpayOrderLock as {
+        status?: string;
+      };
+      expect(ambigLock?.status).toBe('ambiguous');
+
+      // Any follow-up attempt must fail closed without calling Razorpay API again
+      const followUpFetch = vi.fn();
+      globalThis.fetch = followUpFetch as unknown as typeof fetch;
+
+      await expect(
+        mod.createPaymentOrder({ auth: { uid: 'user_1' }, data: { orderId: 'ord_ambig_1' } })
+      ).rejects.toThrow(/ambiguous/i);
+      expect(followUpFetch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('verifyPayment', () => {
+    beforeEach(() => {
+      mockDbState.seedDoc('profiles', 'prof_1', {
+        profileId: 'prof_1',
+        uid: 'user_1',
+        slug: 'aarav-mehta',
+        isPublic: false,
+        paymentConfirmed: false,
+        adminDisabled: false,
+      });
+      mockDbState.seedDoc('publicProfiles', 'aarav-mehta', {
+        slug: 'aarav-mehta',
+        isPublic: false,
+        paymentConfirmed: false,
+        adminDisabled: false,
+      });
+      mockDbState.seedDoc('orders', 'ord_verify_1', {
+        orderId: 'ord_verify_1',
+        uid: 'user_1',
+        profileId: 'prof_1',
+        profileSlug: 'aarav-mehta',
+        currency: 'INR',
+        total: 688,
+        razorpayOrderId: 'order_RzpLive1001',
+        razorpayAmountPaise: 68800,
+        paymentStatus: 'Pending',
+        orderStatus: 'Awaiting Payment',
+      });
+    });
+
+    it('rejects wrong owner, synthetic IDs, order ID mismatch, and invalid or mismatched-length signatures', async () => {
+      const validPayId = 'pay_RzpLive2001';
+      const validSig = signPayment('order_RzpLive1001', validPayId);
+
+      await expect(
+        mod.verifyPayment({
+          auth: { uid: 'other_user' },
+          data: {
+            orderId: 'ord_verify_1',
+            gatewayOrderId: 'order_RzpLive1001',
+            gatewayPaymentId: validPayId,
+            signature: validSig,
+          },
+        })
+      ).rejects.toMatchObject({ code: 'permission-denied' });
+
+      await expect(
+        mod.verifyPayment({
+          auth: { uid: 'user_1' },
+          data: {
+            orderId: 'ord_verify_1',
+            gatewayOrderId: 'order_rzp_sbx_1001',
+            gatewayPaymentId: 'pay_sbx_2001',
+            signature: validSig,
+          },
+        })
+      ).rejects.toMatchObject({ code: 'invalid-argument' });
+
+      await expect(
+        mod.verifyPayment({
+          auth: { uid: 'user_1' },
+          data: {
+            orderId: 'ord_verify_1',
+            gatewayOrderId: 'order_Different999',
+            gatewayPaymentId: validPayId,
+            signature: validSig,
+          },
+        })
+      ).rejects.toMatchObject({ code: 'permission-denied' });
+
+      // Short / invalid-length signature must fail cleanly without throwing RangeError
+      await expect(
+        mod.verifyPayment({
+          auth: { uid: 'user_1' },
+          data: {
+            orderId: 'ord_verify_1',
+            gatewayOrderId: 'order_RzpLive1001',
+            gatewayPaymentId: validPayId,
+            signature: 'short_bad_sig',
+          },
+        })
+      ).rejects.toMatchObject({ code: 'permission-denied' });
+    });
+
+    it('rejects uncaptured payments and Razorpay amount mismatches', async () => {
+      const payId = 'pay_RzpAuthOnly1';
+      const sig = signPayment('order_RzpLive1001', payId);
+
+      globalThis.fetch = vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            id: payId,
+            order_id: 'order_RzpLive1001',
+            amount: 68800,
+            currency: 'INR',
+            status: 'authorized', // NOT captured
+          }),
+          { status: 200 }
+        )
+      ) as unknown as typeof fetch;
+
+      await expect(
+        mod.verifyPayment({
+          auth: { uid: 'user_1' },
+          data: {
+            orderId: 'ord_verify_1',
+            gatewayOrderId: 'order_RzpLive1001',
+            gatewayPaymentId: payId,
+            signature: sig,
+          },
+        })
+      ).rejects.toThrow(/only captured payments/i);
+
+      globalThis.fetch = vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            id: payId,
+            order_id: 'order_RzpLive1001',
+            amount: 100, // Mismatched amount!
+            currency: 'INR',
+            status: 'captured',
+          }),
+          { status: 200 }
+        )
+      ) as unknown as typeof fetch;
+
+      await expect(
+        mod.verifyPayment({
+          auth: { uid: 'user_1' },
+          data: {
+            orderId: 'ord_verify_1',
+            gatewayOrderId: 'order_RzpLive1001',
+            gatewayPaymentId: payId,
+            signature: sig,
+          },
+        })
+      ).rejects.toMatchObject({ code: 'permission-denied' });
+
+      expect(mockDbState.readDoc('orders', 'ord_verify_1')?.paymentStatus).toBe('Pending');
+    });
+
+    it('verifies captured payment atomically, supports idempotent retries, and blocks conflicting or reused payments', async () => {
+      const payId = 'pay_RzpCaptured01';
+      const sig = signPayment('order_RzpLive1001', payId);
+
+      globalThis.fetch = vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            id: payId,
+            order_id: 'order_RzpLive1001',
+            amount: 68800,
+            currency: 'INR',
+            status: 'captured',
+          }),
+          { status: 200 }
+        )
+      ) as unknown as typeof fetch;
+
+      const first = await mod.verifyPayment({
+        auth: { uid: 'user_1' },
+        data: {
+          orderId: 'ord_verify_1',
+          gatewayOrderId: 'order_RzpLive1001',
+          gatewayPaymentId: payId,
+          signature: sig,
+        },
+      });
+      expect(first).toMatchObject({ verified: true, alreadyVerified: false, orderId: 'ord_verify_1' });
+      expect(mockDbState.readDoc('orders', 'ord_verify_1')?.paymentStatus).toBe('Verified');
+      expect(mockDbState.readDoc('orders', 'ord_verify_1')?.orderStatus).toBe('Payment Successful');
+      expect(mockDbState.readDoc('payments', 'ord_verify_1')?.status).toBe('Verified');
+      expect(mockDbState.readDoc('profiles', 'prof_1')?.paymentConfirmed).toBe(true);
+      expect(mockDbState.readDoc('publicProfiles', 'aarav-mehta')?.paymentConfirmed).toBe(true);
+
+      // Idempotent retry with same payment ID
+      const second = await mod.verifyPayment({
+        auth: { uid: 'user_1' },
+        data: {
+          orderId: 'ord_verify_1',
+          gatewayOrderId: 'order_RzpLive1001',
+          gatewayPaymentId: payId,
+          signature: sig,
+        },
+      });
+      expect(second).toMatchObject({ verified: true, alreadyVerified: true });
+
+      // Conflicting different payment ID on same already-paid order
+      const otherPayId = 'pay_RzpDifferent02';
+      const otherSig = signPayment('order_RzpLive1001', otherPayId);
+      globalThis.fetch = vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            id: otherPayId,
+            order_id: 'order_RzpLive1001',
+            amount: 68800,
+            currency: 'INR',
+            status: 'captured',
+          }),
+          { status: 200 }
+        )
+      ) as unknown as typeof fetch;
+
+      await expect(
+        mod.verifyPayment({
+          auth: { uid: 'user_1' },
+          data: {
+            orderId: 'ord_verify_1',
+            gatewayOrderId: 'order_RzpLive1001',
+            gatewayPaymentId: otherPayId,
+            signature: otherSig,
+          },
+        })
+      ).rejects.toMatchObject({ code: 'already-exists' });
+
+      // Reusing pay_RzpCaptured01 on a second order must also fail
+      mockDbState.seedDoc('orders', 'ord_verify_2', {
+        orderId: 'ord_verify_2',
+        uid: 'user_1',
+        currency: 'INR',
+        total: 688,
+        razorpayOrderId: 'order_RzpLive1002',
+        razorpayAmountPaise: 68800,
+        paymentStatus: 'Pending',
+        orderStatus: 'Awaiting Payment',
+      });
+      const reusedSig = signPayment('order_RzpLive1002', payId);
+      globalThis.fetch = vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            id: payId,
+            order_id: 'order_RzpLive1002',
+            amount: 68800,
+            currency: 'INR',
+            status: 'captured',
+          }),
+          { status: 200 }
+        )
+      ) as unknown as typeof fetch;
+
+      await expect(
+        mod.verifyPayment({
+          auth: { uid: 'user_1' },
+          data: {
+            orderId: 'ord_verify_2',
+            gatewayOrderId: 'order_RzpLive1002',
+            gatewayPaymentId: payId,
+            signature: reusedSig,
+          },
+        })
+      ).rejects.toMatchObject({ code: 'already-exists' });
+    });
+  });
+
+  describe('razorpayWebhook', () => {
+    beforeEach(() => {
+      mockDbState.seedDoc('orders', 'ord_wh_1', {
+        orderId: 'ord_wh_1',
+        uid: 'user_1',
+        currency: 'INR',
+        total: 1511,
+        razorpayOrderId: 'order_RzpWh5001',
+        razorpayAmountPaise: 151100,
+        paymentStatus: 'Pending',
+        orderStatus: 'Awaiting Payment',
+      });
+    });
+
+    it('rejects invalid signatures cleanly without throwing and requires x-razorpay-event-id', async () => {
+      const body = Buffer.from(JSON.stringify({ event: 'payment.captured', payload: {} }));
+
+      const badRes = createMockRes();
+      await mod.razorpayWebhook(
+        {
+          method: 'POST',
+          headers: { 'x-razorpay-signature': 'bad_short', 'x-razorpay-event-id': 'evt_1' },
+          rawBody: body,
+        },
+        badRes
+      );
+      expect(badRes.getStatus()).toBe(401);
+
+      const missingEvtRes = createMockRes();
+      await mod.razorpayWebhook(
+        {
+          method: 'POST',
+          headers: { 'x-razorpay-signature': signWebhook(body) },
+          rawBody: body,
+        },
+        missingEvtRes
+      );
+      expect(missingEvtRes.getStatus()).toBe(400);
+    });
+
+    it('does not mark order paid for uncaptured payment.authorized webhook', async () => {
+      const rawBody = Buffer.from(
+        JSON.stringify({
+          event: 'payment.authorized',
+          payload: {
+            payment: {
+              entity: {
+                id: 'pay_WhAuth1',
+                order_id: 'order_RzpWh5001',
+                amount: 151100,
+                currency: 'INR',
+                status: 'authorized',
+              },
+            },
+          },
+        })
+      );
+
+      const res = createMockRes();
+      await mod.razorpayWebhook(
+        {
+          method: 'POST',
+          headers: {
+            'x-razorpay-signature': signWebhook(rawBody),
+            'x-razorpay-event-id': 'evt_auth_only_1',
+          },
+          rawBody,
+        },
+        res
+      );
+
+      expect(res.getStatus()).toBe(200);
+      expect(mockDbState.readDoc('orders', 'ord_wh_1')?.paymentStatus).toBe('Pending');
+      expect(mockDbState.readDoc('razorpayWebhookEvents', 'evt_auth_only_1')?.status).toBe(
+        'ignored_event_type'
+      );
+    });
+
+    it('verifies payment.captured, deduplicates repeated event IDs, and never reverts verified orders on out-of-order payment.failed', async () => {
+      const capturedBody = Buffer.from(
+        JSON.stringify({
+          event: 'payment.captured',
+          payload: {
+            payment: {
+              entity: {
+                id: 'pay_WhCaptured5001',
+                order_id: 'order_RzpWh5001',
+                amount: 151100,
+                currency: 'INR',
+                status: 'captured',
+              },
+            },
+          },
+        })
+      );
+
+      const fetchMock = vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            id: 'pay_WhCaptured5001',
+            order_id: 'order_RzpWh5001',
+            amount: 151100,
+            currency: 'INR',
+            status: 'captured',
+          }),
+          { status: 200 }
+        )
+      );
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+      const res1 = createMockRes();
+      await mod.razorpayWebhook(
+        {
+          method: 'POST',
+          headers: {
+            'x-razorpay-signature': signWebhook(capturedBody),
+            'x-razorpay-event-id': 'evt_cap_5001',
+          },
+          rawBody: capturedBody,
+        },
+        res1
+      );
+      expect(res1.getStatus()).toBe(200);
+      expect(mockDbState.readDoc('orders', 'ord_wh_1')?.paymentStatus).toBe('Verified');
+      expect(mockDbState.readDoc('orders', 'ord_wh_1')?.orderStatus).toBe('Payment Successful');
+      expect(mockDbState.readDoc('payments', 'ord_wh_1')?.status).toBe('Verified');
+      expect(mockDbState.readDoc('razorpayWebhookEvents', 'evt_cap_5001')?.status).toBe('processed_paid');
+
+      // Duplicate delivery with same x-razorpay-event-id should short-circuit without calling Razorpay API again
+      const resDup = createMockRes();
+      await mod.razorpayWebhook(
+        {
+          method: 'POST',
+          headers: {
+            'x-razorpay-signature': signWebhook(capturedBody),
+            'x-razorpay-event-id': 'evt_cap_5001',
+          },
+          rawBody: capturedBody,
+        },
+        resDup
+      );
+      expect(resDup.getStatus()).toBe(200);
+      expect(resDup.getBody()).toMatchObject({ received: true, duplicate: true, eventId: 'evt_cap_5001' });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      // Simulate fulfillment progressing, then an out-of-order payment.failed event arrives
+      mockDbState.seedDoc('orders', 'ord_wh_1', {
+        ...mockDbState.readDoc('orders', 'ord_wh_1')!,
+        orderStatus: 'Assigned to Printer',
+      });
+
+      const failedBody = Buffer.from(
+        JSON.stringify({
+          event: 'payment.failed',
+          payload: {
+            payment: {
+              entity: {
+                id: 'pay_WhOldFail001',
+                order_id: 'order_RzpWh5001',
+                status: 'failed',
+                error_description: 'Delayed failure webhook from earlier attempt',
+              },
+            },
+          },
+        })
+      );
+
+      const resFail = createMockRes();
+      await mod.razorpayWebhook(
+        {
+          method: 'POST',
+          headers: {
+            'x-razorpay-signature': signWebhook(failedBody),
+            'x-razorpay-event-id': 'evt_fail_late_1',
+          },
+          rawBody: failedBody,
+        },
+        resFail
+      );
+      expect(resFail.getStatus()).toBe(200);
+      expect(mockDbState.readDoc('orders', 'ord_wh_1')?.paymentStatus).toBe('Verified');
+      expect(mockDbState.readDoc('orders', 'ord_wh_1')?.orderStatus).toBe('Assigned to Printer');
+      expect(mockDbState.readDoc('payments', 'ord_wh_1')?.status).toBe('Verified');
+      expect(mockDbState.readDoc('razorpayWebhookEvents', 'evt_fail_late_1')?.status).toBe(
+        'ignored_already_paid_out_of_order'
+      );
+    });
+
+    it('rejects webhook amount mismatch and records valid payment.failed on pending orders without losing Awaiting Payment', async () => {
+      const mismatchBody = Buffer.from(
+        JSON.stringify({
+          event: 'order.paid',
+          payload: {
+            payment: {
+              entity: {
+                id: 'pay_WhShortPaid1',
+                order_id: 'order_RzpWh5001',
+                amount: 100,
+                currency: 'INR',
+                status: 'captured',
+              },
+            },
+            order: {
+              entity: {
+                id: 'order_RzpWh5001',
+                status: 'paid',
+              },
+            },
+          },
+        })
+      );
+
+      globalThis.fetch = vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            id: 'pay_WhShortPaid1',
+            order_id: 'order_RzpWh5001',
+            amount: 100, // less than 151100 paise
+            currency: 'INR',
+            status: 'captured',
+          }),
+          { status: 200 }
+        )
+      ) as unknown as typeof fetch;
+
+      const mismatchRes = createMockRes();
+      await mod.razorpayWebhook(
+        {
+          method: 'POST',
+          headers: {
+            'x-razorpay-signature': signWebhook(mismatchBody),
+            'x-razorpay-event-id': 'evt_mismatch_1',
+          },
+          rawBody: mismatchBody,
+        },
+        mismatchRes
+      );
+      expect(mismatchRes.getStatus()).toBe(400);
+      expect(mockDbState.readDoc('orders', 'ord_wh_1')?.paymentStatus).toBe('Pending');
+      expect(mockDbState.readDoc('razorpayWebhookEvents', 'evt_mismatch_1')?.status).toBe(
+        'rejected_amount_mismatch'
+      );
+
+      const pendingFailedBody = Buffer.from(
+        JSON.stringify({
+          event: 'payment.failed',
+          payload: {
+            payment: {
+              entity: {
+                id: 'pay_WhDeclined1',
+                order_id: 'order_RzpWh5001',
+                status: 'failed',
+                error_description: 'Bank declined UPI collect',
+              },
+            },
+          },
+        })
+      );
+
+      const failRes = createMockRes();
+      await mod.razorpayWebhook(
+        {
+          method: 'POST',
+          headers: {
+            'x-razorpay-signature': signWebhook(pendingFailedBody),
+            'x-razorpay-event-id': 'evt_pending_fail_1',
+          },
+          rawBody: pendingFailedBody,
+        },
+        failRes
+      );
+      expect(failRes.getStatus()).toBe(200);
+      expect(mockDbState.readDoc('orders', 'ord_wh_1')?.paymentStatus).toBe('Failed');
+      expect(mockDbState.readDoc('orders', 'ord_wh_1')?.orderStatus).toBe('Awaiting Payment');
+      expect(mockDbState.readDoc('payments', 'ord_wh_1')?.status).toBe('Failed');
+      expect(mockDbState.readDoc('razorpayWebhookEvents', 'evt_pending_fail_1')?.status).toBe(
+        'processed_failed'
+      );
+    });
+  });
+});
