@@ -1,12 +1,88 @@
-import * as admin from 'firebase-admin';
+import { getApp, getApps, initializeApp } from 'firebase-admin/app';
+import { getAuth, type UserRecord as AuthUserRecord } from 'firebase-admin/auth';
+import { getStorage } from 'firebase-admin/storage';
+import { Firestore, FieldValue } from '@google-cloud/firestore';
 import { onCall, HttpsError, onRequest } from 'firebase-functions/v2/https';
 import * as crypto from 'crypto';
 import * as QRCode from 'qrcode';
 import { jsPDF } from 'jspdf';
 
-admin.initializeApp();
-const db = admin.firestore();
-const storage = admin.storage();
+const EXPECTED_FIREBASE_PROJECT_ID = 'gen-lang-client-0847571180';
+const EXPECTED_FIRESTORE_DATABASE_ID = 'ai-studio-fd49cfa5-0ced-4799-9f48-6494d06b1b0d';
+const EXPECTED_STORAGE_BUCKET = 'gen-lang-client-0847571180.firebasestorage.app';
+
+const projectEnvEntries: Array<[string, string | undefined]> = [
+  ['FIREBASE_PROJECT_ID', process.env.FIREBASE_PROJECT_ID],
+  ['GOOGLE_CLOUD_PROJECT', process.env.GOOGLE_CLOUD_PROJECT],
+  ['GCLOUD_PROJECT', process.env.GCLOUD_PROJECT],
+];
+
+for (const [envName, rawValue] of projectEnvEntries) {
+  const trimmed = rawValue?.trim();
+  if (trimmed && trimmed !== EXPECTED_FIREBASE_PROJECT_ID) {
+    throw new Error(
+      `Firebase project ID mismatch in ${envName}: received "${trimmed}", expected "${EXPECTED_FIREBASE_PROJECT_ID}".`
+    );
+  }
+}
+
+const firebaseProjectId = (
+  process.env.FIREBASE_PROJECT_ID ||
+  process.env.GOOGLE_CLOUD_PROJECT ||
+  process.env.GCLOUD_PROJECT ||
+  EXPECTED_FIREBASE_PROJECT_ID
+).trim();
+
+if (firebaseProjectId !== EXPECTED_FIREBASE_PROJECT_ID) {
+  throw new Error(
+    `Effective Firebase project ID mismatch: resolved "${firebaseProjectId || '(unset)'}", expected "${EXPECTED_FIREBASE_PROJECT_ID}".`
+  );
+}
+
+const configuredDatabaseId = (
+  process.env.FIRESTORE_DATABASE_ID || EXPECTED_FIRESTORE_DATABASE_ID
+).trim();
+
+if (!configuredDatabaseId || configuredDatabaseId === '(default)') {
+  throw new Error(
+    `Invalid FIRESTORE_DATABASE_ID "${configuredDatabaseId}". Refusing to initialize against the (default) Firestore database; expected "${EXPECTED_FIRESTORE_DATABASE_ID}".`
+  );
+}
+
+if (configuredDatabaseId !== EXPECTED_FIRESTORE_DATABASE_ID) {
+  throw new Error(
+    `FIRESTORE_DATABASE_ID mismatch: received "${configuredDatabaseId}", expected "${EXPECTED_FIRESTORE_DATABASE_ID}".`
+  );
+}
+
+const app = getApps().some((existing) => existing.name === '[DEFAULT]')
+  ? getApp()
+  : initializeApp({
+      projectId: firebaseProjectId,
+      storageBucket: (process.env.FIREBASE_STORAGE_BUCKET || EXPECTED_STORAGE_BUCKET).trim(),
+    });
+
+const appProjectId = app.options.projectId?.trim();
+if (appProjectId !== EXPECTED_FIREBASE_PROJECT_ID) {
+  throw new Error(
+    `Firebase Admin app projectId mismatch: resolved "${appProjectId || '(unset)'}", expected "${EXPECTED_FIREBASE_PROJECT_ID}".`
+  );
+}
+
+const auth = getAuth(app);
+const storage = getStorage(app);
+
+// Use production @google-cloud/firestore client with explicit named databaseId via ADC
+const db = new Firestore({
+  projectId: firebaseProjectId,
+  databaseId: configuredDatabaseId,
+});
+
+if (db.databaseId !== EXPECTED_FIRESTORE_DATABASE_ID) {
+  throw new Error(
+    `Firestore client databaseId assertion failed: resolved "${db.databaseId}", expected "${EXPECTED_FIRESTORE_DATABASE_ID}".`
+  );
+}
 
 type Role = 'USER' | 'PRINTER' | 'ADMIN' | 'SUPERADMIN';
 
@@ -37,7 +113,7 @@ async function writeAuditLog(params: {
   await logRef.set({
     logId: logRef.id,
     ...params,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   });
 }
 
@@ -47,7 +123,7 @@ export const createUserProfile = onCall(async (req) => {
   const uid = req.auth.uid;
   const email = req.auth.token.email || '';
   const emailVerified = Boolean(req.auth.token.email_verified);
-  const now = admin.firestore.FieldValue.serverTimestamp();
+  const now = FieldValue.serverTimestamp();
   const userRef = db.collection('users').doc(uid);
 
   await db.runTransaction(async (tx) => {
@@ -83,14 +159,14 @@ export const bootstrapSuperAdmin = onCall(async (req) => {
     throw new HttpsError('permission-denied', 'Invalid bootstrap credentials.');
   }
   const email = process.env.SUPERADMIN_INITIAL_EMAIL || 'superadmin@tapnex.in';
-  let userRecord: admin.auth.UserRecord;
+  let userRecord: AuthUserRecord;
   try {
-    userRecord = await admin.auth().getUserByEmail(email);
+    userRecord = await auth.getUserByEmail(email);
   } catch {
-    userRecord = await admin.auth().createUser({ email, password, emailVerified: true, displayName: 'SuperAdmin' });
+    userRecord = await auth.createUser({ email, password, emailVerified: true, displayName: 'SuperAdmin' });
   }
-  await admin.auth().setCustomUserClaims(userRecord.uid, { role: 'SUPERADMIN' });
-  const now = admin.firestore.FieldValue.serverTimestamp();
+  await auth.setCustomUserClaims(userRecord.uid, { role: 'SUPERADMIN' });
+  const now = FieldValue.serverTimestamp();
   await db.collection('users').doc(userRecord.uid).set(
     {
       uid: userRecord.uid,
@@ -142,8 +218,8 @@ export const assignUserRole = onCall(async (req) => {
     throw new HttpsError('failed-precondition', 'Cannot demote the last active SuperAdmin.');
   }
 
-  await admin.auth().setCustomUserClaims(targetUid, { role: newRole });
-  await db.collection('users').doc(targetUid).update({ role: newRole, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+  await auth.setCustomUserClaims(targetUid, { role: newRole });
+  await db.collection('users').doc(targetUid).update({ role: newRole, updatedAt: FieldValue.serverTimestamp() });
   if (newRole === 'ADMIN' || newRole === 'SUPERADMIN') {
     const u = await db.collection('users').doc(targetUid).get();
     await db.collection('admins').doc(targetUid).set({
@@ -151,7 +227,7 @@ export const assignUserRole = onCall(async (req) => {
       email: u.data()?.email || '',
       role: newRole,
       active: true,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     });
   } else {
     await db.collection('admins').doc(targetUid).delete();
@@ -172,8 +248,8 @@ export const updateUserStatus = onCall(async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
   const actorRole = await assertRole(req.auth.uid, ['ADMIN', 'SUPERADMIN']);
   const { targetUid, status } = req.data as { targetUid: string; status: string };
-  await admin.auth().updateUser(targetUid, { disabled: status === 'Blocked' || status === 'Disabled' });
-  await db.collection('users').doc(targetUid).update({ status, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+  await auth.updateUser(targetUid, { disabled: status === 'Blocked' || status === 'Disabled' });
+  await db.collection('users').doc(targetUid).update({ status, updatedAt: FieldValue.serverTimestamp() });
   await writeAuditLog({
     actorUid: req.auth.uid,
     actorRole,
@@ -245,13 +321,13 @@ export const verifyPayment = onCall(async (req) => {
       amount: snap.data()?.total,
       currency: 'INR',
       status: 'Verified',
-      verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      verifiedAt: FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
     tx.update(orderRef, {
       paymentStatus: 'Verified',
       orderStatus: 'Payment Successful',
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     });
   });
   return { verified: true, orderId };
@@ -296,7 +372,7 @@ export const generatePurchasedQr = onCall(async (req) => {
     qrType: 'CUSTOMER_ORDER',
     version: 1,
     createdBy: req.auth.uid,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   });
   return { qrCodeId: orderId, targetUrl };
 });
@@ -324,7 +400,7 @@ export const generateAdminQr = onCall(async (req) => {
     description: description || '',
     version: 1,
     createdBy: req.auth.uid,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   });
   await writeAuditLog({
     actorUid: req.auth.uid,
@@ -351,7 +427,7 @@ export const generatePrintReadyPdf = onCall(async (req) => {
   const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
   const path = `printFiles/${orderId}/card-print-300dpi.pdf`;
   await storage.bucket().file(path).save(pdfBuffer, { contentType: 'application/pdf' });
-  await db.collection('orders').doc(orderId).update({ printFileReady: true, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+  await db.collection('orders').doc(orderId).update({ printFileReady: true, updatedAt: FieldValue.serverTimestamp() });
   return { storagePath: path, dimensions: '85.6x54mm+3mm_bleed' };
 });
 
@@ -363,7 +439,7 @@ export const assignPrinter = onCall(async (req) => {
   await db.collection('orders').doc(orderId).update({
     printerId,
     orderStatus: 'Assigned to Printer',
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
   await db.collection('qrCodes').doc(orderId).update({ printerId }).catch(() => null);
   await writeAuditLog({
@@ -388,7 +464,7 @@ export const updateOrderStatus = onCall(async (req) => {
   }
   await db.collection('orders').doc(orderId).update({
     orderStatus,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
   await writeAuditLog({
     actorUid: req.auth.uid,
@@ -437,7 +513,7 @@ export const createShippingRecord = onCall(async (req) => {
     trackingNumber,
     trackingUrl: trackingUrl || '',
     dispatchDate,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   });
   await db.collection('orders').doc(orderId).update({
     orderStatus: 'Dispatched',
@@ -445,7 +521,7 @@ export const createShippingRecord = onCall(async (req) => {
     trackingNumber,
     trackingUrl: trackingUrl || '',
     dispatchDate,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
   return { shippingId: ref.id };
 });
@@ -464,7 +540,7 @@ export const deleteUserSafely = onCall(async (req) => {
   const actorRole = await assertRole(req.auth.uid, ['ADMIN', 'SUPERADMIN']);
   const { targetUid } = req.data as { targetUid: string };
   if (targetUid === req.auth.uid) throw new HttpsError('failed-precondition', 'Cannot delete own active account.');
-  await db.collection('users').doc(targetUid).update({ status: 'Disabled', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+  await db.collection('users').doc(targetUid).update({ status: 'Disabled', updatedAt: FieldValue.serverTimestamp() });
   await writeAuditLog({
     actorUid: req.auth.uid,
     actorRole,
