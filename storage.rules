@@ -1,0 +1,54 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'jeetendrakulkarniai@gmail.com' ||
+        request.auth.token.role in ['ADMIN', 'SUPERADMIN']
+      );
+    }
+
+    function isPrinter() {
+      return isSignedIn() && request.auth.token.role == 'PRINTER';
+    }
+
+    // Profile avatars & card studio logos/backgrounds uploaded by owner
+    match /profiles/{uid}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn() && request.auth.uid == uid
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    match /cardAssets/{uid}/{allPaths=**} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin() || isPrinter());
+      allow write: if isSignedIn() && request.auth.uid == uid
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Paid QR codes & print-ready 300 DPI PDFs: strictly restricted!
+    match /qrCodes/{orderId}/{fileName} {
+      allow read: if isAdmin() || isPrinter();
+      allow write: if isAdmin();
+    }
+
+    match /printFiles/{orderId}/{fileName} {
+      allow read: if isAdmin() || isPrinter();
+      allow write: if isAdmin() || isPrinter();
+    }
+
+    match /dispatchDocs/{orderId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || isPrinter();
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

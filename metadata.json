@@ -1,0 +1,6 @@
+{
+  "name": "TapCraft — NFC Smart Business Card Platform",
+  "description": "Production NFC Smart Business Card platform with digital profile builder, 85.6x54mm card design studio, Razorpay checkout, backend QR & 300 DPI PDF generation, and Customer, Printer, Admin, and SuperAdmin portals.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,644 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global safety net: default deny everything unless explicitly matched below.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isBootstrappedSuperAdmin() {
+      return isVerified() && request.auth.token.email == 'jeetendrakulkarniai@gmail.com';
+    }
+
+    function isSuperAdmin() {
+      return isBootstrappedSuperAdmin() || (
+        isVerified() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.active == true &&
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'SUPERADMIN'
+      );
+    }
+
+    function isAdmin() {
+      return isSuperAdmin() || (
+        isVerified() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.active == true &&
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role in ['ADMIN', 'SUPERADMIN']
+      );
+    }
+
+    function isPrinter() {
+      return isVerified() &&
+        exists(/databases/$(database)/documents/printers/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/printers/$(request.auth.uid)).data.status == 'Active';
+    }
+
+    function isActiveUser() {
+      return isVerified() && (
+        !exists(/databases/$(database)/documents/users/$(request.auth.uid)) ||
+        !(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status in ['Blocked', 'Disabled'])
+      );
+    }
+
+    // --- Validation Blueprints ---
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'status', 'emailVerified', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'username', 'email', 'displayName', 'photoURL', 'phone', 'role', 'status', 'emailVerified', 'mustChangePassword', 'permissions', 'createdAt', 'updatedAt', 'lastLoginAt']) &&
+        isValidId(data.uid) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+        data.role in ['USER', 'PRINTER', 'ADMIN', 'SUPERADMIN'] &&
+        data.status in ['Pending Verification', 'Active', 'Blocked', 'Disabled'] &&
+        data.emailVerified is bool &&
+        (!('username' in data) || (data.username is string && data.username.size() <= 64)) &&
+        (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 120)) &&
+        (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 2048)) &&
+        (!('phone' in data) || (data.phone is string && data.phone.size() <= 20)) &&
+        (!('mustChangePassword' in data) || data.mustChangePassword is bool) &&
+        (!('permissions' in data) || (data.permissions is list && data.permissions.size() <= 30 && (data.permissions.size() == 0 || data.permissions[0] is string)));
+    }
+
+    function isValidAdminRegistry(data) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'active', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'role', 'permissions', 'active', 'updatedAt']) &&
+        isValidId(data.uid) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+        data.role in ['ADMIN', 'SUPERADMIN'] &&
+        data.active is bool &&
+        (!('permissions' in data) || (data.permissions is list && data.permissions.size() <= 30));
+    }
+
+    function isValidPrinter(data) {
+      return data.keys().hasAll(['printerId', 'uid', 'businessName', 'contactPerson', 'email', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['printerId', 'uid', 'businessName', 'contactPerson', 'phone', 'email', 'address', 'status', 'serviceAreas', 'createdAt', 'updatedAt']) &&
+        isValidId(data.printerId) &&
+        isValidId(data.uid) &&
+        data.businessName is string && data.businessName.size() >= 2 && data.businessName.size() <= 160 &&
+        data.contactPerson is string && data.contactPerson.size() >= 2 && data.contactPerson.size() <= 120 &&
+        data.email is string && data.email.size() <= 254 &&
+        data.status in ['Active', 'Blocked', 'Disabled'] &&
+        (!('phone' in data) || (data.phone is string && data.phone.size() <= 20)) &&
+        (!('address' in data) || (data.address is string && data.address.size() <= 500)) &&
+        (!('serviceAreas' in data) || (data.serviceAreas is list && data.serviceAreas.size() <= 50));
+    }
+
+    function isValidProfile(data) {
+      return data.keys().hasAll(['profileId', 'uid', 'slug', 'personalInformation', 'visibilitySettings', 'isPublic', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['profileId', 'uid', 'profileType', 'profileLabel', 'slug', 'personalInformation', 'socialLinks', 'customFields', 'visibilitySettings', 'selectedTemplate', 'isPublic', 'paymentConfirmed', 'paymentCompletedAt', 'paymentReference', 'adminApproved', 'adminApprovedAt', 'adminApprovedBy', 'adminDisabled', 'viewsCount', 'qrScansCount', 'nfcVisitsCount', 'createdAt', 'updatedAt']) &&
+        isValidId(data.profileId) &&
+        isValidId(data.uid) &&
+        (!('profileType' in data) || data.profileType in ['adult', 'kids', 'pets', 'belongings']) &&
+        data.slug is string && data.slug.size() >= 3 && data.slug.size() <= 64 && data.slug.matches('^[a-z0-9\\-]+$') &&
+        data.personalInformation is map &&
+        data.visibilitySettings is map &&
+        data.isPublic is bool &&
+        (!('paymentConfirmed' in data) || data.paymentConfirmed is bool) &&
+        (!('paymentCompletedAt' in data) || (data.paymentCompletedAt is string && data.paymentCompletedAt.size() <= 64)) &&
+        (!('paymentReference' in data) || (data.paymentReference is string && data.paymentReference.size() <= 128)) &&
+        (!('adminApproved' in data) || data.adminApproved is bool) &&
+        (!('adminApprovedAt' in data) || (data.adminApprovedAt is string && data.adminApprovedAt.size() <= 64)) &&
+        (!('adminApprovedBy' in data) || (data.adminApprovedBy is string && data.adminApprovedBy.size() <= 128)) &&
+        (!('adminDisabled' in data) || data.adminDisabled is bool) &&
+        (!('profileLabel' in data) || (data.profileLabel is string && data.profileLabel.size() <= 80)) &&
+        (!('selectedTemplate' in data) || (data.selectedTemplate is string && data.selectedTemplate.size() <= 80)) &&
+        (!('socialLinks' in data) || (data.socialLinks is list && data.socialLinks.size() <= 30)) &&
+        (!('customFields' in data) || (data.customFields is list && data.customFields.size() <= 30)) &&
+        (!('viewsCount' in data) || data.viewsCount is number) &&
+        (!('qrScansCount' in data) || data.qrScansCount is number) &&
+        (!('nfcVisitsCount' in data) || data.nfcVisitsCount is number);
+    }
+
+    function isValidPublicProfile(data) {
+      return data.keys().hasAll(['slug', 'profileId', 'uid', 'isPublic', 'updatedAt']) &&
+        data.keys().hasOnly(['slug', 'profileId', 'uid', 'profileType', 'isPublic', 'unavailableMessage', 'personalInformation', 'socialLinks', 'customFields', 'themeColor', 'paymentConfirmed', 'paymentCompletedAt', 'adminApproved', 'adminApprovedAt', 'adminApprovedBy', 'adminDisabled', 'lastPaidOrderId', 'updatedAt']) &&
+        data.slug is string && data.slug.size() >= 3 && data.slug.size() <= 64 && data.slug.matches('^[a-z0-9\\-]+$') &&
+        isValidId(data.profileId) &&
+        isValidId(data.uid) &&
+        (!('profileType' in data) || data.profileType in ['adult', 'kids', 'pets', 'belongings']) &&
+        data.isPublic is bool &&
+        (!('unavailableMessage' in data) || (data.unavailableMessage is string && data.unavailableMessage.size() <= 300)) &&
+        (!('personalInformation' in data) || data.personalInformation is map) &&
+        (!('socialLinks' in data) || (data.socialLinks is list && data.socialLinks.size() <= 30)) &&
+        (!('customFields' in data) || (data.customFields is list && data.customFields.size() <= 30)) &&
+        (!('themeColor' in data) || (data.themeColor is string && data.themeColor.size() <= 32)) &&
+        (!('paymentConfirmed' in data) || data.paymentConfirmed is bool) &&
+        (!('paymentCompletedAt' in data) || (data.paymentCompletedAt is string && data.paymentCompletedAt.size() <= 64)) &&
+        (!('adminApproved' in data) || data.adminApproved is bool) &&
+        (!('adminApprovedAt' in data) || (data.adminApprovedAt is string && data.adminApprovedAt.size() <= 64)) &&
+        (!('adminApprovedBy' in data) || (data.adminApprovedBy is string && data.adminApprovedBy.size() <= 128)) &&
+        (!('adminDisabled' in data) || data.adminDisabled is bool) &&
+        (!('lastPaidOrderId' in data) || (data.lastPaidOrderId is string && data.lastPaidOrderId.size() <= 128));
+    }
+
+    function isValidCardTemplate(data) {
+      return data.keys().hasAll(['templateId', 'name', 'priceInr', 'active', 'frontSpec', 'backSpec']) &&
+        data.keys().hasOnly(['templateId', 'name', 'category', 'profileType', 'designTier', 'pricingMode', 'packNote', 'tagKeywords', 'description', 'priceInr', 'cardType', 'active', 'isDefault', 'supportsVertical', 'frontSpec', 'backSpec', 'updatedAt']) &&
+        isValidId(data.templateId) &&
+        data.name is string && data.name.size() >= 2 && data.name.size() <= 100 &&
+        (!('category' in data) || (data.category is string && data.category.size() <= 60)) &&
+        (!('profileType' in data) || data.profileType in ['all', 'adult', 'kids', 'pets', 'belongings']) &&
+        (!('designTier' in data) || data.designTier in ['minimal', 'designer']) &&
+        (!('pricingMode' in data) || data.pricingMode in ['card_tiers', 'fixed_pack']) &&
+        (!('packNote' in data) || (data.packNote is string && data.packNote.size() <= 200)) &&
+        (!('tagKeywords' in data) || (data.tagKeywords is list && data.tagKeywords.size() <= 20)) &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 400)) &&
+        (!('cardType' in data) || (data.cardType is string && data.cardType.size() <= 80)) &&
+        data.priceInr is number && data.priceInr >= 0 &&
+        data.active is bool &&
+        data.frontSpec is map &&
+        data.backSpec is map;
+    }
+
+    function isValidCardDesign(data) {
+      return data.keys().hasAll(['designId', 'uid', 'profileId', 'templateId', 'frontDesign', 'backDesign', 'cardOrientation', 'dimensions', 'bleed', 'approved', 'locked', 'version', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['designId', 'uid', 'profileId', 'orderId', 'templateId', 'cardTechnology', 'frontDesign', 'backDesign', 'cardOrientation', 'dimensions', 'bleed', 'approved', 'locked', 'approvedAt', 'version', 'createdAt', 'updatedAt']) &&
+        isValidId(data.designId) &&
+        isValidId(data.uid) &&
+        isValidId(data.profileId) &&
+        data.templateId is string && data.templateId.size() <= 128 &&
+        (!('cardTechnology' in data) || data.cardTechnology in ['qr_only', 'qr_smart']) &&
+        data.frontDesign is map &&
+        data.backDesign is map &&
+        data.cardOrientation in ['landscape', 'vertical'] &&
+        data.dimensions in ['85.6x54mm', '54x85.6mm'] &&
+        data.bleed == '3mm' &&
+        data.approved is bool &&
+        data.locked is bool &&
+        data.version is number && data.version >= 1;
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll(['orderId', 'orderNumber', 'uid', 'profileId', 'designId', 'quantity', 'total', 'currency', 'paymentStatus', 'orderStatus', 'shippingAddress', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['orderId', 'orderNumber', 'uid', 'profileId', 'profileSlug', 'designId', 'orderSource', 'shopItems', 'printerId', 'quantity', 'cardType', 'subtotal', 'tax', 'shipping', 'total', 'currency', 'paymentStatus', 'orderStatus', 'shippingAddress', 'qrCodeId', 'printFileReady', 'courierName', 'trackingNumber', 'trackingUrl', 'dispatchDate', 'internalNotes', 'createdAt', 'updatedAt']) &&
+        isValidId(data.orderId) &&
+        data.orderNumber is string && data.orderNumber.size() >= 3 && data.orderNumber.size() <= 40 &&
+        isValidId(data.uid) &&
+        isValidId(data.profileId) &&
+        isValidId(data.designId) &&
+        (!('orderSource' in data) || data.orderSource in ['studio', 'shop']) &&
+        (!('shopItems' in data) || (data.shopItems is list && data.shopItems.size() <= 50)) &&
+        data.quantity is number && data.quantity >= 1 && data.quantity <= 1000 &&
+        data.total is number && data.total >= 0 &&
+        data.currency == 'INR' &&
+        data.paymentStatus in ['Pending', 'Completed', 'Verified', 'Rejected', 'Failed', 'Refunded'] &&
+        data.orderStatus in ['Design Pending', 'Design Approved', 'Awaiting Payment', 'Payment Successful', 'Processing', 'Assigned to Printer', 'Printing in Progress', 'Quality Check', 'Ready for Dispatch', 'Dispatched', 'In Transit', 'Delivered', 'Cancelled', 'Refunded'] &&
+        data.shippingAddress is map &&
+        (!('printerId' in data) || (data.printerId is string && data.printerId.size() <= 128)) &&
+        (!('qrCodeId' in data) || (data.qrCodeId is string && data.qrCodeId.size() <= 128)) &&
+        (!('courierName' in data) || (data.courierName is string && data.courierName.size() <= 120)) &&
+        (!('trackingNumber' in data) || (data.trackingNumber is string && data.trackingNumber.size() <= 120)) &&
+        (!('trackingUrl' in data) || (data.trackingUrl is string && data.trackingUrl.size() <= 500)) &&
+        (!('dispatchDate' in data) || (data.dispatchDate is string && data.dispatchDate.size() <= 40)) &&
+        (!('internalNotes' in data) || (data.internalNotes is string && data.internalNotes.size() <= 2000));
+    }
+
+    function isValidPayment(data) {
+      return data.keys().hasAll(['paymentId', 'orderId', 'uid', 'gateway', 'gatewayOrderId', 'signatureVerified', 'amount', 'currency', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['paymentId', 'orderId', 'uid', 'gateway', 'gatewayOrderId', 'gatewayPaymentId', 'signatureVerified', 'amount', 'currency', 'status', 'verifiedAt', 'createdAt']) &&
+        isValidId(data.paymentId) &&
+        isValidId(data.orderId) &&
+        isValidId(data.uid) &&
+        data.gateway in [
+          'razorpay_live', 'razorpay_sandbox',
+          'cashfree_live', 'cashfree_sandbox',
+          'easebuzz_live', 'easebuzz_sandbox',
+          'payu_live', 'payu_sandbox',
+          'gpay_live', 'gpay_sandbox',
+          'upi_live', 'upi_sandbox'
+        ] &&
+        data.gatewayOrderId is string && data.gatewayOrderId.size() <= 128 &&
+        data.signatureVerified is bool &&
+        data.amount is number && data.amount >= 0 &&
+        data.currency == 'INR' &&
+        data.status in ['Created', 'Pending', 'Completed', 'Verified', 'Rejected', 'Failed', 'Refunded'];
+    }
+
+    function isValidQrCode(data) {
+      return data.keys().hasAll(['qrCodeId', 'targetUrl', 'svgContent', 'format', 'qrType', 'version', 'createdBy', 'createdAt']) &&
+        data.keys().hasOnly(['qrCodeId', 'uid', 'orderId', 'printerId', 'targetUrl', 'svgContent', 'pngDataUrl', 'storagePath', 'format', 'qrType', 'customerName', 'description', 'version', 'createdBy', 'createdAt']) &&
+        isValidId(data.qrCodeId) &&
+        data.targetUrl is string && data.targetUrl.size() >= 5 && data.targetUrl.size() <= 2048 &&
+        data.svgContent is string && data.svgContent.size() <= 100000 &&
+        data.format == 'PNG_SVG' &&
+        data.qrType in ['CUSTOMER_ORDER', 'ADMIN_CUSTOM'] &&
+        data.version is number &&
+        data.createdBy is string && data.createdBy.size() <= 128;
+    }
+
+    function isValidShippingRecord(data) {
+      return data.keys().hasAll(['shippingId', 'orderId', 'uid', 'printerId', 'courierName', 'trackingNumber', 'dispatchDate', 'createdAt']) &&
+        data.keys().hasOnly(['shippingId', 'orderId', 'uid', 'printerId', 'courierName', 'trackingNumber', 'trackingUrl', 'dispatchDate', 'notes', 'createdAt']) &&
+        isValidId(data.shippingId) &&
+        isValidId(data.orderId) &&
+        isValidId(data.uid) &&
+        isValidId(data.printerId) &&
+        data.courierName is string && data.courierName.size() >= 2 && data.courierName.size() <= 120 &&
+        data.trackingNumber is string && data.trackingNumber.size() >= 2 && data.trackingNumber.size() <= 120 &&
+        data.dispatchDate is string && data.dispatchDate.size() <= 40;
+    }
+
+    function isValidSupportTicket(data) {
+      return data.keys().hasAll(['ticketId', 'uid', 'subject', 'message', 'category', 'status', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['ticketId', 'uid', 'orderId', 'subject', 'message', 'category', 'status', 'adminReply', 'createdAt', 'updatedAt']) &&
+        isValidId(data.ticketId) &&
+        isValidId(data.uid) &&
+        data.subject is string && data.subject.size() >= 3 && data.subject.size() <= 160 &&
+        data.message is string && data.message.size() >= 5 && data.message.size() <= 2000 &&
+        data.category in ['Order', 'Design Revision', 'SMART Help', 'NFC Help', 'Billing', 'General'] &&
+        data.status in ['Open', 'In Progress', 'Resolved', 'Closed'];
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll(['notificationId', 'uid', 'title', 'message', 'channel', 'deliveryStatus', 'createdAt']) &&
+        data.keys().hasOnly(['notificationId', 'uid', 'title', 'message', 'channel', 'deliveryStatus', 'createdAt']) &&
+        isValidId(data.notificationId) &&
+        isValidId(data.uid) &&
+        data.title is string && data.title.size() <= 160 &&
+        data.message is string && data.message.size() <= 1000 &&
+        data.channel in ['in_app', 'email'] &&
+        data.deliveryStatus in ['Queued', 'Sent', 'ConfigRequired', 'Read'];
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['logId', 'actorUid', 'actorRole', 'action', 'targetCollection', 'targetId', 'createdAt']) &&
+        data.keys().hasOnly(['logId', 'actorUid', 'actorEmail', 'actorRole', 'action', 'targetCollection', 'targetId', 'details', 'createdAt']) &&
+        isValidId(data.logId) &&
+        isValidId(data.actorUid) &&
+        data.actorRole in ['USER', 'PRINTER', 'ADMIN', 'SUPERADMIN', 'SYSTEM'] &&
+        data.action is string && data.action.size() >= 2 && data.action.size() <= 120 &&
+        data.targetCollection is string && data.targetCollection.size() <= 64 &&
+        data.targetId is string && data.targetId.size() <= 128;
+    }
+
+    function isValidAppSettings(data) {
+      return data.keys().hasAll(['settingId', 'companyName', 'multipleProfilesEnabled', 'allowCustomerQrView', 'baseCardPriceInr', 'taxRatePercent', 'shippingFeeInr', 'updatedAt']) &&
+        data.keys().hasOnly(['settingId', 'companyName', 'supportEmail', 'multipleProfilesEnabled', 'allowCustomerQrView', 'baseCardPriceInr', 'taxRatePercent', 'shippingFeeInr', 'inactiveProfileMessage', 'paymentGateways', 'updatedAt']) &&
+        isValidId(data.settingId) &&
+        data.companyName is string && data.companyName.size() <= 120 &&
+        (!('supportEmail' in data) || (data.supportEmail is string && data.supportEmail.size() <= 254)) &&
+        data.multipleProfilesEnabled is bool &&
+        data.allowCustomerQrView is bool &&
+        data.baseCardPriceInr is number && data.baseCardPriceInr >= 0 &&
+        data.taxRatePercent is number && data.taxRatePercent >= 0 &&
+        data.shippingFeeInr is number && data.shippingFeeInr >= 0 &&
+        (!('inactiveProfileMessage' in data) || (data.inactiveProfileMessage is string && data.inactiveProfileMessage.size() <= 300)) &&
+        (!('paymentGateways' in data) || data.paymentGateways is map);
+    }
+
+    function isValidShopCategory(data) {
+      return data.keys().hasAll(['categoryId', 'name', 'slug', 'active', 'sortOrder']) &&
+        data.keys().hasOnly(['categoryId', 'name', 'slug', 'description', 'active', 'sortOrder', 'updatedAt']) &&
+        isValidId(data.categoryId) &&
+        data.name is string && data.name.size() >= 2 && data.name.size() <= 100 &&
+        data.slug is string && data.slug.size() >= 2 && data.slug.size() <= 80 &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 400)) &&
+        data.active is bool &&
+        data.sortOrder is number;
+    }
+
+    function isValidShopProduct(data) {
+      return data.keys().hasAll(['productId', 'name', 'categoryId', 'priceInr', 'visibleOnShop', 'inStock']) &&
+        data.keys().hasOnly(['productId', 'name', 'slug', 'categoryId', 'categoryName', 'shortDescription', 'description', 'features', 'priceInr', 'compareAtPriceInr', 'cardType', 'imageDataUrl', 'badgeText', 'visibleOnShop', 'featured', 'inStock', 'sortOrder', 'createdAt', 'updatedAt']) &&
+        isValidId(data.productId) &&
+        data.name is string && data.name.size() >= 2 && data.name.size() <= 140 &&
+        isValidId(data.categoryId) &&
+        (!('slug' in data) || (data.slug is string && data.slug.size() <= 140)) &&
+        (!('categoryName' in data) || (data.categoryName is string && data.categoryName.size() <= 100)) &&
+        (!('shortDescription' in data) || (data.shortDescription is string && data.shortDescription.size() <= 300)) &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+        (!('features' in data) || (data.features is list && data.features.size() <= 20)) &&
+        data.priceInr is number && data.priceInr >= 0 &&
+        (!('compareAtPriceInr' in data) || (data.compareAtPriceInr is number && data.compareAtPriceInr >= 0)) &&
+        (!('cardType' in data) || (data.cardType is string && data.cardType.size() <= 100)) &&
+        (!('imageDataUrl' in data) || (data.imageDataUrl is string && data.imageDataUrl.size() <= 900000)) &&
+        (!('badgeText' in data) || (data.badgeText is string && data.badgeText.size() <= 60)) &&
+        data.visibleOnShop is bool &&
+        (!('featured' in data) || data.featured is bool) &&
+        data.inStock is bool &&
+        (!('sortOrder' in data) || data.sortOrder is number);
+    }
+
+    // --- Collection Rules ---
+
+    // 1. Users
+    match /users/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(uid) && isValidUser(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time && (
+          (isOwner(uid) && incoming().uid == request.auth.uid && incoming().role == 'USER' && incoming().status in ['Pending Verification', 'Active']) ||
+          (isOwner(uid) && isBootstrappedSuperAdmin() && incoming().role == 'SUPERADMIN' && incoming().status == 'Active') ||
+          (isOwner(uid) && isAdmin() && incoming().uid == request.auth.uid && incoming().role == get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role && incoming().status == 'Active') ||
+          isSuperAdmin() ||
+          (isAdmin() && incoming().role in ['USER', 'PRINTER'])
+        );
+      allow update: if isValidId(uid) && isValidUser(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isSuperAdmin() ||
+          (isAdmin() && existing().role != 'SUPERADMIN' && incoming().role != 'SUPERADMIN') ||
+          (isOwner(uid) &&
+            incoming().role == existing().role && (
+              (incoming().status == existing().status &&
+                incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'username', 'photoURL', 'phone', 'emailVerified', 'lastLoginAt', 'updatedAt'])) ||
+              (existing().status == 'Pending Verification' && isVerified() && incoming().status == 'Active' &&
+                incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'username', 'photoURL', 'phone', 'emailVerified', 'status', 'lastLoginAt', 'updatedAt']))
+            ))
+        );
+      allow delete: if isValidId(uid) && isSuperAdmin() && uid != request.auth.uid;
+    }
+
+    // 2. Admins Registry
+    match /admins/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list: if isAdmin();
+      allow create, update: if isValidId(uid) && isValidAdminRegistry(incoming()) &&
+        incoming().updatedAt == request.time &&
+        (isSuperAdmin() || (isBootstrappedSuperAdmin() && uid == request.auth.uid));
+      allow delete: if isValidId(uid) && isSuperAdmin() && uid != request.auth.uid;
+    }
+
+    // 3. Printers
+    match /printers/{printerId} {
+      allow get: if isValidId(printerId) && (isOwner(printerId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(printerId) && isAdmin() && isValidPrinter(incoming()) && incoming().createdAt == request.time;
+      allow update: if isValidId(printerId) && isValidPrinter(incoming()) &&
+        incoming().printerId == existing().printerId &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt && (
+          isAdmin() ||
+          (isOwner(printerId) && incoming().status == existing().status && incoming().diff(existing()).affectedKeys().hasOnly(['businessName', 'contactPerson', 'phone', 'address', 'serviceAreas', 'updatedAt']))
+        );
+      allow delete: if isValidId(printerId) && isSuperAdmin();
+    }
+
+    // 4. Profiles (Owner Private + Full Data)
+    match /profiles/{profileId} {
+      allow get: if isValidId(profileId) && ((isSignedIn() && existing().uid == request.auth.uid) || isAdmin());
+      allow list: if (isSignedIn() && resource.data.uid == request.auth.uid) || isAdmin();
+      allow create: if isValidId(profileId) && isActiveUser() && isValidProfile(incoming()) &&
+        incoming().uid == request.auth.uid &&
+        incoming().get('adminApproved', false) == false &&
+        incoming().get('adminDisabled', false) == false &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(profileId) && isValidProfile(incoming()) &&
+        incoming().profileId == existing().profileId &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (isActiveUser() && existing().uid == request.auth.uid &&
+            incoming().get('adminApproved', false) == existing().get('adminApproved', false) &&
+            incoming().get('adminDisabled', false) == existing().get('adminDisabled', false) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['profileType', 'profileLabel', 'slug', 'personalInformation', 'socialLinks', 'customFields', 'visibilitySettings', 'selectedTemplate', 'isPublic', 'paymentConfirmed', 'paymentCompletedAt', 'paymentReference', 'updatedAt']))
+        );
+      allow delete: if isValidId(profileId) && (isAdmin() || (isActiveUser() && existing().uid == request.auth.uid));
+    }
+
+    // 5. Public Profiles (Sanitized Public View, Readable Without Login)
+    match /publicProfiles/{slug} {
+      allow get: if isValidId(slug);
+      allow list: if isAdmin();
+      allow create: if isValidId(slug) && isValidPublicProfile(incoming()) &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (isActiveUser() && incoming().uid == request.auth.uid &&
+            (!('adminApproved' in incoming()) || incoming().adminApproved == false) &&
+            incoming().get('adminDisabled', false) == false)
+        );
+      allow update: if isValidId(slug) && isValidPublicProfile(incoming()) &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (isActiveUser() && incoming().uid == request.auth.uid &&
+            existing().uid == request.auth.uid &&
+            (!('adminApproved' in incoming()) || incoming().adminApproved == false ||
+              existing().get('adminApproved', false) == true) &&
+            incoming().get('adminDisabled', false) == existing().get('adminDisabled', false)) ||
+          (isPrinter() &&
+            incoming().uid == existing().uid &&
+            incoming().profileId == existing().profileId &&
+            incoming().slug == existing().slug &&
+            incoming().paymentConfirmed == true &&
+            incoming().isPublic == true &&
+            incoming().get('adminDisabled', false) == existing().get('adminDisabled', false) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['paymentConfirmed', 'isPublic', 'lastPaidOrderId', 'updatedAt']) &&
+            'lastPaidOrderId' in incoming() &&
+            isValidId(incoming().lastPaidOrderId) &&
+            exists(/databases/$(database)/documents/orders/$(incoming().lastPaidOrderId)) &&
+            get(/databases/$(database)/documents/orders/$(incoming().lastPaidOrderId)).data.printerId == request.auth.uid &&
+            get(/databases/$(database)/documents/orders/$(incoming().lastPaidOrderId)).data.orderStatus == 'Delivered' &&
+            get(/databases/$(database)/documents/orders/$(incoming().lastPaidOrderId)).data.profileId == existing().profileId)
+        );
+      allow delete: if isValidId(slug) && (isAdmin() || (isActiveUser() && existing().uid == request.auth.uid));
+    }
+
+    // 6. Card Templates
+    match /cardTemplates/{templateId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(templateId) && isAdmin() && isValidCardTemplate(incoming());
+      allow delete: if isValidId(templateId) && isSuperAdmin();
+    }
+
+    // 7. Card Designs
+    match /cardDesigns/{designId} {
+      allow get: if isValidId(designId) && (resource == null ? isSignedIn() : ((isSignedIn() && existing().uid == request.auth.uid) || isAdmin() || isPrinter()));
+      allow list: if (isSignedIn() && resource.data.uid == request.auth.uid) || isAdmin();
+      allow create: if isValidId(designId) && isActiveUser() && isValidCardDesign(incoming()) &&
+        incoming().uid == request.auth.uid &&
+        incoming().locked == false &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(designId) && isValidCardDesign(incoming()) &&
+        incoming().designId == existing().designId &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (isActiveUser() && existing().uid == request.auth.uid && existing().locked == false &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['frontDesign', 'backDesign', 'cardOrientation', 'dimensions', 'templateId', 'cardTechnology', 'approved', 'approvedAt', 'locked', 'orderId', 'version', 'updatedAt']))
+        );
+      allow delete: if isValidId(designId) && isAdmin();
+    }
+
+    // 8. Orders
+    match /orders/{orderId} {
+      allow get: if isValidId(orderId) && (
+        (isSignedIn() && existing().uid == request.auth.uid) ||
+        (isPrinter() && existing().printerId == request.auth.uid) ||
+        isAdmin()
+      );
+      allow list: if (isSignedIn() && resource.data.uid == request.auth.uid) ||
+        (isSignedIn() && resource.data.printerId == request.auth.uid) ||
+        isAdmin();
+      allow create: if isValidId(orderId) && isValidOrder(incoming()) &&
+        (incoming().get('orderSource', 'studio') == 'shop' || exists(/databases/$(database)/documents/cardDesigns/$(incoming().designId))) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (isActiveUser() &&
+            incoming().uid == request.auth.uid &&
+            incoming().paymentStatus == 'Pending' &&
+            incoming().orderStatus == 'Awaiting Payment' &&
+            (!('printerId' in incoming()) || incoming().printerId == '') &&
+            (!('qrCodeId' in incoming()) || incoming().qrCodeId == ''))
+        );
+      allow update: if isValidId(orderId) && isValidOrder(incoming()) &&
+        incoming().orderId == existing().orderId &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (isPrinter() && existing().printerId == request.auth.uid &&
+            incoming().paymentStatus == existing().paymentStatus &&
+            incoming().total == existing().total &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['orderStatus', 'courierName', 'trackingNumber', 'trackingUrl', 'dispatchDate', 'updatedAt'])) ||
+          (isActiveUser() && existing().uid == request.auth.uid &&
+            existing().paymentStatus == 'Pending' &&
+            existing().orderStatus == 'Awaiting Payment' &&
+            incoming().paymentStatus == 'Verified' &&
+            incoming().orderStatus == 'Payment Successful' &&
+            incoming().total == existing().total &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['paymentStatus', 'orderStatus', 'qrCodeId', 'printFileReady', 'updatedAt']) &&
+            existsAfter(/databases/$(database)/documents/payments/$(orderId)))
+        );
+      allow delete: if isValidId(orderId) && isSuperAdmin();
+    }
+
+    // 9. Payments (Server-verified records; immutable by non-admins)
+    match /payments/{paymentId} {
+      allow get: if isValidId(paymentId) && ((isSignedIn() && existing().uid == request.auth.uid) || isAdmin());
+      allow list: if (isSignedIn() && resource.data.uid == request.auth.uid) || isAdmin();
+      allow create: if isValidId(paymentId) && isValidPayment(incoming()) &&
+        incoming().createdAt == request.time &&
+        existsAfter(/databases/$(database)/documents/orders/$(incoming().orderId)) &&
+        (isAdmin() || (isActiveUser() && incoming().uid == request.auth.uid));
+      allow update, delete: if isValidId(paymentId) && isAdmin();
+    }
+
+    // 10. QR Codes (Hidden from customers pre-purchase; readable by Admin/Printer or conditionally permitted owner)
+    match /qrCodes/{qrCodeId} {
+      allow get: if isValidId(qrCodeId) && (
+        isAdmin() ||
+        (isPrinter() && existing().printerId == request.auth.uid) ||
+        (isActiveUser() && existing().uid == request.auth.uid &&
+          exists(/databases/$(database)/documents/appSettings/global) &&
+          get(/databases/$(database)/documents/appSettings/global).data.allowCustomerQrView == true)
+      );
+      allow list: if isAdmin() || (isSignedIn() && resource.data.printerId == request.auth.uid);
+      allow create: if isValidId(qrCodeId) && isValidQrCode(incoming()) &&
+        incoming().createdAt == request.time && (
+          isAdmin() ||
+          (isActiveUser() && incoming().uid == request.auth.uid && incoming().qrType == 'CUSTOMER_ORDER' &&
+            existsAfter(/databases/$(database)/documents/payments/$(incoming().orderId)))
+        );
+      allow update, delete: if isValidId(qrCodeId) && isAdmin();
+    }
+
+    // 11. Shipping Records
+    match /shippingRecords/{shippingId} {
+      allow get: if isValidId(shippingId) && ((isSignedIn() && existing().uid == request.auth.uid) || (isPrinter() && existing().printerId == request.auth.uid) || isAdmin());
+      allow list: if (isSignedIn() && resource.data.uid == request.auth.uid) || (isSignedIn() && resource.data.printerId == request.auth.uid) || isAdmin();
+      allow create: if isValidId(shippingId) && isValidShippingRecord(incoming()) && incoming().createdAt == request.time && (
+        isAdmin() ||
+        (isPrinter() && incoming().printerId == request.auth.uid && exists(/databases/$(database)/documents/orders/$(incoming().orderId)))
+      );
+      allow update, delete: if isValidId(shippingId) && isAdmin();
+    }
+
+    // 12. Support Tickets
+    match /supportTickets/{ticketId} {
+      allow get: if isValidId(ticketId) && ((isSignedIn() && existing().uid == request.auth.uid) || isAdmin());
+      allow list: if (isSignedIn() && resource.data.uid == request.auth.uid) || isAdmin();
+      allow create: if isValidId(ticketId) && isActiveUser() && isValidSupportTicket(incoming()) &&
+        incoming().uid == request.auth.uid &&
+        incoming().status == 'Open' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(ticketId) && isValidSupportTicket(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (isActiveUser() && existing().uid == request.auth.uid && existing().status != 'Closed' && incoming().diff(existing()).affectedKeys().hasOnly(['message', 'updatedAt']))
+        );
+      allow delete: if isValidId(ticketId) && isSuperAdmin();
+    }
+
+    // 13. Email Templates
+    match /emailTemplates/{templateId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if isValidId(templateId) && isSuperAdmin();
+    }
+
+    // 14. Notifications
+    match /notifications/{notificationId} {
+      allow get: if isValidId(notificationId) && ((isSignedIn() && existing().uid == request.auth.uid) || isAdmin());
+      allow list: if (isSignedIn() && resource.data.uid == request.auth.uid) || isAdmin();
+      allow create: if isValidId(notificationId) && isValidNotification(incoming()) && (isAdmin() || isPrinter() || (isActiveUser() && incoming().uid == request.auth.uid)) && incoming().createdAt == request.time;
+      allow update: if isValidId(notificationId) && isValidNotification(incoming()) && ((isSignedIn() && existing().uid == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['deliveryStatus'])) || isAdmin());
+      allow delete: if isValidId(notificationId) && isSuperAdmin();
+    }
+
+    // 15. App Settings
+    match /appSettings/{settingId} {
+      allow get: if isValidId(settingId);
+      allow list: if isAdmin();
+      allow create, update: if isValidId(settingId) && (isAdmin() || isSuperAdmin()) && isValidAppSettings(incoming());
+      allow delete: if isValidId(settingId) && isSuperAdmin();
+    }
+
+    // 16. Audit Logs (Append-only)
+    match /auditLogs/{logId} {
+      allow get, list: if isAdmin();
+      allow create: if isValidId(logId) && isVerified() && isValidAuditLog(incoming()) &&
+        incoming().actorUid == request.auth.uid &&
+        incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isValidId(logId) && isSuperAdmin();
+    }
+
+    // 17. Shop Categories
+    match /shopCategories/{categoryId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(categoryId) && isAdmin() && isValidShopCategory(incoming());
+      allow delete: if isValidId(categoryId) && isAdmin();
+    }
+
+    // 18. Shop Products
+    match /shopProducts/{productId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(productId) && isAdmin() && isValidShopProduct(incoming());
+      allow delete: if isValidId(productId) && isAdmin();
+    }
+  }
+}

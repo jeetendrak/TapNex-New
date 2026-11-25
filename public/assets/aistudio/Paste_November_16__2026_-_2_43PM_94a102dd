@@ -1,0 +1,1707 @@
+# MASTER DEVELOPMENT PROMPT
+# NFC SMART BUSINESS CARD PLATFORM
+## Complete SaaS Web Application – Production-Ready Development
+
+Act as a senior full-stack software architect, UI/UX designer, Firebase specialist, security engineer, and SaaS application developer.
+
+Build a complete, professional, production-ready NFC Smart Business Card platform. This must be a fully functional application, not a static UI prototype or a collection of disconnected screens.
+
+The application will allow customers to create digital business profiles, customize physical NFC business cards, purchase cards, and share their contact information through NFC tapping or QR scanning.
+
+The application must support three main portals:
+1. Customer Portal
+2. Printer Portal
+3. Admin and SuperAdmin Portal
+
+The final application must be deployable through GitHub and Netlify, using Firebase as its backend infrastructure.
+
+IMPORTANT: Do not just generate a project plan, wireframe, or sample code. Implement the actual working application, including authentication, database integration, storage, business logic, security, responsive layouts, and functional workflows.
+
+---
+
+# 1. TECHNOLOGY STACK AND ARCHITECTURE
+
+Use the following technologies:
+
+### Frontend
+- React
+- TypeScript
+- Vite
+- Tailwind CSS
+- Modern component architecture
+- Lucide icons
+- React Router
+- React Hook Form
+- Zod validation
+- A professional charting library for analytics
+
+### Backend and Infrastructure
+- Firebase Authentication
+- Cloud Firestore
+- Firebase Storage
+- Firebase Cloud Functions (server-side business logic)
+- Firebase App Check
+- Firebase Hosting is NOT required.
+- Netlify will host the frontend.
+- GitHub will maintain the source code and version control.
+
+### Additional integrations
+- Google Authentication
+- Email/password authentication
+- Email verification
+- Payment gateway integration using Razorpay (India)
+- Transactional emails using Resend or an equivalent configurable email provider
+- QR code generation
+- Print-ready PDF generation
+- Excel/CSV export
+- Shipping and dispatch tracking
+
+Use environment variables for all secrets, API keys, payment credentials and configuration.
+
+Never expose Firebase Admin SDK credentials, payment secrets, email API keys, or other privileged credentials in frontend code.
+
+### Architecture requirements
+- Frontend communicates with Firebase securely.
+- Sensitive operations execute through Firebase Cloud Functions.
+- All role permissions must be verified server-side.
+- Use Firebase custom claims for authorization.
+- Firestore Security Rules must enforce access restrictions.
+- Storage Security Rules must prevent unauthorized access to customer and print files.
+- Use reusable components and clean modular code.
+- Implement proper loading states, error states, empty states and success notifications.
+- Include error logging and audit trails.
+
+---
+
+# 2. APPLICATION BRANDING AND UI/UX
+
+Create a premium, modern, visually impressive NFC business card platform.
+
+The design should feel like a premium technology product rather than a conventional e-commerce website.
+
+### Visual direction
+- Primary background: White / very light grey
+- Primary brand colour: Deep Navy Blue
+- Secondary colour: Electric Blue
+- Accent: Cyan
+- Dark sections: Midnight Navy
+- Cards: Rounded corners, subtle shadows and clean borders
+- Typography: Inter or Plus Jakarta Sans
+- Icons: Lucide
+- Buttons: Modern rounded buttons with subtle hover animations
+- Animations: Smooth and professional, never excessive.
+
+### Overall experience
+- Fully responsive desktop, tablet and mobile layouts.
+- Mobile-first customer experience.
+- Premium landing page.
+- Modern dashboard layouts.
+- Consistent navigation and design language.
+- Accessible colour contrast.
+- Toast notifications.
+- Confirmation dialogs for important actions.
+- Skeleton loading states.
+- Search, filters, pagination and sorting.
+- Professional empty states with useful actions.
+
+Do not use generic dashboard templates without customization.
+
+---
+
+# 3. PUBLIC WEBSITE
+
+Create a professional public-facing website.
+
+### Main navigation
+- Home
+- How It Works
+- Features
+- Card Designs
+- Pricing
+- FAQ
+- Contact
+- Login
+- Get Your Smart Card
+
+### Homepage sections
+
+1. Hero section
+
+Headline:
+"Your Business Identity. One Smart Tap."
+
+Subheadline:
+"Share your contact details, business information and social media profiles instantly with a premium NFC business card."
+
+Primary CTA: Get Your Smart Card
+
+Secondary CTA: See How It Works
+
+Include an attractive visual showing a premium NFC card being tapped against a smartphone.
+
+2. How It Works
+
+Step 1: Create your digital business profile.
+
+Step 2: Customize your business card.
+
+Step 3: Purchase your NFC card.
+
+Step 4: Receive your personalized smart card.
+
+Step 5: Share your profile through NFC tap or QR scan.
+
+3. Key features
+- One-tap contact sharing
+- QR code scanning
+- Digital business profile
+- Social media integration
+- Save contact functionality
+- Customizable profile
+- Custom business card design
+- No need for paper business cards
+- Update your digital details without reprinting the card.
+
+4. Card design showcase
+
+Display available card templates and premium design options.
+
+5. Benefits section
+
+Explain the advantages of NFC business cards for:
+- Entrepreneurs
+- Business owners
+- Freelancers
+- Sales professionals
+- Consultants
+- Real estate agents
+- Marketing professionals
+- Corporate employees
+
+6. FAQ section
+
+7. Footer with privacy policy, terms, refund policy and contact details.
+
+All CTA buttons must work.
+
+---
+
+# 4. AUTHENTICATION AND USER MANAGEMENT
+
+Provide two login methods:
+
+### A. Google Sign-In
+Use Firebase Google Authentication.
+
+### B. Email and Password
+- Registration
+- Login
+- Email verification
+- Forgot password
+- Password reset
+- Logout
+- Session persistence
+
+When registering, users should receive a verification email.
+
+Unverified email/password accounts must not be allowed to access protected customer functions.
+
+Google-authenticated users can be treated as verified based on Firebase Authentication's verified email state.
+
+### Default registration role
+
+Every new customer must automatically receive the role:
+
+USER
+
+Users must never be able to select their own role.
+
+Available roles:
+
+1. USER
+2. PRINTER
+3. ADMIN
+4. SUPERADMIN
+
+### User account statuses
+- Pending Verification
+- Active
+- Blocked
+- Disabled
+
+Blocked users must not be able to log in to protected application areas or perform operations.
+
+---
+
+# 5. CUSTOMER PORTAL
+
+Create a premium customer dashboard.
+
+Dashboard sidebar:
+
+- Overview
+- My Profile
+- Social Links
+- Custom Fields
+- Public Profile Settings
+- Design My Card
+- My Orders
+- Order Tracking
+- Account Settings
+- Help & Support
+
+### Customer dashboard overview
+
+Show:
+- Profile completion percentage
+- Digital profile status
+- Current card status
+- Latest order
+- Order tracking status
+- Profile views
+- QR scans (where measurable)
+- NFC profile visits (where measurable)
+- Quick actions
+
+### A. Personal Information
+
+Allow customers to enter:
+
+- Profile photo
+- Full name
+- Designation / Job title
+- Company name
+- Business category
+- Short biography
+- Mobile number
+- Alternate mobile number
+- WhatsApp number
+- Email address
+- Alternate email
+- Website
+- Business address
+- City
+- State
+- PIN code
+- Country
+
+Allow users to edit and save their information anytime.
+
+### B. Social Media Links
+
+Provide optional fields with platform icons.
+
+Include:
+- WhatsApp
+- Instagram
+- Facebook
+- LinkedIn
+- X / Twitter
+- YouTube
+- Telegram
+- Pinterest
+- Snapchat
+- Threads
+- GitHub
+- Behance
+- Dribbble
+- Personal website
+- Google Business Profile
+- Other custom URLs
+
+Users should be able to add, edit, remove and reorder social links.
+
+Validate URLs and display only enabled links.
+
+### C. Custom Fields
+
+Allow users to create their own fields.
+
+For each custom field:
+- Field label
+- Field value
+- Field type
+- Display order
+- Visibility setting
+
+Supported types:
+- Text
+- Phone
+- Email
+- URL
+- Address
+- Date
+
+Examples:
+- GST Number
+- Business Registration
+- Office Number
+- Booking Link
+- Appointment URL
+- Portfolio Link
+
+Users can add multiple custom fields.
+
+### D. Public Profile Visibility
+
+This is an important feature.
+
+Provide a checkbox next to every supported information field.
+
+Example:
+
+[✓] Profile Photo
+[✓] Full Name
+[✓] Job Title
+[✓] Company
+[✓] Mobile Number
+[✓] WhatsApp
+[✓] Email
+[✓] Website
+[✓] Business Address
+[✓] Instagram
+[✓] LinkedIn
+[✓] Facebook
+[ ] Alternate Mobile
+[ ] Alternate Email
+
+Customers must have complete control over which information is displayed publicly.
+
+For custom fields, provide individual visibility checkboxes too.
+
+Only selected fields should be visible on the public profile page.
+
+Do not expose private fields through public API responses or public profile documents.
+
+### E. Public Profile URL
+
+Automatically create a unique public URL for each customer.
+
+Example:
+
+https://yourdomain.com/p/jeet-kulkarni
+
+The slug must be unique.
+
+Allow users to customize their slug, subject to availability and validation.
+
+The public profile must be accessible without login.
+
+The profile should have:
+- Profile photo
+- Name
+- Designation
+- Company
+- Selected contact information
+- Selected social links
+- Custom visible fields
+- Save Contact button
+- WhatsApp contact button
+- Share Profile button
+
+The page must be mobile optimized.
+
+### F. Save Contact
+
+Implement a working Download Contact button.
+
+Generate and download a valid vCard (.vcf) file using only publicly visible contact information.
+
+Make sure it works on Android and iPhone.
+
+### G. Profile Sharing
+
+Provide:
+- Copy profile URL
+- Native share functionality where supported
+- Share through WhatsApp
+- Download contact
+- Social sharing links
+
+---
+
+# 6. BUSINESS CARD DESIGN STUDIO
+
+This is one of the most important features.
+
+Create a professional card customization studio.
+
+### Standard card dimensions
+
+The physical NFC card size must be:
+
+85.6 mm × 54 mm
+
+Equivalent:
+3.37 × 2.13 inches.
+
+Use a landscape card orientation by default.
+
+Allow an optional vertical card orientation if supported by the selected template.
+
+### Technical print specifications
+
+- Exact trim size: 85.6 × 54 mm.
+- Print resolution: 300 DPI.
+- Print-ready PDF output.
+- Provide 3 mm bleed outside the trim size.
+- Include safe margins.
+- Export front and back as separate pages or clearly defined sides.
+- Maintain exact aspect ratio.
+- Provide crop marks where supported.
+- Keep all essential information inside the safe area.
+
+The final print design must never be distorted or resized unpredictably.
+
+### Card design options
+
+Customers should have two choices:
+
+OPTION 1: Use Default Design
+
+Display professional predefined templates.
+
+Examples:
+- Premium Navy
+- Minimal White
+- Corporate Black
+- Blue Gradient
+- Modern Business
+- Luxury Dark
+- Elegant White
+- Creative Professional
+
+OPTION 2: Customize My Own Card
+
+Build a simple but powerful visual editor.
+
+Allow:
+- Change background colour.
+- Upload background image.
+- Add logo.
+- Add profile image.
+- Change font.
+- Change font size.
+- Change text colour.
+- Adjust alignment.
+- Move and resize elements.
+- Add text.
+- Add company logo.
+- Change front and back design.
+- Preview card in real time.
+
+The editor must be easy for non-technical customers.
+
+### QR CODE PLACEHOLDER RULE
+
+Before purchasing the card:
+
+- Do NOT generate any actual QR code.
+- Do NOT expose the actual QR code.
+- Show only a visually attractive placeholder saying "QR CODE".
+- The placeholder must be visible in the design preview.
+- The placeholder must not be a scannable code.
+- Do not allow customers to download an actual QR code before successful purchase.
+
+Once the customer confirms the card design, save the approved design as a versioned design record.
+
+Show a confirmation step:
+
+"I approve this design and confirm that all details are correct."
+
+After approval, redirect the customer to the purchase and checkout process.
+
+The approved design should be locked against accidental changes for that order.
+
+If the customer wants changes after purchase, require an admin-controlled design revision workflow.
+
+---
+
+# 7. ORDER AND PURCHASE PROCESS
+
+After design approval, take the customer to checkout.
+
+### Checkout page
+
+Display:
+- Card preview
+- Card type
+- Quantity
+- Price
+- Applicable taxes
+- Shipping charges
+- Final payable amount
+
+Allow customer to enter:
+
+Shipping details:
+- Recipient full name
+- Mobile number
+- Email
+- Address line 1
+- Address line 2
+- City
+- State
+- PIN code
+- Country
+
+Initially, support delivery within India.
+
+Validate Indian mobile numbers and six-digit PIN codes.
+
+### Payment gateway
+
+Integrate Razorpay using a secure server-side payment flow.
+
+Requirements:
+- Create payment order through Cloud Functions.
+- Verify payment signatures server-side.
+- Validate webhook events.
+- Prevent duplicate payment processing.
+- Never mark an order paid based only on frontend confirmation.
+- Maintain payment transaction references.
+- Handle failed, cancelled and pending payments.
+
+Use configurable Razorpay credentials.
+
+If credentials are unavailable during development, implement a clearly labelled sandbox/test mode. Never simulate a successful live payment.
+
+### Order creation
+
+On verified successful payment:
+
+1. Create the order.
+2. Store payment information.
+3. Lock the approved design.
+4. Generate the customer's actual QR code on the backend.
+5. Associate the QR code with the public profile URL.
+6. Create print-ready files.
+7. Make the order available to the assigned printer.
+8. Send order confirmation email.
+
+### Order confirmation email
+
+Subject:
+Your Smart Business Card Order Is Confirmed!
+
+Message:
+
+Dear Customer,
+
+Thank you for purchasing your NFC Smart Business Card.
+
+Your personalized card is now being prepared for printing.
+
+Your card is expected to be delivered within 10–15 days within India.
+
+You can log in to your account to track your order.
+
+Thank you for choosing us!
+
+### Order status
+
+Implement these statuses:
+
+- Design Pending
+- Design Approved
+- Awaiting Payment
+- Payment Successful
+- Processing
+- Assigned to Printer
+- Printing in Progress
+- Quality Check
+- Ready for Dispatch
+- Dispatched
+- In Transit
+- Delivered
+- Cancelled
+- Refunded
+
+Customers must see a visual order tracking timeline.
+
+---
+
+# 8. QR CODE GENERATION AND MANAGEMENT
+
+This must be implemented securely.
+
+### Customer QR code
+
+Generate the QR code only after the payment has been successfully verified.
+
+QR destination:
+
+https://yourdomain.com/p/{unique-profile-slug}
+
+QR code requirements:
+- High-resolution PNG
+- SVG format
+- Scannable with standard smartphone cameras
+- Error correction level suitable for printing
+- White quiet zone
+- Sufficient print contrast
+- No unnecessary decoration that affects scanning
+
+Store the QR code in Firebase Storage.
+
+Associate it with:
+- User ID
+- Order ID
+- Profile URL
+- QR version
+- Creation timestamp
+
+### QR privacy
+
+Before purchase:
+- Customer cannot see the actual QR code.
+- Customer cannot download the actual QR code.
+- Customer sees only the QR placeholder in the design studio.
+
+After purchase:
+- The actual QR code becomes available to the printer and authorized admin users.
+- The customer may see their QR code in their order details only if an admin setting explicitly permits it.
+- Do not automatically expose the QR image to customers.
+
+### SuperAdmin QR functionality
+
+SuperAdmin must have a special QR management facility.
+
+SuperAdmin can:
+- Enter any publicly accessible URL.
+- Generate a QR code.
+- Preview the QR code.
+- Download PNG.
+- Download SVG.
+- Download high-resolution QR artwork.
+- Associate the QR with a customer or order if required.
+- Store and manage generated QR codes.
+
+This functionality must be available even without a paid customer order.
+
+---
+
+# 9. PRINTER PORTAL
+
+Create a separate portal for users with the PRINTER role.
+
+Printer users must not have administrative access.
+
+### Printer dashboard
+
+Display:
+- Total assigned orders
+- Pending orders
+- Printing in progress
+- Ready for dispatch
+- Dispatched orders
+- Completed orders
+
+### Assigned Orders
+
+Printers should see only orders assigned to them.
+
+Each order should contain:
+
+- Order number
+- Customer name
+- Customer contact details required for fulfilment
+- Shipping address
+- Card quantity
+- Card type
+- Approved card design
+- Actual QR code
+- Print-ready PDF
+- Front design
+- Back design
+- Print instructions
+- Order date
+- Expected delivery date
+
+### Print-ready design
+
+Provide a download facility.
+
+The printer should receive:
+- Exact 85.6 × 54 mm card design.
+- Correct 300 DPI output.
+- 3 mm bleed.
+- Print-ready PDF.
+- QR code correctly positioned.
+- Front and back designs.
+- Required quantity.
+
+The printer should not have to manually insert the QR code.
+
+The approved design should already contain the actual QR code.
+
+The print preview must clearly distinguish:
+- Trim area
+- Bleed area
+- Safe area
+
+Do not stretch the card artwork.
+
+### Printer workflow
+
+Printer can update:
+- Order Accepted
+- Printing Started
+- Printing Completed
+- Quality Check Completed
+- Ready for Dispatch
+- Dispatched
+
+For dispatch, printer must enter:
+- Courier name
+- Tracking number
+- Tracking URL
+- Dispatch date
+
+Printer can upload dispatch documents or shipping labels if required.
+
+After dispatch, notify customer and admin through email.
+
+### Printer restrictions
+
+Printer cannot:
+- View all users.
+- Create admin accounts.
+- Modify customer profiles.
+- Change payment records.
+- View unrelated orders.
+- Change user roles.
+- Generate unrelated QR codes.
+- Access SuperAdmin settings.
+
+---
+
+# 10. ADMIN PORTAL
+
+Create a full-featured admin dashboard.
+
+ADMIN and SUPERADMIN can view all users, printers, customers and orders.
+
+ADMIN permissions must be configurable by SuperAdmin.
+
+### Admin navigation
+
+- Dashboard
+- Users
+- Customers
+- Printers
+- Administrators
+- Orders
+- Payments
+- Card Designs
+- QR Management
+- Shipping
+- Support Tickets
+- Reports
+- Email Templates
+- Settings
+- Audit Logs
+
+### Dashboard analytics
+
+Display:
+- Total registered users
+- Active users
+- Blocked users
+- Total printers
+- Total orders
+- Pending orders
+- Completed orders
+- Total revenue
+- Pending payments
+- Monthly sales
+- Order status distribution
+- Recent registrations
+- Recent orders
+
+Use interactive charts.
+
+### User management
+
+ADMIN and SUPERADMIN must have user management capabilities according to their permissions.
+
+Features:
+- Create user.
+- Edit user.
+- Delete user.
+- Block user.
+- Activate user.
+- Disable user.
+- Reset password through a secure password reset process.
+- Change user role.
+- Search users.
+- Filter by role.
+- Filter by status.
+- Export user data to CSV/Excel.
+
+Available roles:
+- USER
+- PRINTER
+- ADMIN
+- SUPERADMIN
+
+Only SUPERADMIN can create, modify, demote or delete another SUPERADMIN.
+
+Prevent deletion or demotion of the last active SUPERADMIN.
+
+Account deletion must follow a safe process with appropriate data-retention and order-history handling.
+
+### Printer management
+
+- Add printer.
+- Edit printer.
+- Activate printer.
+- Block printer.
+- Assign orders.
+- View printer performance.
+- View completed orders.
+- View pending orders.
+
+### Order management
+
+ADMIN and SUPERADMIN can:
+- View all orders.
+- Search orders.
+- Filter orders.
+- Change order status.
+- Assign printer.
+- Reassign printer.
+- View payment information.
+- Download print files.
+- Regenerate QR codes.
+- View shipping information.
+- Cancel orders.
+- Initiate refunds through the configured payment integration.
+- Add internal notes.
+- Communicate with customers.
+
+Every important order change must be recorded in the audit log.
+
+### Card template management
+
+SuperAdmin should be able to:
+- Add card templates.
+- Edit templates.
+- Delete templates.
+- Activate/deactivate templates.
+- Set default template.
+- Set template pricing.
+- Define available customizations.
+- Set front and back designs.
+
+---
+
+# 11. SUPERADMIN – FULL CONTROL
+
+SuperAdmin must have the highest authority in the application.
+
+Create a special SuperAdmin management system.
+
+### Initial SuperAdmin bootstrap
+
+The requested initial login credentials are:
+
+Username: superadmin
+Password: superadmin123
+
+IMPORTANT SECURITY IMPLEMENTATION:
+
+Do not hardcode these credentials into frontend code or expose them in GitHub.
+
+Create a one-time secure bootstrap process using Firebase Admin SDK through a protected Cloud Function or deployment-time administrative script.
+
+Use environment variables for the initial credentials.
+
+Provision the SuperAdmin account once, assign the SUPERADMIN custom claim, and force a password change on first login.
+
+Store passwords only through Firebase Authentication's secure password management.
+
+Disable the bootstrap mechanism after successful initialization.
+
+The default credentials must never remain active in a production environment.
+
+### SuperAdmin privileges
+
+SuperAdmin has unrestricted application-level administrative control.
+
+SuperAdmin can:
+- Create users.
+- Delete users.
+- Modify users.
+- Create admins.
+- Delete admins.
+- Create printers.
+- Delete printers.
+- Change roles.
+- Block accounts.
+- Activate accounts.
+- Reset passwords.
+- Manage permissions.
+- Manage card designs.
+- Manage QR codes.
+- View every order.
+- Manage payment records.
+- Manage printing assignments.
+- Manage email settings.
+- Manage website settings.
+- Configure payment gateway settings.
+- Configure pricing.
+- Configure taxes.
+- Configure shipping charges.
+- Manage order workflow.
+- Manage public profile settings.
+- Manage application branding.
+- View all analytics.
+- Export reports.
+- View audit logs.
+- Manage security settings.
+
+### Direct public URL QR generator
+
+SuperAdmin should have a dedicated option:
+
+"Generate QR from Any URL"
+
+Input:
+- Public URL
+- Optional customer name
+- Optional reference/order number
+- Optional description
+
+Action:
+Generate QR Code.
+
+The resulting QR code should be downloadable and manageable from the admin panel.
+
+---
+
+# 12. MULTIPLE DIGITAL PROFILES
+
+Include an optional capability inspired by the reference video.
+
+Allow a customer to create multiple digital profiles under one account if enabled by SuperAdmin.
+
+Example:
+- Personal Profile
+- Business Profile
+- Real Estate Profile
+- Consultancy Profile
+
+Each profile should have:
+- Separate public URL.
+- Separate contact details.
+- Separate social links.
+- Separate visibility settings.
+
+The customer should be able to associate a purchased card with one selected profile.
+
+Do not make multiple profiles mandatory for the first purchase.
+
+Allow SuperAdmin to enable or disable this feature globally.
+
+---
+
+# 13. NFC FUNCTIONALITY
+
+The NFC card must contain a URL pointing to the customer's public profile.
+
+Example:
+
+https://yourdomain.com/p/jeet-kulkarni
+
+When someone taps a compatible smartphone against the NFC card:
+
+1. Smartphone reads the NFC tag.
+2. Smartphone opens the stored public URL.
+3. Browser displays the customer's digital business profile.
+4. Visitor can save the contact.
+5. Visitor can open WhatsApp.
+6. Visitor can visit social profiles.
+7. Visitor can share the profile.
+
+Important:
+
+The physical NFC tag must be encoded with the same public profile URL represented by the QR code.
+
+The web application cannot write to a physical NFC card remotely.
+
+The printer or card encoding provider must write the URL to the NFC tag during production using compatible NFC encoding equipment.
+
+Include a printer instruction sheet explaining NFC encoding and testing.
+
+Do not claim that every smartphone supports NFC. Provide QR scanning as the universal fallback.
+
+Include a configurable NFC compatibility/help page.
+
+---
+
+# 14. EMAIL NOTIFICATIONS
+
+Implement transactional email templates.
+
+Email notifications:
+
+1. Welcome email.
+2. Email verification.
+3. Password reset.
+4. Order confirmation.
+5. Payment success.
+6. Payment failure.
+7. Design approval confirmation.
+8. Printer assignment notification.
+9. Printing started notification.
+10. Dispatch notification.
+11. Delivery notification.
+12. Order cancellation.
+13. Refund notification.
+14. Admin notifications for new orders.
+
+Email templates must be editable by SuperAdmin.
+
+Include the company logo and professional responsive HTML email layouts.
+
+All emails must be sent server-side.
+
+---
+
+# 15. FIREBASE DATABASE STRUCTURE
+
+Design a scalable Firestore database.
+
+Use appropriate collections and subcollections.
+
+Recommended collections:
+
+users
+profiles
+cardDesigns
+orders
+payments
+printers
+qrCodes
+notifications
+supportTickets
+emailTemplates
+appSettings
+auditLogs
+shippingRecords
+
+### users
+
+Fields:
+- uid
+- username
+- email
+- displayName
+- photoURL
+- phone
+- role
+- status
+- emailVerified
+- createdAt
+- updatedAt
+- lastLoginAt
+
+Role must be validated against Firebase custom claims and not trusted from the user document alone.
+
+### profiles
+
+Fields:
+- profileId
+- uid
+- slug
+- personalInformation
+- socialLinks
+- customFields
+- visibilitySettings
+- selectedTemplate
+- isPublic
+- createdAt
+- updatedAt
+
+### cardDesigns
+
+Fields:
+- designId
+- uid
+- orderId
+- templateId
+- frontDesign
+- backDesign
+- cardOrientation
+- dimensions
+- bleed
+- approved
+- approvedAt
+- version
+- createdAt
+
+### orders
+
+Fields:
+- orderId
+- uid
+- profileId
+- designId
+- printerId
+- quantity
+- cardType
+- subtotal
+- tax
+- shipping
+- total
+- currency
+- paymentStatus
+- orderStatus
+- shippingAddress
+- qrCodeId
+- printFileUrl
+- trackingNumber
+- trackingUrl
+- createdAt
+- updatedAt
+
+### payments
+
+Fields:
+- paymentId
+- orderId
+- uid
+- gateway
+- gatewayOrderId
+- gatewayPaymentId
+- amount
+- currency
+- status
+- verifiedAt
+- createdAt
+
+### printers
+
+Fields:
+- printerId
+- uid
+- businessName
+- contactPerson
+- phone
+- email
+- address
+- status
+- serviceAreas
+- createdAt
+
+### qrCodes
+
+Fields:
+- qrCodeId
+- uid
+- orderId
+- targetUrl
+- storagePath
+- format
+- qrType
+- createdBy
+- createdAt
+
+Implement proper Firestore indexes for common search and filtering operations.
+
+Do not place sensitive private customer information in publicly readable profile documents.
+
+---
+
+# 16. FIRESTORE SECURITY RULES
+
+Security is a mandatory requirement.
+
+Implement and provide complete Firestore Security Rules.
+
+Requirements:
+
+- Users can read and update their own permitted account information.
+- Users cannot change their own role.
+- Users cannot change their own account status.
+- Users cannot create admin or SuperAdmin accounts.
+- Users cannot access another user's private data.
+- Public profile visitors can access only published public information.
+- Public visitors cannot read private profile fields.
+- Printers can access only assigned orders.
+- Printers cannot access unrelated orders.
+- Admin access must follow assigned permissions.
+- SuperAdmin can manage all application resources.
+- Payments cannot be modified by the frontend.
+- QR generation and payment verification must be server-side.
+- Audit logs must be protected against client-side modification.
+
+Implement equivalent Firebase Storage Rules.
+
+Test the rules using the Firebase Emulator Suite.
+
+---
+
+# 17. FIREBASE CLOUD FUNCTIONS
+
+Implement backend functions for:
+
+1. createUserProfile
+2. bootstrapSuperAdmin
+3. assignUserRole
+4. updateUserStatus
+5. generatePublicProfileSlug
+6. createPaymentOrder
+7. verifyPayment
+8. razorpayWebhook
+9. generatePurchasedQr
+10. generateAdminQr
+11. generatePrintReadyPdf
+12. assignPrinter
+13. updateOrderStatus
+14. sendTransactionalEmail
+15. createShippingRecord
+16. exportAdminReport
+17. deleteUserSafely
+18. recordAuditLog
+19. validatePrinterAccess
+
+Use idempotency for payment webhooks and critical order-processing operations.
+
+All sensitive actions must validate authenticated identity, role and ownership.
+
+Use transactions or atomic operations where necessary.
+
+---
+
+# 18. PRINT DESIGN AND PDF GENERATION
+
+Implement a reliable print production pipeline.
+
+The final physical card dimensions must remain exactly:
+
+85.6 mm × 54 mm.
+
+Create a separate print-rendering module.
+
+Requirements:
+- 300 DPI artwork.
+- 3 mm bleed.
+- Safe margin.
+- Accurate typography.
+- Correct logo placement.
+- QR code with sufficient quiet zone.
+- QR code positioned according to approved layout.
+- Front and back artwork.
+- Correct output dimensions.
+- No browser UI elements in the final PDF.
+
+The customer preview and printer output must match.
+
+After payment, replace the non-scannable QR placeholder with the actual QR code in the exact placeholder location.
+
+Ensure the QR code is not stretched or distorted.
+
+Validate the generated PDF before making it available to the printer.
+
+Provide a print proof preview for the printer.
+
+---
+
+# 19. REPORTS AND ANALYTICS
+
+Admin and SuperAdmin reporting:
+
+- Daily orders.
+- Weekly orders.
+- Monthly orders.
+- Annual orders.
+- Total sales.
+- Revenue by month.
+- Pending payments.
+- Completed orders.
+- Orders by printer.
+- Orders by status.
+- New user registrations.
+- Active users.
+- QR profile visits.
+- Profile engagement.
+
+Allow date filtering.
+
+Provide CSV and Excel export.
+
+Track profile visits and QR/NFC profile visits where measurable.
+
+Do not claim to distinguish an NFC visit from a QR visit when both resolve to the same URL unless a reliable tracking mechanism is implemented.
+
+---
+
+# 20. RESPONSIVE DESIGN AND ACCESSIBILITY
+
+Every page must work on:
+
+- Desktop.
+- Laptop.
+- Tablet.
+- Android smartphones.
+- iPhones.
+
+Ensure:
+- Responsive navigation.
+- Touch-friendly controls.
+- Proper input sizing.
+- Responsive card editor.
+- Mobile-friendly public profiles.
+- Accessible forms.
+- Keyboard navigation.
+- Proper labels and validation messages.
+
+---
+
+# 21. REQUIRED ROUTES
+
+Implement a clean routing structure.
+
+### Public routes
+/
+ /how-it-works
+ /features
+ /pricing
+ /card-designs
+ /faq
+ /contact
+ /login
+ /register
+ /forgot-password
+ /verify-email
+ /p/:slug
+
+### Customer routes
+/dashboard
+/dashboard/profile
+/dashboard/social-links
+/dashboard/custom-fields
+/dashboard/visibility
+/dashboard/card-design
+/dashboard/checkout
+/dashboard/orders
+/dashboard/orders/:orderId
+/dashboard/settings
+/dashboard/support
+
+### Printer routes
+/printer/dashboard
+/printer/orders
+/printer/orders/:orderId
+/printer/profile
+
+### Admin routes
+/admin/dashboard
+/admin/users
+/admin/users/:uid
+/admin/printers
+/admin/orders
+/admin/orders/:orderId
+/admin/payments
+/admin/card-designs
+/admin/qr-management
+/admin/shipping
+/admin/reports
+/admin/settings
+/admin/audit-logs
+
+### SuperAdmin routes
+/superadmin/dashboard
+/superadmin/roles
+/superadmin/permissions
+/superadmin/qr-generator
+/superadmin/system-settings
+
+Protect routes with authentication and role-based authorization.
+
+Unauthorized users must be redirected appropriately.
+
+---
+
+# 22. IMPORTANT BUSINESS RULES
+
+These requirements must be strictly followed.
+
+1. Every newly registered account receives USER role.
+2. Only Admin and SuperAdmin can manage users, subject to permissions.
+3. Only SuperAdmin can manage SuperAdmin accounts.
+4. Customer public profile pages must be accessible without login.
+5. Only selected profile fields are publicly displayed.
+6. A customer cannot obtain an actual QR code before successful payment.
+7. Before payment, the card editor displays only a QR placeholder.
+8. Payment must be verified server-side.
+9. Actual QR code generation must happen after verified payment.
+10. Printer receives the final card design with the actual QR code already positioned.
+11. Printer sees only assigned orders.
+12. Admin and SuperAdmin can access all orders.
+13. Physical card size must be 85.6 × 54 mm.
+14. Printer PDF must include 3 mm bleed and 300 DPI output.
+15. NFC must point to the same public profile as the QR code.
+16. Customer receives order confirmation email after successful payment.
+17. Estimated delivery communication must state 10–15 days within India.
+18. SuperAdmin can generate QR codes from any publicly accessible URL without requiring a customer purchase.
+19. All important administrative actions must be logged.
+20. Customer profile updates must not invalidate an already assigned public profile URL.
+21. If a profile is deactivated, its public page must show a configurable unavailable message.
+22. A customer must not be able to manipulate payment status, QR generation status, printer assignment or role through browser developer tools.
+
+---
+
+# 23. DEVELOPMENT AND DEPLOYMENT REQUIREMENTS
+
+The project must be GitHub and Netlify compatible.
+
+Generate a complete source-code project.
+
+### Required project files
+
+- package.json
+- vite.config.ts
+- tsconfig.json
+- tailwind.config.ts (if using Tailwind v3)
+- postcss.config.js (if required)
+- netlify.toml
+- .env.example
+- .gitignore
+- README.md
+- firebase.json
+- firestore.rules
+- firestore.indexes.json
+- storage.rules
+- Firebase Cloud Functions source code
+- Firebase Emulator configuration
+- Deployment scripts
+
+### Netlify configuration
+
+Configure:
+- Production build command: npm run build
+- Publish directory: dist
+- SPA route fallback.
+- Environment variables.
+- Production deployment from GitHub.
+- Preview deployments for pull requests where appropriate.
+
+Include correct redirect configuration for React Router.
+
+### Firebase configuration
+
+Document:
+- Create Firebase project.
+- Enable Authentication.
+- Enable Google provider.
+- Configure email/password authentication.
+- Create Firestore database.
+- Enable Firebase Storage.
+- Configure Firebase Cloud Functions.
+- Configure Firebase App Check.
+- Configure authorised domains.
+- Configure Firebase Security Rules.
+- Configure email provider.
+- Configure Razorpay keys.
+- Configure payment webhooks.
+
+### Environment variables
+
+Create a complete .env.example.
+
+Use suitable variables for:
+- Firebase public client configuration.
+- Application base URL.
+- Payment gateway public key.
+- Email provider configuration.
+- Any non-secret frontend configuration.
+
+Server secrets must be stored using Firebase Functions secrets or secure deployment environment variables.
+
+Never commit secrets to GitHub.
+
+### Development commands
+
+Provide working commands for:
+
+npm install
+
+npm run dev
+
+npm run build
+
+npm run preview
+
+npm run lint
+
+npm run typecheck
+
+Also provide commands for:
+- Firebase emulator.
+- Firebase deployment.
+- Cloud Functions deployment.
+- Firestore rules deployment.
+- Netlify deployment.
+
+---
+
+# 24. TESTING REQUIREMENTS
+
+Implement and test the following workflows.
+
+### Test 1: New customer
+- Register.
+- Verify email.
+- Login.
+- Complete profile.
+- Add social links.
+- Create public profile.
+- Set visibility options.
+
+### Test 2: Card design
+- Select default design.
+- Customize design.
+- View QR placeholder.
+- Approve design.
+- Proceed to checkout.
+
+### Test 3: Purchase
+- Create payment order.
+- Complete sandbox payment.
+- Verify payment.
+- Generate actual QR code.
+- Create print-ready PDF.
+- Create order.
+- Send confirmation email.
+
+### Test 4: Printer
+- Login as printer.
+- View assigned order.
+- Download print PDF.
+- View QR code.
+- Update printing status.
+- Add courier information.
+- Mark dispatched.
+
+### Test 5: Customer tracking
+- Login as customer.
+- View order.
+- Track status.
+- Receive dispatch notification.
+
+### Test 6: Admin
+- View customers.
+- Create printer.
+- Assign printer.
+- Manage orders.
+- Change order status.
+- Export reports.
+
+### Test 7: SuperAdmin
+- Manage all roles.
+- Change permissions.
+- Generate QR using an arbitrary public URL.
+- Manage application settings.
+- View audit logs.
+
+### Test 8: Security
+- User cannot access admin routes.
+- Printer cannot view unrelated orders.
+- User cannot change their own role.
+- User cannot generate a paid QR before payment.
+- Client cannot forge payment success.
+- Unauthorised users cannot access private profiles.
+- Only SuperAdmin can manage SuperAdmin privileges.
+
+Write automated tests for critical business logic and access-control rules.
+
+---
+
+# 25. IMPLEMENTATION APPROACH
+
+Work in clearly defined development phases.
+
+PHASE 1:
+Project foundation, branding, navigation, responsive layouts and Firebase integration.
+
+PHASE 2:
+Authentication, user roles, customer dashboard and profile management.
+
+PHASE 3:
+Public digital profiles, visibility controls and contact downloads.
+
+PHASE 4:
+Business card design studio, templates and design approval.
+
+PHASE 5:
+Checkout, payment gateway and secure order processing.
+
+PHASE 6:
+QR generation and print-ready PDF generation.
+
+PHASE 7:
+Printer portal, assignments, printing and dispatch.
+
+PHASE 8:
+Admin and SuperAdmin management.
+
+PHASE 9:
+Notifications, reporting, analytics and audit logs.
+
+PHASE 10:
+Security testing, end-to-end testing and deployment configuration.
+
+Do not leave later phases as dummy pages.
+
+If a third-party credential is unavailable, build the complete integration interface, implement its configuration requirements, and clearly identify the credential needed to activate it. Never fake successful transactions or external operations.
+
+---
+
+# 26. FINAL DELIVERY EXPECTATIONS
+
+The finished product must look and behave like a professionally developed commercial SaaS platform.
+
+Deliver:
+
+1. Complete React + TypeScript application.
+2. Complete Firebase integration.
+3. Authentication and role management.
+4. Customer portal.
+5. Printer portal.
+6. Admin portal.
+7. SuperAdmin portal.
+8. Public digital business profile pages.
+9. Card design editor.
+10. Payment integration.
+11. Secure QR generation.
+12. Print-ready PDF generation.
+13. Email notification system.
+14. Order tracking.
+15. Firestore and Storage Security Rules.
+16. Firebase Cloud Functions.
+17. Responsive UI.
+18. Automated tests.
+19. GitHub-ready source code.
+20. Netlify deployment configuration.
+21. Detailed README with setup and deployment instructions.
+
+### FINAL INSTRUCTION
+
+Prioritize working functionality, security, clean architecture, professional UI/UX and a smooth customer journey.
+
+Do not sacrifice backend functionality for visual appearance.
+
+Do not use mock data as a substitute for real Firebase functionality in production workflows.
+
+Use realistic development seed data only for the development environment.
+
+Every button, form, menu, dashboard action, filter, upload, download, status update and workflow must perform its intended function.
+
+Build this as a real commercial product that can be extended, maintained and scaled.
+
+Start by creating the complete project foundation and implementing Phase 1, then continue through the remaining phases without replacing working functionality with placeholders.
+
+At the end, provide a clear implementation report showing completed features, pending external credentials, security configuration, test results and exact deployment steps.

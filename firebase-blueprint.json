@@ -1,0 +1,479 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Core user account record with role and status metadata.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "username": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "email": { "type": "string", "format": "email", "maxLength": 254 },
+        "displayName": { "type": "string", "maxLength": 120 },
+        "photoURL": { "type": "string", "maxLength": 2048 },
+        "phone": { "type": "string", "maxLength": 20 },
+        "role": { "type": "string", "enum": ["USER", "PRINTER", "ADMIN", "SUPERADMIN"] },
+        "status": { "type": "string", "enum": ["Pending Verification", "Active", "Blocked", "Disabled"] },
+        "emailVerified": { "type": "boolean" },
+        "mustChangePassword": { "type": "boolean" },
+        "permissions": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "lastLoginAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "status", "emailVerified", "createdAt", "updatedAt"]
+    },
+    "AdminRegistry": {
+      "title": "AdminRegistry",
+      "description": "Authoritative role registry for ADMIN and SUPERADMIN accounts.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "format": "email", "maxLength": 254 },
+        "role": { "type": "string", "enum": ["ADMIN", "SUPERADMIN"] },
+        "permissions": { "type": "array" },
+        "active": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "active", "updatedAt"]
+    },
+    "Printer": {
+      "title": "Printer",
+      "description": "Fulfilment printer partner account and production metadata.",
+      "type": "object",
+      "properties": {
+        "printerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "businessName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "contactPerson": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "phone": { "type": "string", "maxLength": 20 },
+        "email": { "type": "string", "format": "email", "maxLength": 254 },
+        "address": { "type": "string", "maxLength": 500 },
+        "status": { "type": "string", "enum": ["Active", "Blocked", "Disabled"] },
+        "serviceAreas": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["printerId", "uid", "businessName", "contactPerson", "email", "status", "createdAt"]
+    },
+    "Profile": {
+      "title": "Profile",
+      "description": "Private owner-managed digital business profile containing full contact details and field-level visibility settings.",
+      "type": "object",
+      "properties": {
+        "profileId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "profileType": { "type": "string", "enum": ["adult", "kids", "pets", "belongings"] },
+        "profileLabel": { "type": "string", "maxLength": 80 },
+        "slug": { "type": "string", "minLength": 3, "maxLength": 64, "pattern": "^[a-z0-9\\-]+$" },
+        "personalInformation": { "type": "object" },
+        "socialLinks": { "type": "array" },
+        "customFields": { "type": "array" },
+        "visibilitySettings": { "type": "object" },
+        "selectedTemplate": { "type": "string", "maxLength": 80 },
+        "isPublic": { "type": "boolean" },
+        "paymentConfirmed": { "type": "boolean" },
+        "paymentCompletedAt": { "type": "string", "maxLength": 64 },
+        "paymentReference": { "type": "string", "maxLength": 128 },
+        "adminApproved": { "type": "boolean" },
+        "adminApprovedAt": { "type": "string", "maxLength": 64 },
+        "adminApprovedBy": { "type": "string", "maxLength": 128 },
+        "adminDisabled": { "type": "boolean" },
+        "viewsCount": { "type": "number" },
+        "qrScansCount": { "type": "number" },
+        "nfcVisitsCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["profileId", "uid", "slug", "personalInformation", "visibilitySettings", "isPublic", "createdAt", "updatedAt"]
+    },
+    "PublicProfile": {
+      "title": "PublicProfile",
+      "description": "Strictly sanitized public view of a profile keyed by unique slug. Contains only fields explicitly allowed by visibilitySettings.",
+      "type": "object",
+      "properties": {
+        "slug": { "type": "string", "minLength": 3, "maxLength": 64, "pattern": "^[a-z0-9\\-]+$" },
+        "profileId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "profileType": { "type": "string", "enum": ["adult", "kids", "pets", "belongings"] },
+        "isPublic": { "type": "boolean" },
+        "unavailableMessage": { "type": "string", "maxLength": 300 },
+        "personalInformation": { "type": "object" },
+        "socialLinks": { "type": "array" },
+        "customFields": { "type": "array" },
+        "themeColor": { "type": "string", "maxLength": 32 },
+        "paymentConfirmed": { "type": "boolean" },
+        "paymentCompletedAt": { "type": "string", "maxLength": 64 },
+        "adminApproved": { "type": "boolean" },
+        "adminApprovedAt": { "type": "string", "maxLength": 64 },
+        "adminApprovedBy": { "type": "string", "maxLength": 128 },
+        "adminDisabled": { "type": "boolean" },
+        "lastPaidOrderId": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["slug", "profileId", "uid", "isPublic", "updatedAt"]
+    },
+    "CardTemplate": {
+      "title": "CardTemplate",
+      "description": "Predefined physical NFC card design template managed by SuperAdmin/Admin.",
+      "type": "object",
+      "properties": {
+        "templateId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "category": { "type": "string", "maxLength": 60 },
+        "profileType": { "type": "string", "enum": ["all", "adult", "kids", "pets", "belongings"] },
+        "description": { "type": "string", "maxLength": 400 },
+        "priceInr": { "type": "number" },
+        "cardType": { "type": "string", "maxLength": 60 },
+        "active": { "type": "boolean" },
+        "isDefault": { "type": "boolean" },
+        "supportsVertical": { "type": "boolean" },
+        "frontSpec": { "type": "object" },
+        "backSpec": { "type": "object" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["templateId", "name", "priceInr", "active", "frontSpec", "backSpec"]
+    },
+    "CardDesign": {
+      "title": "CardDesign",
+      "description": "Versioned customer NFC card design (85.6mm x 54mm + 3mm bleed) with approval & lock state.",
+      "type": "object",
+      "properties": {
+        "designId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "profileId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "orderId": { "type": "string", "maxLength": 128 },
+        "templateId": { "type": "string", "maxLength": 128 },
+        "frontDesign": { "type": "object" },
+        "backDesign": { "type": "object" },
+        "cardOrientation": { "type": "string", "enum": ["landscape", "vertical"] },
+        "dimensions": { "type": "string", "enum": ["85.6x54mm", "54x85.6mm"] },
+        "bleed": { "type": "string", "enum": ["3mm"] },
+        "approved": { "type": "boolean" },
+        "locked": { "type": "boolean" },
+        "approvedAt": { "type": "string", "format": "date-time" },
+        "version": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["designId", "uid", "profileId", "templateId", "frontDesign", "backDesign", "cardOrientation", "dimensions", "bleed", "approved", "locked", "version", "createdAt", "updatedAt"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "NFC smart card order with fulfilment status, printer assignment, and shipping details.",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "orderNumber": { "type": "string", "maxLength": 40 },
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "profileId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "profileSlug": { "type": "string", "maxLength": 64 },
+        "designId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "orderSource": { "type": "string", "enum": ["studio", "shop"] },
+        "shopItems": { "type": "array" },
+        "printerId": { "type": "string", "maxLength": 128 },
+        "quantity": { "type": "number" },
+        "cardType": { "type": "string", "maxLength": 80 },
+        "subtotal": { "type": "number" },
+        "tax": { "type": "number" },
+        "shipping": { "type": "number" },
+        "total": { "type": "number" },
+        "currency": { "type": "string", "enum": ["INR"] },
+        "paymentStatus": { "type": "string", "enum": ["Pending", "Completed", "Verified", "Rejected", "Failed", "Refunded"] },
+        "orderStatus": {
+          "type": "string",
+          "enum": [
+            "Design Pending", "Design Approved", "Awaiting Payment", "Payment Successful",
+            "Processing", "Assigned to Printer", "Printing in Progress", "Quality Check",
+            "Ready for Dispatch", "Dispatched", "In Transit", "Delivered", "Cancelled", "Refunded"
+          ]
+        },
+        "shippingAddress": { "type": "object" },
+        "qrCodeId": { "type": "string", "maxLength": 128 },
+        "printFileReady": { "type": "boolean" },
+        "courierName": { "type": "string", "maxLength": 120 },
+        "trackingNumber": { "type": "string", "maxLength": 120 },
+        "trackingUrl": { "type": "string", "maxLength": 500 },
+        "dispatchDate": { "type": "string", "maxLength": 40 },
+        "internalNotes": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["orderId", "orderNumber", "uid", "profileId", "designId", "quantity", "total", "currency", "paymentStatus", "orderStatus", "shippingAddress", "createdAt", "updatedAt"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Server-verified payment transaction record.",
+      "type": "object",
+      "properties": {
+        "paymentId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "orderId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "gateway": {
+          "type": "string",
+          "enum": [
+            "razorpay_live",
+            "razorpay_sandbox",
+            "cashfree_live",
+            "cashfree_sandbox",
+            "easebuzz_live",
+            "easebuzz_sandbox",
+            "payu_live",
+            "payu_sandbox",
+            "gpay_live",
+            "gpay_sandbox",
+            "upi_live",
+            "upi_sandbox"
+          ]
+        },
+        "gatewayOrderId": { "type": "string", "maxLength": 128 },
+        "gatewayPaymentId": { "type": "string", "maxLength": 128 },
+        "signatureVerified": { "type": "boolean" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string", "enum": ["INR"] },
+        "status": { "type": "string", "enum": ["Created", "Pending", "Completed", "Verified", "Rejected", "Failed", "Refunded"] },
+        "verifiedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["paymentId", "orderId", "uid", "gateway", "gatewayOrderId", "signatureVerified", "amount", "currency", "status", "createdAt"]
+    },
+    "QrCode": {
+      "title": "QrCode",
+      "description": "Backend-generated QR code artwork restricted to authorized admin/printer roles (or owner if explicitly permitted).",
+      "type": "object",
+      "properties": {
+        "qrCodeId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "uid": { "type": "string", "maxLength": 128 },
+        "orderId": { "type": "string", "maxLength": 128 },
+        "printerId": { "type": "string", "maxLength": 128 },
+        "targetUrl": { "type": "string", "minLength": 5, "maxLength": 2048 },
+        "svgContent": { "type": "string", "maxLength": 100000 },
+        "pngDataUrl": { "type": "string", "maxLength": 250000 },
+        "storagePath": { "type": "string", "maxLength": 500 },
+        "format": { "type": "string", "enum": ["PNG_SVG"] },
+        "qrType": { "type": "string", "enum": ["CUSTOMER_ORDER", "ADMIN_CUSTOM"] },
+        "customerName": { "type": "string", "maxLength": 120 },
+        "description": { "type": "string", "maxLength": 400 },
+        "version": { "type": "number" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["qrCodeId", "targetUrl", "svgContent", "format", "qrType", "version", "createdBy", "createdAt"]
+    },
+    "ShippingRecord": {
+      "title": "ShippingRecord",
+      "description": "Courier dispatch and tracking record for an order.",
+      "type": "object",
+      "properties": {
+        "shippingId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "orderId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "printerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courierName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "trackingNumber": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "trackingUrl": { "type": "string", "maxLength": 500 },
+        "dispatchDate": { "type": "string", "maxLength": 40 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["shippingId", "orderId", "uid", "printerId", "courierName", "trackingNumber", "dispatchDate", "createdAt"]
+    },
+    "SupportTicket": {
+      "title": "SupportTicket",
+      "description": "Customer support or design revision request.",
+      "type": "object",
+      "properties": {
+        "ticketId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "orderId": { "type": "string", "maxLength": 128 },
+        "subject": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "message": { "type": "string", "minLength": 5, "maxLength": 2000 },
+        "category": { "type": "string", "enum": ["Order", "Design Revision", "SMART Help", "NFC Help", "Billing", "General"] },
+        "status": { "type": "string", "enum": ["Open", "In Progress", "Resolved", "Closed"] },
+        "adminReply": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ticketId", "uid", "subject", "message", "category", "status", "createdAt", "updatedAt"]
+    },
+    "EmailTemplate": {
+      "title": "EmailTemplate",
+      "description": "Editable transactional HTML email template.",
+      "type": "object",
+      "properties": {
+        "templateId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "maxLength": 120 },
+        "subject": { "type": "string", "maxLength": 200 },
+        "htmlBody": { "type": "string", "maxLength": 30000 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["templateId", "name", "subject", "htmlBody", "updatedAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "In-app and email notification log entry.",
+      "type": "object",
+      "properties": {
+        "notificationId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 160 },
+        "message": { "type": "string", "maxLength": 1000 },
+        "channel": { "type": "string", "enum": ["in_app", "email"] },
+        "deliveryStatus": { "type": "string", "enum": ["Queued", "Sent", "ConfigRequired", "Read"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["notificationId", "uid", "title", "message", "channel", "deliveryStatus", "createdAt"]
+    },
+    "AppSetting": {
+      "title": "AppSetting",
+      "description": "Global platform configuration controlled by SuperAdmin.",
+      "type": "object",
+      "properties": {
+        "settingId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "companyName": { "type": "string", "maxLength": 120 },
+        "supportEmail": { "type": "string", "maxLength": 254 },
+        "multipleProfilesEnabled": { "type": "boolean" },
+        "allowCustomerQrView": { "type": "boolean" },
+        "baseCardPriceInr": { "type": "number" },
+        "taxRatePercent": { "type": "number" },
+        "shippingFeeInr": { "type": "number" },
+        "inactiveProfileMessage": { "type": "string", "maxLength": 300 },
+        "paymentGateways": { "type": "object" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["settingId", "companyName", "multipleProfilesEnabled", "allowCustomerQrView", "baseCardPriceInr", "taxRatePercent", "shippingFeeInr", "updatedAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Append-only security and administrative audit trail.",
+      "type": "object",
+      "properties": {
+        "logId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "actorUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "actorEmail": { "type": "string", "maxLength": 254 },
+        "actorRole": { "type": "string", "enum": ["USER", "PRINTER", "ADMIN", "SUPERADMIN", "SYSTEM"] },
+        "action": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "targetCollection": { "type": "string", "maxLength": 64 },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "details": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["logId", "actorUid", "actorRole", "action", "targetCollection", "targetId", "createdAt"]
+    },
+    "ShopCategory": {
+      "title": "ShopCategory",
+      "description": "Shop product category managed by Admin and SuperAdmin.",
+      "type": "object",
+      "properties": {
+        "categoryId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "slug": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "description": { "type": "string", "maxLength": 400 },
+        "active": { "type": "boolean" },
+        "sortOrder": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["categoryId", "name", "slug", "active", "sortOrder"]
+    },
+    "ShopProduct": {
+      "title": "ShopProduct",
+      "description": "Shop smart card or smart tag product managed by Admin and SuperAdmin.",
+      "type": "object",
+      "properties": {
+        "productId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 140 },
+        "slug": { "type": "string", "maxLength": 140 },
+        "categoryId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "categoryName": { "type": "string", "maxLength": 100 },
+        "shortDescription": { "type": "string", "maxLength": 300 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "features": { "type": "array" },
+        "priceInr": { "type": "number" },
+        "compareAtPriceInr": { "type": "number" },
+        "cardType": { "type": "string", "maxLength": 100 },
+        "imageDataUrl": { "type": "string", "maxLength": 900000 },
+        "badgeText": { "type": "string", "maxLength": 60 },
+        "visibleOnShop": { "type": "boolean" },
+        "featured": { "type": "boolean" },
+        "inStock": { "type": "boolean" },
+        "sortOrder": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["productId", "name", "categoryId", "priceInr", "visibleOnShop", "inStock"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User account records keyed by Firebase Auth UID."
+    },
+    "/admins/{uid}": {
+      "schema": { "$ref": "#/entities/AdminRegistry" },
+      "description": "Authoritative admin/superadmin registry."
+    },
+    "/printers/{printerId}": {
+      "schema": { "$ref": "#/entities/Printer" },
+      "description": "Authorized print partner records keyed by printer UID."
+    },
+    "/profiles/{profileId}": {
+      "schema": { "$ref": "#/entities/Profile" },
+      "description": "Private digital business profiles owned by users."
+    },
+    "/publicProfiles/{slug}": {
+      "schema": { "$ref": "#/entities/PublicProfile" },
+      "description": "Sanitized public business profile projections keyed by unique slug."
+    },
+    "/cardTemplates/{templateId}": {
+      "schema": { "$ref": "#/entities/CardTemplate" },
+      "description": "Card design templates curated by SuperAdmin."
+    },
+    "/cardDesigns/{designId}": {
+      "schema": { "$ref": "#/entities/CardDesign" },
+      "description": "Customer customized and approved card designs."
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Customer smart card orders."
+    },
+    "/payments/{paymentId}": {
+      "schema": { "$ref": "#/entities/Payment" },
+      "description": "Server-verified payment records."
+    },
+    "/qrCodes/{qrCodeId}": {
+      "schema": { "$ref": "#/entities/QrCode" },
+      "description": "Post-payment QR codes and SuperAdmin custom QR codes."
+    },
+    "/shippingRecords/{shippingId}": {
+      "schema": { "$ref": "#/entities/ShippingRecord" },
+      "description": "Courier dispatch records."
+    },
+    "/supportTickets/{ticketId}": {
+      "schema": { "$ref": "#/entities/SupportTicket" },
+      "description": "Customer support and design revision tickets."
+    },
+    "/emailTemplates/{templateId}": {
+      "schema": { "$ref": "#/entities/EmailTemplate" },
+      "description": "Transactional HTML email templates."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "User notifications and email dispatch log."
+    },
+    "/appSettings/{settingId}": {
+      "schema": { "$ref": "#/entities/AppSetting" },
+      "description": "Global application configuration."
+    },
+    "/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Immutable administrative and security audit log."
+    },
+    "/shopCategories/{categoryId}": {
+      "schema": { "$ref": "#/entities/ShopCategory" },
+      "description": "Publicly readable shop product categories managed by Admin/SuperAdmin."
+    },
+    "/shopProducts/{productId}": {
+      "schema": { "$ref": "#/entities/ShopProduct" },
+      "description": "Publicly readable shop smart tag & card products managed by Admin/SuperAdmin."
+    }
+  }
+}
