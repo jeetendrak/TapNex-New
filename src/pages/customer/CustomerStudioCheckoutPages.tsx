@@ -75,7 +75,6 @@ import {
   createPendingOrder,
   createSupportTicket,
   extractTimestampMs,
-  finalizeVerifiedOrderPayment,
   getCardDesignById,
   getCardTemplates,
   getCustomerOrders,
@@ -84,9 +83,15 @@ import {
   getSupportTickets,
   getUserDesigns,
   getUserProfiles,
+  sanitizeSlug,
   saveCardDesign,
   sendAndLogTransactionalEmail,
 } from '../../lib/firestoreService';
+import {
+  createPaymentOrder,
+  generatePurchasedQr,
+  verifyPayment,
+} from '../../lib/paymentApi';
 import { getActiveStudioDraft, saveActiveStudioDraft } from '../../lib/studioDraft';
 import { compressImageFileToDataUrl } from '../../lib/qrArtwork';
 import { resolveCardTokens } from '../../lib/printPdf';
@@ -117,8 +122,6 @@ import type {
   CardTextElement,
   OrderRecord,
   PaymentGatewayConfig,
-  PaymentGatewayId,
-  PaymentRecord,
   ProfileRecord,
   ProfileType,
   QrCodeRecord,
@@ -3864,7 +3867,7 @@ export const CustomerCardStudioPage: React.FC = () => {
   );
 };
 
-// 7. Checkout & Multi-Gateway Server-Verified Payment Flow
+// 7. Checkout & Server-Verified Razorpay Payment Flow
 export const CustomerCheckoutPage: React.FC = () => {
   const { userRecord, appSettings } = useAuth();
   const { notify } = useToast();
@@ -3878,20 +3881,14 @@ export const CustomerCheckoutPage: React.FC = () => {
     DEFAULT_CARD_TEMPLATES.find((t) => t.isDefault) || DEFAULT_CARD_TEMPLATES[0]
   );
   const [quantity, setQuantity] = useState(1);
+  const [pendingOrder, setPendingOrder] = useState<{
+    orderId: string;
+    orderNumber: string;
+    quantity: number;
+  } | null>(null);
   const [processing, setProcessing] = useState(false);
   const [previewSide, setPreviewSide] = useState<'front' | 'back'>('front');
   const [checkoutPreviewOpen, setCheckoutPreviewOpen] = useState(false);
-  const [selectedGatewayId, setSelectedGatewayId] = useState<PaymentGatewayId>('razorpay');
-  const [upiModal, setUpiModal] = useState<{
-    orderId: string;
-    orderNumber: string;
-    gateway: PaymentGatewayId;
-    mode: PaymentRecord['gateway'];
-    gatewayOrderId: string;
-    upiUri: string;
-    upiQrPngDataUrl: string;
-    utrInput: string;
-  } | null>(null);
 
   const [shipping, setShipping] = useState({
     fullName: '',
@@ -3905,18 +3902,12 @@ export const CustomerCheckoutPage: React.FC = () => {
     country: 'India',
   });
 
-  const configuredGateways: PaymentGatewayConfig[] = PAYMENT_GATEWAY_ORDER.map(
+  const allGatewayConfigs: PaymentGatewayConfig[] = PAYMENT_GATEWAY_ORDER.map(
     (id) => appSettings.paymentGateways?.[id] || DEFAULT_PAYMENT_GATEWAYS[id]
-  ).filter((g) => g.enabled);
-
-  useEffect(() => {
-    if (configuredGateways.length > 0 && !configuredGateways.some((g) => g.id === selectedGatewayId)) {
-      setSelectedGatewayId(configuredGateways[0].id);
-    }
-  }, [appSettings.paymentGateways, configuredGateways.length, selectedGatewayId]);
-
-  const activeGatewayConfig =
-    configuredGateways.find((g) => g.id === selectedGatewayId) || configuredGateways[0] || null;
+  );
+  const razorpayConfig =
+    appSettings.paymentGateways?.razorpay || DEFAULT_PAYMENT_GATEWAYS.razorpay;
+  const activeGatewayConfig = razorpayConfig.enabled !== false ? razorpayConfig : null;
 
   useEffect(() => {
     if (!userRecord) return;
@@ -3924,7 +3915,7 @@ export const CustomerCheckoutPage: React.FC = () => {
       designId ? getCardDesignById(designId) : getUserDesigns(userRecord.uid).then((d) => d[0] || null),
       getUserProfiles(userRecord.uid),
       getCardTemplates(true),
-    ]).then(([des, profs, tpls]) => {
+    ]).then(async ([des, profs, tpls]) => {
       setDesign(des);
       const prof = profs.find((p) => p.profileId === des?.profileId) || profs[0] || null;
       setProfile(prof);
@@ -3942,8 +3933,29 @@ export const CustomerCheckoutPage: React.FC = () => {
       }
       const foundTpl = tpls.find((t) => t.templateId === des?.templateId) || tpls.find((t) => t.isDefault) || tpls[0];
       if (foundTpl) setTemplate(foundTpl);
+
+      if (des?.locked && des.orderId) {
+        const existingOrd = await getOrderById(des.orderId).catch(() => null);
+        if (existingOrd && existingOrd.uid === userRecord.uid) {
+          if (existingOrd.paymentStatus === 'Verified' || existingOrd.paymentStatus === 'Completed') {
+            navigate(`/dashboard/orders/${existingOrd.orderId}`, { replace: true });
+            return;
+          }
+          if (
+            (existingOrd.paymentStatus === 'Pending' || existingOrd.paymentStatus === 'Failed') &&
+            existingOrd.orderStatus === 'Awaiting Payment'
+          ) {
+            setQuantity(existingOrd.quantity || 1);
+            setPendingOrder({
+              orderId: existingOrd.orderId,
+              orderNumber: existingOrd.orderNumber,
+              quantity: existingOrd.quantity || 1,
+            });
+          }
+        }
+      }
     });
-  }, [userRecord, designId]);
+  }, [userRecord, designId, navigate]);
 
   const checkoutPricing = resolveCardPricing(
     template,
@@ -3955,83 +3967,11 @@ export const CustomerCheckoutPage: React.FC = () => {
   const shippingFee = appSettings.shippingFeeInr ?? 99;
   const total = subtotal + tax + shippingFee;
 
-  const completeVerificationAndOrder = async ({
-    orderId,
-    orderNumber,
-    gateway,
-    mode,
-    gatewayOrderId,
-    gatewayPaymentId,
-    signature,
-  }: {
-    orderId: string;
-    orderNumber: string;
-    gateway: PaymentGatewayId;
-    mode: PaymentRecord['gateway'];
-    gatewayOrderId: string;
-    gatewayPaymentId: string;
-    signature: string;
-  }) => {
-    if (!userRecord || !profile) return;
-    const verifyRes = await fetch('/api/payments/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        orderId,
-        gateway,
-        gatewayOrderId,
-        gatewayPaymentId,
-        signature,
-        mode,
-        profileSlug: profile.slug,
-        appOrigin: window.location.origin,
-      }),
-    });
-    const verifiedData = (await verifyRes.json()) as {
-      verified: boolean;
-      gateway?: PaymentRecord['gateway'];
-      qrArtifact: { targetUrl: string; svgContent: string; pngDataUrl: string };
-      error?: string;
-    };
-    if (!verifyRes.ok || !verifiedData.verified) {
-      throw new Error(verifiedData.error || 'Cryptographic payment verification failed.');
-    }
-
-    await finalizeVerifiedOrderPayment({
-      orderId,
-      uid: userRecord.uid,
-      profileSlug: profile.slug,
-      gateway: verifiedData.gateway || mode,
-      gatewayOrderId,
-      gatewayPaymentId,
-      amount: total,
-      qrArtifact: verifiedData.qrArtifact,
-    });
-
-    await sendAndLogTransactionalEmail({
-      uid: userRecord.uid,
-      to: shipping.email,
-      templateId: 'order_confirmation',
-      variables: {
-        ORDER_NUMBER: orderNumber,
-        AMOUNT: String(total),
-        CUSTOMER_NAME: shipping.fullName,
-      },
-    });
-
-    notify(
-      'Your Smart Business Card Order Is Confirmed!',
-      `Order ${orderNumber} verified via ${activeGatewayConfig?.label || gateway}. Expected delivery: 10–15 days within India.`,
-      'success'
-    );
-    navigate(`/dashboard/orders/${orderId}`);
-  };
-
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userRecord || !design || !profile) return;
     if (!activeGatewayConfig) {
-      notify('No payment gateway enabled', 'Ask an administrator to enable a payment gateway before checking out.', 'error');
+      notify('Razorpay disabled', 'Razorpay checkout is currently disabled by the administrator.', 'error');
       return;
     }
 
@@ -4047,187 +3987,138 @@ export const CustomerCheckoutPage: React.FC = () => {
 
     setProcessing(true);
     try {
-      const orderId = `ord_${Date.now()}`;
-      const orderNumber = `TNX-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`;
+      let orderId: string;
+      let orderNumber: string;
 
-      await createPendingOrder({
-        orderId,
-        orderNumber,
-        uid: userRecord.uid,
-        profileId: profile.profileId,
-        profileSlug: profile.slug,
-        designId: design.designId,
-        quantity,
-        cardType: checkoutPricing.packNote
-          ? `${template.name} (${checkoutPricing.packNote})`
-          : `${template.name} (${checkoutPricing.editionLabel})`,
-        subtotal,
-        tax,
-        shipping: shippingFee,
-        total,
-        shippingAddress: shipping,
-      });
-
-      const createRes = await fetch('/api/payments/create-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId,
-          amountInr: total,
-          receipt: orderNumber,
-          customerEmail: shipping.email,
-          gateway: activeGatewayConfig.id,
-          requestedMode: activeGatewayConfig.mode,
-          upiId: activeGatewayConfig.upiId,
-          upiPayeeName: activeGatewayConfig.upiPayeeName,
-        }),
-      });
-      const gwOrder = (await createRes.json()) as {
-        gateway: PaymentGatewayId;
-        mode: PaymentRecord['gateway'];
-        resolvedGatewayMode: 'live' | 'sandbox';
-        gatewayOrderId: string;
-        keyId: string;
-        amountPaise: number;
-        currency: string;
-        upiUri?: string;
-        upiQrPngDataUrl?: string;
-        error?: string;
-      };
-      if (!createRes.ok) throw new Error(gwOrder.error || 'Payment gateway initialization failed');
-
-      if (gwOrder.gateway === 'razorpay' && gwOrder.resolvedGatewayMode === 'live') {
-        await new Promise<void>((resolve, reject) => {
-          const existingScript = document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]');
-          if (existingScript) {
-            resolve();
-            return;
-          }
-          const script = document.createElement('script');
-          script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-          script.async = true;
-          script.onload = () => resolve();
-          script.onerror = () => reject(new Error('Failed to load Razorpay Checkout SDK.'));
-          document.body.appendChild(script);
-        });
-
-        const RazorpayCtor = (window as unknown as {
-          Razorpay?: new (opts: Record<string, unknown>) => { open: () => void; on: (ev: string, cb: (r: { error?: { description?: string } }) => void) => void };
-        }).Razorpay;
-
-        if (!RazorpayCtor) {
-          throw new Error('Razorpay Checkout SDK failed to initialize.');
-        }
-
-        const rzpResult = await new Promise<{ razorpay_payment_id: string; razorpay_signature: string }>((resolve, reject) => {
-          const rzp = new RazorpayCtor({
-            key: activeGatewayConfig.publicKeyId || gwOrder.keyId,
-            amount: gwOrder.amountPaise,
-            currency: gwOrder.currency || 'INR',
-            name: 'TapNex',
-            description: `TapNex Smart Card Order ${orderNumber}`,
-            order_id: gwOrder.gatewayOrderId,
-            prefill: {
-              name: shipping.fullName,
-              email: shipping.email,
-              contact: cleanPhone,
-            },
-            theme: { color: '#0B1D3A' },
-            handler: (response: { razorpay_payment_id: string; razorpay_signature: string }) => resolve(response),
-            modal: { ondismiss: () => reject(new Error('Payment popup closed before completion.')) },
-          });
-          rzp.on('payment.failed', (resp) => reject(new Error(resp?.error?.description || 'Razorpay payment failed.')));
-          rzp.open();
-        });
-
-        await completeVerificationAndOrder({
-          orderId,
-          orderNumber,
-          gateway: gwOrder.gateway,
-          mode: gwOrder.mode,
-          gatewayOrderId: gwOrder.gatewayOrderId,
-          gatewayPaymentId: rzpResult.razorpay_payment_id,
-          signature: rzpResult.razorpay_signature,
-        });
-      } else if ((gwOrder.gateway === 'gpay' || gwOrder.gateway === 'upi') && gwOrder.upiQrPngDataUrl && gwOrder.resolvedGatewayMode === 'live') {
-        setUpiModal({
-          orderId,
-          orderNumber,
-          gateway: gwOrder.gateway,
-          mode: gwOrder.mode,
-          gatewayOrderId: gwOrder.gatewayOrderId,
-          upiUri: gwOrder.upiUri || '',
-          upiQrPngDataUrl: gwOrder.upiQrPngDataUrl,
-          utrInput: '',
-        });
-        setProcessing(false);
+      if (pendingOrder && pendingOrder.quantity === quantity) {
+        orderId = pendingOrder.orderId;
+        orderNumber = pendingOrder.orderNumber;
       } else {
-        // Explicit server-signed HMAC-SHA256 authorization for Sandbox or gateway fallback
-        const sbxRes = await fetch('/api/payments/sandbox-authorize', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gatewayOrderId: gwOrder.gatewayOrderId,
-            gateway: gwOrder.gateway,
-            simulateOutcome: 'success',
-          }),
-        });
-        const sbx = (await sbxRes.json()) as {
-          outcome: string;
-          gatewayPaymentId: string;
-          signature: string;
-          error?: string;
-        };
-        if (sbx.outcome !== 'success') throw new Error(sbx.error || 'Gateway authorization failed');
-
-        await completeVerificationAndOrder({
+        orderId = `ord_${Date.now()}`;
+        orderNumber = `TNX-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`;
+        await createPendingOrder({
           orderId,
           orderNumber,
-          gateway: gwOrder.gateway,
-          mode: gwOrder.mode,
-          gatewayOrderId: gwOrder.gatewayOrderId,
-          gatewayPaymentId: sbx.gatewayPaymentId,
-          signature: sbx.signature,
+          uid: userRecord.uid,
+          profileId: profile.profileId,
+          profileSlug: profile.slug,
+          designId: design.designId,
+          quantity,
+          cardType: checkoutPricing.packNote
+            ? `${template.name} (${checkoutPricing.packNote})`
+            : `${template.name} (${checkoutPricing.editionLabel})`,
+          subtotal,
+          tax,
+          shipping: shippingFee,
+          total,
+          shippingAddress: shipping,
         });
+        setPendingOrder({ orderId, orderNumber, quantity });
       }
+
+      const gwOrder = await createPaymentOrder(orderId);
+
+      await new Promise<void>((resolve, reject) => {
+        const existingScript = document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]');
+        if (existingScript) {
+          resolve();
+          return;
+        }
+        const script = document.createElement('script');
+        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+        script.async = true;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('Failed to load Razorpay Checkout SDK.'));
+        document.body.appendChild(script);
+      });
+
+      const RazorpayCtor = (window as unknown as {
+        Razorpay?: new (opts: Record<string, unknown>) => { open: () => void; on: (ev: string, cb: (r: { error?: { description?: string } }) => void) => void };
+      }).Razorpay;
+
+      if (!RazorpayCtor) {
+        throw new Error('Razorpay Checkout SDK failed to initialize.');
+      }
+
+      const rzpResult = await new Promise<{
+        razorpay_order_id?: string;
+        razorpay_payment_id: string;
+        razorpay_signature: string;
+      }>((resolve, reject) => {
+        const rzp = new RazorpayCtor({
+          key: gwOrder.keyId,
+          amount: gwOrder.amountPaise,
+          currency: gwOrder.currency || 'INR',
+          name: 'TapNex',
+          description: `TapNex Smart Card Order ${orderNumber}`,
+          order_id: gwOrder.gatewayOrderId,
+          prefill: {
+            name: shipping.fullName,
+            email: shipping.email,
+            contact: cleanPhone,
+          },
+          theme: { color: '#0B1D3A' },
+          handler: (response: {
+            razorpay_order_id?: string;
+            razorpay_payment_id: string;
+            razorpay_signature: string;
+          }) => resolve(response),
+          modal: { ondismiss: () => reject(new Error('Payment popup closed before completion.')) },
+        });
+        rzp.on('payment.failed', (resp) => reject(new Error(resp?.error?.description || 'Razorpay payment failed.')));
+        rzp.open();
+      });
+
+      const verification = await verifyPayment({
+        orderId,
+        gatewayOrderId: rzpResult.razorpay_order_id || gwOrder.gatewayOrderId,
+        gatewayPaymentId: rzpResult.razorpay_payment_id,
+        signature: rzpResult.razorpay_signature,
+      });
+
+      if (!verification.verified) {
+        throw new Error('Server payment verification failed.');
+      }
+
+      const eligibleSlug = sanitizeSlug(profile.slug || '');
+      if (eligibleSlug.length >= 3 && eligibleSlug !== 'undefined') {
+        try {
+          await generatePurchasedQr(orderId);
+        } catch (qrErr) {
+          notify(
+            'Payment verified — QR generation pending',
+            qrErr instanceof Error
+              ? `Payment succeeded, but QR artwork generation could not finish yet: ${qrErr.message}`
+              : 'Payment succeeded, and your QR code will be prepared shortly.',
+            'info'
+          );
+        }
+      }
+
+      const verifiedAmountInr = Math.round((verification.amountPaise || gwOrder.amountPaise) / 100);
+      try {
+        await sendAndLogTransactionalEmail({
+          uid: userRecord.uid,
+          to: shipping.email,
+          templateId: 'order_confirmation',
+          variables: {
+            ORDER_NUMBER: orderNumber,
+            AMOUNT: String(verifiedAmountInr),
+            CUSTOMER_NAME: shipping.fullName,
+          },
+        });
+      } catch (emailErr) {
+        console.error('Order confirmation email failed after verified payment:', emailErr);
+      }
+
+      notify(
+        'Your Smart Business Card Order Is Confirmed!',
+        `Order ${orderNumber} verified via Razorpay. Expected delivery: 10–15 days within India.`,
+        'success'
+      );
+      navigate(`/dashboard/orders/${orderId}`);
     } catch (err) {
       notify('Payment failed', err instanceof Error ? err.message : 'Unable to complete checkout.', 'error');
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const handleConfirmUpiLive = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!upiModal) return;
-    if (upiModal.utrInput.trim().length < 6) {
-      notify('Invalid UTR / Reference', 'Enter your 12-digit UPI Transaction Reference ID.', 'error');
-      return;
-    }
-    setProcessing(true);
-    try {
-      const sbxRes = await fetch('/api/payments/sandbox-authorize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          gatewayOrderId: upiModal.gatewayOrderId,
-          gateway: upiModal.gateway,
-          simulateOutcome: 'success',
-        }),
-      });
-      const sbx = (await sbxRes.json()) as { signature: string };
-      await completeVerificationAndOrder({
-        orderId: upiModal.orderId,
-        orderNumber: upiModal.orderNumber,
-        gateway: upiModal.gateway,
-        mode: upiModal.mode,
-        gatewayOrderId: upiModal.gatewayOrderId,
-        gatewayPaymentId: `UPI_${upiModal.utrInput.trim()}`,
-        signature: sbx.signature,
-      });
-      setUpiModal(null);
-    } catch (err) {
-      notify('UPI Verification Failed', err instanceof Error ? err.message : 'Unable to verify UPI payment.', 'error');
     } finally {
       setProcessing(false);
     }
@@ -4357,50 +4248,59 @@ export const CustomerCheckoutPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Select Enabled Payment Gateway */}
+          {/* Payment Method (Razorpay Only) */}
           <div className="pt-4 border-t border-slate-200 space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="font-display font-bold text-sm text-[#0B1D3A]">Choose Payment Method</h3>
+              <h3 className="font-display font-bold text-sm text-[#0B1D3A]">Payment Method</h3>
               <span className="inline-flex items-center gap-1 text-xs text-emerald-700 font-medium">
                 <ShieldCheck className="h-4 w-4" />
-                <span>HMAC Verified</span>
+                <span>Server Verified</span>
               </span>
             </div>
 
-            {configuredGateways.length === 0 ? (
+            {!activeGatewayConfig ? (
               <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
-                No payment gateways are currently enabled by the administrator. Please contact support to enable checkout methods.
+                Razorpay checkout is currently disabled by the administrator. Please contact support before placing an order.
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {configuredGateways.map((gw) => {
-                  const selected = activeGatewayConfig?.id === gw.id;
+                {allGatewayConfigs.map((gw) => {
+                  const isRazorpay = gw.id === 'razorpay';
                   return (
                     <button
                       key={gw.id}
                       type="button"
-                      onClick={() => setSelectedGatewayId(gw.id)}
+                      disabled={!isRazorpay}
+                      aria-disabled={!isRazorpay}
                       className={`p-3 rounded-xl border text-left transition-colors flex items-start justify-between gap-2 ${
-                        selected
+                        isRazorpay
                           ? 'border-[#1D4ED8] bg-blue-50/70 ring-1 ring-[#1D4ED8]'
-                          : 'border-slate-200 bg-white hover:bg-slate-50'
+                          : 'border-slate-200 bg-slate-50 opacity-55 cursor-not-allowed'
                       }`}
                     >
                       <div className="min-w-0">
-                        <div className="font-display font-bold text-xs text-[#0B1D3A] flex items-center gap-1.5">
+                        <div className="font-display font-bold text-xs text-[#0B1D3A] flex flex-wrap items-center gap-1.5">
                           <span>{gw.label}</span>
-                          <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
-                            {gw.mode}
+                          <span
+                            className={`text-[10px] font-mono uppercase px-1.5 py-0.5 rounded ${
+                              isRazorpay
+                                ? 'bg-blue-100 text-[#1D4ED8]'
+                                : 'bg-slate-200 text-slate-600'
+                            }`}
+                          >
+                            {isRazorpay ? 'Active' : 'Temporarily Unavailable'}
                           </span>
                         </div>
-                        <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">{gw.description}</div>
+                        <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
+                          {isRazorpay ? gw.description : 'Temporarily disabled pending server verification'}
+                        </div>
                       </div>
                       <span
                         className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
-                          selected ? 'border-[#1D4ED8] bg-[#1D4ED8] text-white' : 'border-slate-300'
+                          isRazorpay ? 'border-[#1D4ED8] bg-[#1D4ED8] text-white' : 'border-slate-300'
                         }`}
                       >
-                        {selected && <Check className="h-2.5 w-2.5" />}
+                        {isRazorpay && <Check className="h-2.5 w-2.5" />}
                       </span>
                     </button>
                   );
@@ -4414,9 +4314,9 @@ export const CustomerCheckoutPage: React.FC = () => {
               className="w-full py-3.5 rounded-xl bg-[#0B1D3A] hover:bg-[#132A52] text-white text-sm font-semibold disabled:opacity-50"
             >
               {processing
-                ? 'Verifying Payment & Generating QR...'
+                ? 'Verifying Payment & Preparing Order...'
                 : activeGatewayConfig
-                  ? `Pay ₹${total} via ${activeGatewayConfig.label} (${activeGatewayConfig.mode === 'live' ? 'Live' : 'Sandbox'})`
+                  ? `Pay ₹${total} via Razorpay`
                   : 'Payment Unavailable'}
             </button>
           </div>
@@ -4464,21 +4364,28 @@ export const CustomerCheckoutPage: React.FC = () => {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  disabled={Boolean(pendingOrder) || processing}
                   onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                  className="w-8 h-8 rounded border border-slate-300 font-bold"
+                  className="w-8 h-8 rounded border border-slate-300 font-bold disabled:opacity-45 disabled:cursor-not-allowed"
                 >
                   -
                 </button>
                 <span className="font-mono w-8 text-center font-semibold tabular-nums">{quantity}</span>
                 <button
                   type="button"
+                  disabled={Boolean(pendingOrder) || processing}
                   onClick={() => setQuantity((q) => Math.min(100, q + 1))}
-                  className="w-8 h-8 rounded border border-slate-300 font-bold"
+                  className="w-8 h-8 rounded border border-slate-300 font-bold disabled:opacity-45 disabled:cursor-not-allowed"
                 >
                   +
                 </button>
               </div>
             </div>
+            {pendingOrder && (
+              <p className="text-[11px] text-slate-500">
+                Order {pendingOrder.orderNumber} initialized. Complete Razorpay payment to confirm.
+              </p>
+            )}
             <div className="space-y-2 text-sm border-t border-slate-100 pt-3">
               <div className="flex justify-between text-slate-600 gap-2">
                 <div>
@@ -4505,65 +4412,6 @@ export const CustomerCheckoutPage: React.FC = () => {
           </div>
         </div>
       </div>
-
-      {/* Live UPI / Google Pay QR Verification Modal */}
-      {upiModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/65 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true">
-          <form onSubmit={handleConfirmUpiLive} className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="font-display font-bold text-base text-[#0B1D3A]">
-                  Complete {upiModal.gateway === 'gpay' ? 'Google Pay' : 'UPI'} Payment
-                </h3>
-                <p className="text-xs text-slate-500">Order {upiModal.orderNumber} · ₹{total}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setUpiModal(null)}
-                className="text-xs text-slate-500 hover:text-slate-700"
-              >
-                Cancel
-              </button>
-            </div>
-
-            <div className="flex flex-col items-center gap-3 p-4 rounded-xl bg-slate-50 border border-slate-200">
-              <img src={upiModal.upiQrPngDataUrl} alt="UPI Payment QR" className="w-44 h-44 rounded-xl border border-slate-200 bg-white" />
-              <div className="text-[11px] font-mono text-slate-600 break-all text-center">{upiModal.upiUri}</div>
-              {upiModal.upiUri && (
-                <a
-                  href={upiModal.upiUri}
-                  className="px-4 py-2 rounded-lg bg-[#1D4ED8] text-white text-xs font-semibold"
-                >
-                  Open in UPI / Google Pay App
-                </a>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                UPI Transaction Reference / UTR Number *
-              </label>
-              <input
-                type="text"
-                required
-                minLength={6}
-                value={upiModal.utrInput}
-                onChange={(e) => setUpiModal({ ...upiModal, utrInput: e.target.value })}
-                placeholder="e.g. 412398765432"
-                className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm font-mono"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={processing}
-              className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-50"
-            >
-              {processing ? 'Verifying UPI Payment...' : 'Confirm UPI Payment & Activate Order'}
-            </button>
-          </form>
-        </div>
-      )}
 
       <CardDesignPreviewModal
         open={checkoutPreviewOpen}

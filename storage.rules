@@ -34,7 +34,7 @@ service firebase.storage {
     // Paid QR codes & print-ready 300 DPI PDFs: strictly restricted!
     match /qrCodes/{orderId}/{fileName} {
       allow read: if isAdmin() || isPrinter();
-      allow write: if isAdmin();
+      allow write: if false;
     }
 
     match /printFiles/{orderId}/{fileName} {

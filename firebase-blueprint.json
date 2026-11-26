@@ -195,6 +195,11 @@
         "trackingUrl": { "type": "string", "maxLength": 500 },
         "dispatchDate": { "type": "string", "maxLength": 40 },
         "internalNotes": { "type": "string", "maxLength": 2000 },
+        "razorpayOrderId": { "type": "string", "maxLength": 128 },
+        "razorpayPaymentId": { "type": "string", "maxLength": 128 },
+        "razorpayAmountPaise": { "type": "number" },
+        "razorpayCurrency": { "type": "string", "enum": ["INR"] },
+        "razorpayOrderLock": { "type": ["object", "null"] },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
@@ -229,9 +234,16 @@
         "gatewayPaymentId": { "type": "string", "maxLength": 128 },
         "signatureVerified": { "type": "boolean" },
         "amount": { "type": "number" },
+        "amountPaise": { "type": "number" },
         "currency": { "type": "string", "enum": ["INR"] },
         "status": { "type": "string", "enum": ["Created", "Pending", "Completed", "Verified", "Rejected", "Failed", "Refunded"] },
+        "verifiedVia": { "type": "string", "enum": ["verifyPayment", "razorpayWebhook", "adminReconciliation", "adminPrintRun"] },
+        "reconciledByUid": { "type": "string", "maxLength": 128 },
+        "reconciledByEmail": { "type": "string", "maxLength": 254 },
+        "reconciliationReason": { "type": "string", "maxLength": 500 },
+        "lastWebhookEventId": { "type": "string", "maxLength": 200 },
         "verifiedAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["paymentId", "orderId", "uid", "gateway", "gatewayOrderId", "signatureVerified", "amount", "currency", "status", "createdAt"]

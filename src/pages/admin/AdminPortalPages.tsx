@@ -54,7 +54,6 @@ import {
   deleteCardTemplate,
   deleteDigitalProfile,
   dispatchOrderWithCourier,
-  ensureOrderQrArtifact,
   filterAuditLogs,
   formatTimestampDate,
   getAllCardDesigns,
@@ -76,21 +75,24 @@ import {
   getUserById,
   getUserProfiles,
   isOrderPaymentConfirmed,
-  markProfilePaymentCompleted,
-  reconcileDeliveredOrdersToProfiles,
   saveCardTemplate,
   saveEmailTemplate,
   savePrinterRecord,
   sendAndLogTransactionalEmail,
-  sendApprovedDesignToPrint,
   setBulkCardTemplatesVisibility,
   setDefaultCardTemplate,
-  updateOrderAndPaymentStatus,
   updateOrderWorkflow,
   updateSupportTicket,
   updateUserRoleAndStatus,
   type AuditLogPreset,
 } from '../../lib/firestoreService';
+import {
+  adminEnsureOrderQr,
+  adminReconcileOrderPayment,
+  adminReconcileProfilePayment,
+  adminSendDesignToPrint,
+  assignOrderPrinter,
+} from '../../lib/paymentApi';
 import { sanitizeRichBioHtml } from '../../lib/richText';
 import { exportRowsToCsv, exportRowsToExcel } from '../../lib/exportUtils';
 import { downloadBlob, generateCardSidePngBlob, generatePrintReadyPdfBlob } from '../../lib/printPdf';
@@ -917,11 +919,6 @@ export const AdminUserDetailPage: React.FC = () => {
     Promise.all([getUserProfiles(uid), getAllOrders()]).then(([profs, ords]) => {
       setProfiles(profs);
       setOrders(ords);
-      if (userRecord) {
-        reconcileDeliveredOrdersToProfiles(ords, userRecord.role, profs).then((changed) => {
-          if (changed) getUserProfiles(uid).then(setProfiles);
-        });
-      }
     });
   };
 
@@ -962,19 +959,44 @@ export const AdminUserDetailPage: React.FC = () => {
 
   const handleMarkPaymentCompleted = async (p: ProfileRecord, completed: boolean) => {
     if (!userRecord) return;
-    const updated = await markProfilePaymentCompleted({
-      profile: p,
-      completed,
-      actor: { uid: userRecord.uid, email: userRecord.email, role: userRecord.role },
-      inactiveMessage: appSettings.inactiveProfileMessage,
+    const ok = await confirmAction({
+      title: completed ? 'Reconcile Profile Payment' : 'Revoke Profile Payment Status',
+      message: completed
+        ? `Confirm payment reconciliation for /p/${p.slug}? This unlocks the public profile via server Cloud Function and creates an audit log.`
+        : `Clear payment confirmation status for /p/${p.slug}?`,
+      destructive: !completed,
+      confirmLabel: completed ? 'Confirm Reconciliation' : 'Revoke Payment',
     });
-    notify(
-      completed ? 'Payment marked completed' : 'Payment status cleared',
-      `/p/${p.slug}`,
-      'success'
-    );
-    setInspectedProfile((curr) => (curr?.profileId === p.profileId ? updated : curr));
-    load();
+    if (!ok) return;
+    try {
+      const res = await adminReconcileProfilePayment({
+        profileId: p.profileId,
+        completed,
+        reason: completed
+          ? 'Admin reconciled profile payment from User Detail'
+          : 'Admin revoked profile payment from User Detail',
+      });
+      const updated: ProfileRecord = {
+        ...p,
+        paymentConfirmed: res.paymentConfirmed,
+        paymentCompletedAt: res.paymentCompletedAt,
+        paymentReference: res.paymentReference,
+        isPublic: res.isPublic,
+      };
+      notify(
+        completed ? 'Payment reconciled' : 'Payment status cleared',
+        `/p/${p.slug}`,
+        'success'
+      );
+      setInspectedProfile((curr) => (curr?.profileId === p.profileId ? updated : curr));
+      load();
+    } catch (err) {
+      notify(
+        'Payment reconciliation failed',
+        err instanceof Error ? err.message : 'Unable to reconcile profile payment.',
+        'error'
+      );
+    }
   };
 
   return (
@@ -1259,19 +1281,13 @@ export const AdminPrintersPage: React.FC = () => {
 // 4. Orders & Payment Status Dashboard
 export const AdminOrdersPage: React.FC = () => {
   const { userRecord } = useAuth();
-  const { notify } = useToast();
+  const { notify, confirmAction } = useToast();
   const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [paymentFilter, setPaymentFilter] = useState('ALL');
 
-  const load = () =>
-    getAllOrders().then((ords) => {
-      setOrders(ords);
-      if (userRecord) {
-        reconcileDeliveredOrdersToProfiles(ords, userRecord.role).catch(() => null);
-      }
-    });
+  const load = () => getAllOrders().then(setOrders);
   useEffect(() => { load(); }, []);
 
   const filtered = orders.filter((o) => {
@@ -1398,6 +1414,14 @@ export const AdminOrdersPage: React.FC = () => {
                       onChange={async (e) => {
                         if (!userRecord) return;
                         const nextPay = e.target.value as PaymentStatus;
+                        if (nextPay === o.paymentStatus) return;
+                        const ok = await confirmAction({
+                          title: 'Server Payment Reconciliation',
+                          message: `Reconcile payment status for ${o.orderNumber} from "${o.paymentStatus}" to "${nextPay}"? This runs via verified Cloud Function and writes to auditLogs.`,
+                          destructive: nextPay === 'Refunded' || nextPay === 'Rejected',
+                          confirmLabel: `Set ${nextPay}`,
+                        });
+                        if (!ok) return;
                         const suggestedOrderStatus: OrderStatus =
                           nextPay === 'Completed' || nextPay === 'Verified'
                             ? o.orderStatus === 'Awaiting Payment'
@@ -1408,14 +1432,22 @@ export const AdminOrdersPage: React.FC = () => {
                               : nextPay === 'Rejected'
                                 ? 'Cancelled'
                                 : o.orderStatus;
-                        await updateOrderAndPaymentStatus({
-                          order: o,
-                          paymentStatus: nextPay,
-                          orderStatus: suggestedOrderStatus,
-                          actor: { uid: userRecord.uid, email: userRecord.email, role: userRecord.role },
-                        });
-                        notify('Payment status updated', `${o.orderNumber} -> ${nextPay}`, 'success');
-                        load();
+                        try {
+                          await adminReconcileOrderPayment({
+                            orderId: o.orderId,
+                            paymentStatus: nextPay,
+                            orderStatus: suggestedOrderStatus,
+                            reason: `Admin Orders ledger payment reconciliation (${o.paymentStatus} -> ${nextPay})`,
+                          });
+                          notify('Payment reconciled', `${o.orderNumber} -> ${nextPay}`, 'success');
+                          load();
+                        } catch (err) {
+                          notify(
+                            'Reconciliation failed',
+                            err instanceof Error ? err.message : 'Unable to reconcile order payment.',
+                            'error'
+                          );
+                        }
                       }}
                       className="px-2 py-1 border border-slate-300 rounded bg-white text-xs font-semibold"
                     >
@@ -1495,9 +1527,6 @@ export const AdminOrderDetailPage: React.FC = () => {
       setDesign(des);
       setProfile(prof);
       setQr(qrDoc);
-      if (ord.orderStatus === 'Delivered' && userRecord && (!prof?.paymentConfirmed || !prof?.isPublic) && !prof?.adminDisabled) {
-        reconcileDeliveredOrdersToProfiles([ord], userRecord.role, prof ? [prof] : undefined).catch(() => null);
-      }
     }
   };
   useEffect(() => { load(); }, [orderId]);
@@ -1559,14 +1588,10 @@ export const AdminOrderDetailPage: React.FC = () => {
   };
 
   const handlePrepareQrAndPrint = async (): Promise<QrCodeRecord | null> => {
-    if (!userRecord) return null;
+    if (!userRecord || !order) return null;
     setPreparingPrint(true);
     try {
-      const preparedQr = await ensureOrderQrArtifact({
-        order,
-        profileSlug: profile?.slug || order.profileSlug,
-        actor: { uid: userRecord.uid, email: userRecord.email, role: userRecord.role },
-      });
+      const preparedQr = await adminEnsureOrderQr(order.orderId);
       setQr(preparedQr);
       notify('Print files ready', 'Verified high-resolution QR code generated and attached.', 'success');
       await load();
@@ -1857,18 +1882,17 @@ export const AdminOrderDetailPage: React.FC = () => {
                   type="button"
                   onClick={async () => {
                     if (!userRecord || !selectedPrinter) return;
-                    const nextOrderStatus: OrderStatus = ['Design Pending', 'Design Approved', 'Awaiting Payment', 'Payment Successful', 'Processing'].includes(order.orderStatus)
-                      ? 'Assigned to Printer'
-                      : order.orderStatus;
-                    await updateOrderWorkflow({
-                      orderId: order.orderId,
-                      updates: { printerId: selectedPrinter, orderStatus: nextOrderStatus },
-                      actor: { uid: userRecord.uid, email: userRecord.email, role: userRecord.role },
-                      auditAction: 'ASSIGN_PRINTER',
-                      auditDetails: `Assigned order ${order.orderNumber} to printer ${selectedPrinter}`,
-                    });
-                    notify('Print destination updated', `Routed to ${selectedPrinter === 'admin_inhouse' ? 'In-House Press' : selectedPrinter}.`, 'success');
-                    load();
+                    try {
+                      await assignOrderPrinter(order.orderId, selectedPrinter);
+                      notify('Print destination updated', `Routed to ${selectedPrinter === 'admin_inhouse' ? 'In-House Press' : selectedPrinter}.`, 'success');
+                      load();
+                    } catch (err) {
+                      notify(
+                        'Printer assignment failed',
+                        err instanceof Error ? err.message : 'Unable to assign printer.',
+                        'error'
+                      );
+                    }
                   }}
                   className="px-4 py-2 bg-[#1D4ED8] text-white text-xs font-semibold rounded-lg"
                 >
@@ -1885,13 +1909,29 @@ export const AdminOrderDetailPage: React.FC = () => {
                   onChange={async (e) => {
                     if (!userRecord) return;
                     const nextPay = e.target.value as PaymentStatus;
-                    await updateOrderAndPaymentStatus({
-                      order,
-                      paymentStatus: nextPay,
-                      actor: { uid: userRecord.uid, email: userRecord.email, role: userRecord.role },
+                    if (nextPay === order.paymentStatus) return;
+                    const ok = await confirmAction({
+                      title: 'Server Payment Reconciliation',
+                      message: `Reconcile payment status for ${order.orderNumber} from "${order.paymentStatus}" to "${nextPay}"? This executes through a verified server Cloud Function.`,
+                      destructive: nextPay === 'Refunded' || nextPay === 'Rejected',
+                      confirmLabel: `Set ${nextPay}`,
                     });
-                    notify('Payment status updated', nextPay, 'success');
-                    load();
+                    if (!ok) return;
+                    try {
+                      await adminReconcileOrderPayment({
+                        orderId: order.orderId,
+                        paymentStatus: nextPay,
+                        reason: `Admin order detail payment reconciliation (${order.paymentStatus} -> ${nextPay})`,
+                      });
+                      notify('Payment reconciled', nextPay, 'success');
+                      load();
+                    } catch (err) {
+                      notify(
+                        'Reconciliation failed',
+                        err instanceof Error ? err.message : 'Unable to reconcile order payment.',
+                        'error'
+                      );
+                    }
                   }}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white font-semibold"
                 >
@@ -1952,20 +1992,28 @@ export const AdminOrderDetailPage: React.FC = () => {
                       confirmLabel: 'Initiate Refund',
                     });
                     if (!ok) return;
-                    await updateOrderWorkflow({
-                      orderId: order.orderId,
-                      updates: { orderStatus: 'Refunded', paymentStatus: 'Refunded' },
-                      actor: { uid: userRecord.uid, email: userRecord.email, role: userRecord.role },
-                      auditAction: 'REFUND_ORDER',
-                      auditDetails: `Refund initiated for ${order.orderNumber}`,
-                    });
-                    await sendAndLogTransactionalEmail({
-                      uid: order.uid,
-                      to: order.shippingAddress.email,
-                      templateId: 'refund_notification',
-                      variables: { ORDER_NUMBER: order.orderNumber, AMOUNT: String(order.total) },
-                    });
-                    load();
+                    try {
+                      await adminReconcileOrderPayment({
+                        orderId: order.orderId,
+                        paymentStatus: 'Refunded',
+                        orderStatus: 'Refunded',
+                        reason: `Admin initiated refund and cancellation for ${order.orderNumber}`,
+                      });
+                      await sendAndLogTransactionalEmail({
+                        uid: order.uid,
+                        to: order.shippingAddress.email,
+                        templateId: 'refund_notification',
+                        variables: { ORDER_NUMBER: order.orderNumber, AMOUNT: String(order.total) },
+                      });
+                      notify('Order refunded', `${order.orderNumber} marked Refunded via server.`, 'success');
+                      load();
+                    } catch (err) {
+                      notify(
+                        'Refund reconciliation failed',
+                        err instanceof Error ? err.message : 'Unable to process refund status.',
+                        'error'
+                      );
+                    }
                   }}
                   className="px-4 py-2 border border-rose-300 text-rose-700 text-xs font-semibold rounded-lg"
                 >
@@ -3322,11 +3370,6 @@ export const AdminProfilesPage: React.FC = () => {
         setProfiles(profs);
         setUsers(usrs);
         setOrders(ords);
-        if (userRecord) {
-          reconcileDeliveredOrdersToProfiles(ords, userRecord.role, profs).then((changed) => {
-            if (changed) getAllProfiles().then(setProfiles);
-          });
-        }
       })
       .finally(() => setLoading(false));
   };
@@ -3393,21 +3436,46 @@ export const AdminProfilesPage: React.FC = () => {
 
   const handleMarkPaymentCompleted = async (p: ProfileRecord, completed: boolean) => {
     if (!userRecord) return;
-    const updated = await markProfilePaymentCompleted({
-      profile: p,
-      completed,
-      actor: { uid: userRecord.uid, email: userRecord.email, role: userRecord.role },
-      inactiveMessage: appSettings.inactiveProfileMessage,
+    const ok = await confirmAction({
+      title: completed ? 'Reconcile Profile Payment' : 'Revoke Profile Payment Status',
+      message: completed
+        ? `Confirm payment reconciliation for /p/${p.slug}? This unlocks the public profile via server Cloud Function and creates an audit log.`
+        : `Clear payment confirmation status for /p/${p.slug}?`,
+      destructive: !completed,
+      confirmLabel: completed ? 'Confirm Reconciliation' : 'Revoke Payment',
     });
-    notify(
-      completed ? 'Payment marked completed' : 'Payment status cleared',
-      `/p/${p.slug}`,
-      'success'
-    );
-    setInspectedProfile((curr) =>
-      curr?.profileId === p.profileId ? updated : curr
-    );
-    load();
+    if (!ok) return;
+    try {
+      const res = await adminReconcileProfilePayment({
+        profileId: p.profileId,
+        completed,
+        reason: completed
+          ? 'Admin reconciled profile payment from Profiles Control'
+          : 'Admin revoked profile payment from Profiles Control',
+      });
+      const updated: ProfileRecord = {
+        ...p,
+        paymentConfirmed: res.paymentConfirmed,
+        paymentCompletedAt: res.paymentCompletedAt,
+        paymentReference: res.paymentReference,
+        isPublic: res.isPublic,
+      };
+      notify(
+        completed ? 'Payment reconciled' : 'Payment status cleared',
+        `/p/${p.slug}`,
+        'success'
+      );
+      setInspectedProfile((curr) =>
+        curr?.profileId === p.profileId ? updated : curr
+      );
+      load();
+    } catch (err) {
+      notify(
+        'Payment reconciliation failed',
+        err instanceof Error ? err.message : 'Unable to reconcile profile payment.',
+        'error'
+      );
+    }
   };
 
   return (
@@ -3621,8 +3689,9 @@ export const AdminApprovedDesignsPage: React.FC = () => {
   const [printInitialStatus, setPrintInitialStatus] = useState<OrderStatus>('Assigned to Printer');
   const [printQuantity, setPrintQuantity] = useState(1);
   const [printCardType, setPrintCardType] = useState('Matte PVC SMART');
-  const [printUnitPrice, setPrintUnitPrice] = useState(999);
-  const [printMarkPaid, setPrintMarkPaid] = useState(false);
+  const [printEstimatedUnitPrice, setPrintEstimatedUnitPrice] = useState(999);
+  const [printComplimentary, setPrintComplimentary] = useState(false);
+  const [printComplimentaryReason, setPrintComplimentaryReason] = useState('');
   const [printNotes, setPrintNotes] = useState('');
   const [printShipping, setPrintShipping] = useState<ShippingAddress>({
     fullName: '',
@@ -3704,8 +3773,7 @@ export const AdminApprovedDesignsPage: React.FC = () => {
     const info = prof?.personalInformation;
     const isPaid =
       linkedOrder?.paymentStatus === 'Verified' ||
-      linkedOrder?.paymentStatus === 'Completed' ||
-      linkedOrder?.orderStatus === 'Delivered';
+      linkedOrder?.paymentStatus === 'Completed';
 
     setPrintResult(null);
     setPrintPrinterId(linkedOrder?.printerId || 'admin_inhouse');
@@ -3720,8 +3788,9 @@ export const AdminApprovedDesignsPage: React.FC = () => {
     );
     setPrintQuantity(linkedOrder?.quantity || 1);
     setPrintCardType(linkedOrder?.cardType || resolvedPricing.cardTypeLabel || tpl?.cardType || 'Matte PVC SMART');
-    setPrintUnitPrice(resolvedPricing.unitPriceInr || tpl?.priceInr || appSettings.baseCardPriceInr || 999);
-    setPrintMarkPaid(Boolean(isPaid));
+    setPrintEstimatedUnitPrice(resolvedPricing.unitPriceInr || tpl?.priceInr || appSettings.baseCardPriceInr || 999);
+    setPrintComplimentary(false);
+    setPrintComplimentaryReason('');
     setPrintNotes(linkedOrder?.internalNotes || 'Dispatched directly from Approved Card Designs');
     setPrintShipping({
       fullName: linkedOrder?.shippingAddress.fullName || info?.fullName || owner?.displayName || 'Customer',
@@ -3740,28 +3809,44 @@ export const AdminApprovedDesignsPage: React.FC = () => {
   const handleConfirmSendToPrint = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!printTarget || !userRecord) return;
+    const isLinkedOrderPaid =
+      printTarget.linkedOrder?.paymentStatus === 'Verified' ||
+      printTarget.linkedOrder?.paymentStatus === 'Completed';
+
+    if (!isLinkedOrderPaid) {
+      if (!printComplimentary) {
+        notify(
+          'Payment verification required',
+          'Verify payment in Orders Ledger first, or explicitly mark this as a complimentary unpaid print run with a reason.',
+          'error'
+        );
+        return;
+      }
+      if (printComplimentaryReason.trim().length < 3) {
+        notify(
+          'Complimentary reason required',
+          'Provide a complimentary reason of at least 3 characters.',
+          'error'
+        );
+        return;
+      }
+    }
+
     setSubmittingPrint(true);
     try {
-      const subtotal = Math.max(0, printUnitPrice) * Math.max(1, printQuantity);
-      const tax = printTarget.linkedOrder?.tax ?? Math.round((subtotal * (appSettings.taxRatePercent || 18)) / 100);
-      const shippingFee = printTarget.linkedOrder?.shipping ?? (appSettings.shippingFeeInr || 0);
-      const total = printTarget.linkedOrder?.total ?? subtotal + tax + shippingFee;
-
-      const res = await sendApprovedDesignToPrint({
-        design: printTarget.design,
-        existingOrder: printTarget.linkedOrder,
-        profile: printTarget.prof,
-        owner: printTarget.owner,
-        actor: { uid: userRecord.uid, email: userRecord.email, role: userRecord.role },
-        quantity: printQuantity,
-        cardType: printCardType,
-        subtotal,
-        tax,
-        shippingFee,
-        total,
+      const res = await adminSendDesignToPrint({
+        designId: printTarget.design.designId,
+        ...(printTarget.linkedOrder?.orderId ? { orderId: printTarget.linkedOrder.orderId } : {}),
         printerId: printPrinterId || 'admin_inhouse',
         initialOrderStatus: printInitialStatus,
-        markPaymentCompleted: printMarkPaid,
+        cardType: printCardType,
+        quantity: Math.max(1, Number(printQuantity) || 1),
+        ...(!isLinkedOrderPaid
+          ? {
+              complimentary: true,
+              complimentaryReason: printComplimentaryReason.trim(),
+            }
+          : {}),
         shippingAddress: printShipping,
         notes: printNotes,
       });
@@ -3789,7 +3874,7 @@ export const AdminApprovedDesignsPage: React.FC = () => {
       });
       notify(
         'Card sent to print!',
-        `Order ${res.orderNumber} queued (${printInitialStatus}) with verified QR & 300 DPI PDF ready.`,
+        `Order ${res.orderNumber} queued (${printInitialStatus}) via server with QR & 300 DPI PDF ready.`,
         'success'
       );
       load();
@@ -3807,11 +3892,7 @@ export const AdminApprovedDesignsPage: React.FC = () => {
   ) => {
     if (!userRecord) return;
     try {
-      const qrDoc = await ensureOrderQrArtifact({
-        order: ord,
-        profileSlug: prof?.slug || ord.profileSlug,
-        actor: { uid: userRecord.uid, email: userRecord.email, role: userRecord.role },
-      });
+      const qrDoc = await adminEnsureOrderQr(ord.orderId);
       if (!qrDoc.pngDataUrl) return;
       const pdf = await generatePrintReadyPdfBlob({
         design: d,
@@ -3837,11 +3918,7 @@ export const AdminApprovedDesignsPage: React.FC = () => {
   ) => {
     if (!userRecord) return;
     try {
-      const qrDoc = await ensureOrderQrArtifact({
-        order: ord,
-        profileSlug: prof?.slug || ord.profileSlug,
-        actor: { uid: userRecord.uid, email: userRecord.email, role: userRecord.role },
-      });
+      const qrDoc = await adminEnsureOrderQr(ord.orderId);
       if (!qrDoc.pngDataUrl) return;
       const png = await generateCardSidePngBlob({
         design: d,
@@ -4255,33 +4332,62 @@ export const AdminApprovedDesignsPage: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Unit Price (INR)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        required
-                        value={printUnitPrice}
-                        onChange={(e) => setPrintUnitPrice(Math.max(0, Number(e.target.value) || 0))}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono"
-                      />
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Server Unit Price</label>
+                      <div className="w-full px-3 py-2 border border-slate-200 bg-slate-50 rounded-lg text-xs font-mono text-slate-700">
+                        INR {printEstimatedUnitPrice}
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer text-xs">
-                  <input
-                    type="checkbox"
-                    checked={printMarkPaid}
-                    onChange={(e) => setPrintMarkPaid(e.target.checked)}
-                    className="mt-0.5 rounded border-slate-300 text-[#1D4ED8]"
-                  />
-                  <span>
-                    <strong className="text-[#0B1D3A] block">Mark Payment as Verified / Completed</strong>
-                    <span className="text-slate-500">
-                      Records verified payment and automatically unlocks the customer&apos;s watermark-free public profile. Leave unchecked for complimentary/sample press runs or offline billing.
+                {printTarget.linkedOrder?.paymentStatus === 'Verified' ||
+                printTarget.linkedOrder?.paymentStatus === 'Completed' ? (
+                  <div className="p-3 rounded-xl border border-emerald-200 bg-emerald-50 text-xs text-emerald-900">
+                    <strong className="block">Verified Paid Order ({printTarget.linkedOrder.paymentStatus})</strong>
+                    <span>
+                      Dispatches with its existing verified payment record and generates a{' '}
+                      <span className="font-mono font-semibold">CUSTOMER_ORDER</span> print QR.
                     </span>
-                  </span>
-                </label>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-xl border border-amber-200 bg-amber-50 space-y-2.5 text-xs">
+                    <div className="text-amber-900">
+                      <strong className="block">No Verified Payment on Order</strong>
+                      <span>
+                        To mark an order paid, verify payment in <strong>Orders Ledger</strong> first. Unpaid dispatch is restricted to explicit complimentary sample runs and keeps{' '}
+                        <span className="font-mono font-semibold">paymentStatus = Pending</span> with an{' '}
+                        <span className="font-mono font-semibold">ADMIN_CUSTOM</span> QR.
+                      </span>
+                    </div>
+                    <label className="flex items-start gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={printComplimentary}
+                        onChange={(e) => setPrintComplimentary(e.target.checked)}
+                        className="mt-0.5 rounded border-amber-400 text-[#1D4ED8]"
+                      />
+                      <span className="font-semibold text-[#0B1D3A]">
+                        Send as Complimentary / Unpaid Print Run
+                      </span>
+                    </label>
+                    {printComplimentary && (
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                          Complimentary Reason * (min 3 characters)
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          minLength={3}
+                          value={printComplimentaryReason}
+                          onChange={(e) => setPrintComplimentaryReason(e.target.value)}
+                          placeholder="e.g. Executive VIP sample card approved by founder"
+                          className="w-full px-3 py-2 border border-amber-300 bg-white rounded-lg text-xs"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="pt-2 border-t border-slate-100 space-y-2.5">
                   <div className="text-xs font-semibold text-[#0B1D3A]">Recipient & Delivery Details</div>
@@ -4363,7 +4469,14 @@ export const AdminApprovedDesignsPage: React.FC = () => {
                   </button>
                   <button
                     type="submit"
-                    disabled={submittingPrint}
+                    disabled={
+                      submittingPrint ||
+                      (!(
+                        printTarget.linkedOrder?.paymentStatus === 'Verified' ||
+                        printTarget.linkedOrder?.paymentStatus === 'Completed'
+                      ) &&
+                        (!printComplimentary || printComplimentaryReason.trim().length < 3))
+                    }
                     className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-[#0B1D3A] hover:bg-[#132A52] text-white rounded-xl text-xs font-semibold disabled:opacity-50"
                   >
                     <Send className="h-3.5 w-3.5" />

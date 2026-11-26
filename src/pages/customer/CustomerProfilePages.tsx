@@ -41,10 +41,8 @@ import {
   getUserProfiles,
   isOrderPaymentConfirmed,
   isSlugAvailable,
-  markProfilePaymentCompleted,
   maskEmail,
   maskPhone,
-  reconcileDeliveredOrdersToProfiles,
   sanitizeSlug,
   saveProfileAndSyncPublic,
   type ReusableProfileFieldKey,
@@ -855,13 +853,8 @@ export const CustomerOverviewPage: React.FC = () => {
     Promise.all([getCustomerOrders(userRecord.uid), getUserDesigns(userRecord.uid)]).then(([o, d]) => {
       setOrders(o);
       setDesigns(d);
-      if (profiles.length > 0) {
-        reconcileDeliveredOrdersToProfiles(o, userRecord.role, profiles).then((changed) => {
-          if (changed) reload();
-        });
-      }
     });
-  }, [userRecord, profiles.length]);
+  }, [userRecord]);
 
   const completion = calculateProfileCompletion(activeProfile);
   const latestOrder = orders[0];
@@ -1328,8 +1321,6 @@ export const CustomerProfilePage: React.FC = () => {
   const [previousSlug, setPreviousSlug] = useState('');
   const [slugStatus, setSlugStatus] = useState<'idle' | 'available' | 'taken'>('idle');
   const [saving, setSaving] = useState(false);
-  const [markingPaid, setMarkingPaid] = useState(false);
-  const [paymentRefInput, setPaymentRefInput] = useState('');
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createProfileType, setCreateProfileType] = useState<ProfileType>('adult');
   const [orders, setOrders] = useState<OrderRecord[]>([]);
@@ -1341,22 +1332,14 @@ export const CustomerProfilePage: React.FC = () => {
 
   useEffect(() => {
     if (!userRecord) return;
-    getCustomerOrders(userRecord.uid).then((o) => {
-      setOrders(o);
-      if (profiles.length > 0) {
-        reconcileDeliveredOrdersToProfiles(o, userRecord.role, profiles).then((changed) => {
-          if (changed) reload();
-        });
-      }
-    });
-  }, [userRecord, profiles.length]);
+    getCustomerOrders(userRecord.uid).then(setOrders);
+  }, [userRecord]);
 
   useEffect(() => {
     if (activeProfile) {
       setCreateProfileType(activeProfile.profileType || 'adult');
       setSlugInput(activeProfile.slug);
       setPreviousSlug(activeProfile.slug);
-      setPaymentRefInput(activeProfile.paymentReference || '');
       const pi = activeProfile.personalInformation;
       setSameWhatsappAsMobile(Boolean(pi.mobile && pi.whatsapp === pi.mobile));
       setSamePersonalAsBusiness(Boolean(pi.businessAddress && pi.personalAddress === pi.businessAddress));
@@ -1573,31 +1556,6 @@ export const CustomerProfilePage: React.FC = () => {
     Boolean(activeProfile.paymentConfirmed) ||
     activeProfileType !== 'adult';
   const isDisabledByAdmin = Boolean(activeProfile.adminDisabled);
-
-  const handleMarkPaymentDone = async () => {
-    if (!userRecord) return;
-    setMarkingPaid(true);
-    try {
-      const updated = await markProfilePaymentCompleted({
-        profile: activeProfile,
-        completed: true,
-        reference: paymentRefInput,
-        actor: { uid: userRecord.uid, email: userRecord.email, role: userRecord.role },
-        inactiveMessage: appSettings.inactiveProfileMessage,
-      });
-      setActiveProfile(updated);
-      notify(
-        'Payment status marked completed',
-        `Public profile link /p/${updated.slug} is now unlocked and accessible.`,
-        'success'
-      );
-      await reload();
-    } catch (err) {
-      notify('Unable to update payment status', err instanceof Error ? err.message : 'Please try again.', 'error');
-    } finally {
-      setMarkingPaid(false);
-    }
-  };
 
   const handleDeleteCurrentProfile = async () => {
     if (!userRecord) return;
@@ -1826,24 +1784,13 @@ export const CustomerProfilePage: React.FC = () => {
                       <span>Copy Live Link</span>
                     </button>
                   ) : !hasPaid && !isDisabledByAdmin ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <input
-                        type="text"
-                        value={paymentRefInput}
-                        onChange={(e) => setPaymentRefInput(e.target.value)}
-                        placeholder="Txn / Payment Ref (optional)"
-                        className="px-2.5 py-1.5 rounded-lg border border-amber-300 bg-white text-xs font-mono w-44"
-                      />
-                      <button
-                        type="button"
-                        disabled={markingPaid}
-                        onClick={handleMarkPaymentDone}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold disabled:opacity-50"
-                      >
-                        <Check className="h-3.5 w-3.5" />
-                        <span>{markingPaid ? 'Unlocking...' : 'Mark Payment Completed'}</span>
-                      </button>
-                    </div>
+                    <Link
+                      to="/dashboard/card-design"
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#0B1D3A] hover:bg-[#132A52] text-white text-xs font-semibold"
+                    >
+                      <CreditCard className="h-3.5 w-3.5" />
+                      <span>Order Card &amp; Pay</span>
+                    </Link>
                   ) : null}
                 </div>
               </div>
@@ -3144,7 +3091,6 @@ export const CustomerVisibilityPage: React.FC = () => {
   const { userRecord, appSettings } = useAuth();
   const { notify } = useToast();
   const [saving, setSaving] = useState(false);
-  const [markingPaid, setMarkingPaid] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createProfileType, setCreateProfileType] = useState<ProfileType>('adult');
   const [syncNote, setSyncNote] = useState('');
@@ -3159,15 +3105,8 @@ export const CustomerVisibilityPage: React.FC = () => {
 
   useEffect(() => {
     if (!userRecord) return;
-    getCustomerOrders(userRecord.uid).then((o) => {
-      setOrders(o);
-      if (profiles.length > 0) {
-        reconcileDeliveredOrdersToProfiles(o, userRecord.role, profiles).then((changed) => {
-          if (changed) reload();
-        });
-      }
-    });
-  }, [userRecord, profiles.length]);
+    getCustomerOrders(userRecord.uid).then(setOrders);
+  }, [userRecord]);
 
   if (loading) {
     return (
@@ -3403,30 +3342,13 @@ export const CustomerVisibilityPage: React.FC = () => {
                 External visitors cannot access your public link until payment is marked completed or approved by an admin.
               </p>
             </div>
-            <button
-              type="button"
-              disabled={markingPaid}
-              onClick={async () => {
-                if (!userRecord) return;
-                setMarkingPaid(true);
-                try {
-                  const updated = await markProfilePaymentCompleted({
-                    profile: activeProfile,
-                    completed: true,
-                    actor: { uid: userRecord.uid, email: userRecord.email, role: userRecord.role },
-                    inactiveMessage: appSettings.inactiveProfileMessage,
-                  });
-                  setActiveProfile(updated);
-                  notify('Payment marked completed', `/p/${updated.slug} is now live.`, 'success');
-                  await reload();
-                } finally {
-                  setMarkingPaid(false);
-                }
-              }}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold whitespace-nowrap disabled:opacity-50"
+            <Link
+              to="/dashboard/card-design"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0B1D3A] hover:bg-[#132A52] text-white text-xs font-semibold whitespace-nowrap"
             >
-              {markingPaid ? 'Updating...' : 'Mark Payment Completed'}
-            </button>
+              <CreditCard className="h-3.5 w-3.5" />
+              <span>Order Card &amp; Pay</span>
+            </Link>
           </div>
         )}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">

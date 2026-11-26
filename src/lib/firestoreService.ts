@@ -26,7 +26,6 @@ import {
   EMPTY_PERSONAL_INFO,
   PAYMENT_GATEWAY_ORDER,
 } from './constants';
-import { generateHighResQrArtwork } from './qrArtwork';
 import { sanitizeRichBioHtml } from './richText';
 import { clearAllLocalStudioDrafts } from './studioDraft';
 import type {
@@ -691,64 +690,12 @@ export async function saveProfileAndSyncPublic(
   const cleanSlug = sanitizeSlug(profile.slug);
   const updatedProfile: ProfileRecord = { ...profile, slug: cleanSlug };
 
-  let existingPaymentConfirmed = Boolean(profile.paymentConfirmed);
-  let existingPaymentCompletedAt = profile.paymentCompletedAt || '';
-  let existingLastPaidOrderId = '';
-  let existingAdminApproved = Boolean(profile.adminApproved);
-  let existingAdminApprovedAt = profile.adminApprovedAt || '';
-  let existingAdminApprovedBy = profile.adminApprovedBy || '';
-  let existingAdminDisabled = Boolean(profile.adminDisabled);
+  let existingPublicDocExists = false;
   try {
     const existingPub = await getDoc(doc(db, 'publicProfiles', cleanSlug));
-    if (existingPub.exists()) {
-      const pubData = existingPub.data() as PublicProfileRecord;
-      existingPaymentConfirmed = existingPaymentConfirmed || Boolean(pubData.paymentConfirmed);
-      existingPaymentCompletedAt = existingPaymentCompletedAt || pubData.paymentCompletedAt || '';
-      existingLastPaidOrderId = pubData.lastPaidOrderId || '';
-      if (!existingAdminApproved && pubData.adminApproved) {
-        existingAdminApproved = true;
-        existingAdminApprovedAt = pubData.adminApprovedAt || '';
-        existingAdminApprovedBy = pubData.adminApprovedBy || '';
-      }
-      if (!existingAdminDisabled && pubData.adminDisabled) {
-        existingAdminDisabled = true;
-      }
-    } else if (previousSlug && previousSlug !== cleanSlug) {
-      const prevPub = await getDoc(doc(db, 'publicProfiles', previousSlug));
-      if (prevPub.exists()) {
-        const pubData = prevPub.data() as PublicProfileRecord;
-        existingPaymentConfirmed = existingPaymentConfirmed || Boolean(pubData.paymentConfirmed);
-        existingPaymentCompletedAt = existingPaymentCompletedAt || pubData.paymentCompletedAt || '';
-        existingLastPaidOrderId = pubData.lastPaidOrderId || '';
-        if (!existingAdminApproved && pubData.adminApproved) {
-          existingAdminApproved = true;
-          existingAdminApprovedAt = pubData.adminApprovedAt || '';
-          existingAdminApprovedBy = pubData.adminApprovedBy || '';
-        }
-        if (!existingAdminDisabled && pubData.adminDisabled) {
-          existingAdminDisabled = true;
-        }
-      }
-    }
+    existingPublicDocExists = existingPub.exists();
   } catch {
     // ignore read fallback
-  }
-
-  if (!existingPaymentConfirmed && profile.uid && profile.profileId) {
-    try {
-      const ownerOrders = await getCustomerOrders(profile.uid);
-      const paidOrder = ownerOrders.find(
-        (o) =>
-          (o.profileId === profile.profileId || o.profileSlug === cleanSlug || (previousSlug && o.profileSlug === previousSlug)) &&
-          (o.paymentStatus === 'Verified' || o.paymentStatus === 'Completed' || o.orderStatus === 'Delivered')
-      );
-      if (paidOrder) {
-        existingPaymentConfirmed = true;
-        existingLastPaidOrderId = paidOrder.orderId;
-      }
-    } catch {
-      // ignore if caller lacks order list access
-    }
   }
 
   batch.set(
@@ -763,7 +710,6 @@ export async function saveProfileAndSyncPublic(
       visibilitySettings: updatedProfile.visibilitySettings,
       selectedTemplate: updatedProfile.selectedTemplate,
       isPublic: updatedProfile.isPublic,
-      ...(existingPaymentConfirmed ? { paymentConfirmed: true } : {}),
       updatedAt: serverTimestamp(),
     },
     { merge: true }
@@ -773,31 +719,29 @@ export async function saveProfileAndSyncPublic(
     batch.delete(doc(db, 'publicProfiles', previousSlug));
   }
 
-  const normalizedForPublic: ProfileRecord = {
-    ...updatedProfile,
-    paymentConfirmed: existingPaymentConfirmed,
-    ...(existingPaymentCompletedAt ? { paymentCompletedAt: existingPaymentCompletedAt } : {}),
-    adminApproved: existingAdminApproved,
-    adminApprovedAt: existingAdminApprovedAt,
-    adminApprovedBy: existingAdminApprovedBy,
-    adminDisabled: existingAdminDisabled,
-  };
-
-  batch.set(doc(db, 'publicProfiles', cleanSlug), {
-    ...buildSanitizedPublicProfile(normalizedForPublic, inactiveMessage),
-    paymentConfirmed: existingPaymentConfirmed,
-    ...(existingPaymentCompletedAt ? { paymentCompletedAt: existingPaymentCompletedAt } : {}),
-    adminDisabled: existingAdminDisabled,
-    ...(existingAdminApproved
-      ? {
-          adminApproved: true,
-          ...(existingAdminApprovedAt ? { adminApprovedAt: existingAdminApprovedAt } : {}),
-          ...(existingAdminApprovedBy ? { adminApprovedBy: existingAdminApprovedBy } : {}),
-        }
-      : { adminApproved: false }),
-    ...(existingLastPaidOrderId ? { lastPaidOrderId: existingLastPaidOrderId } : {}),
-    updatedAt: serverTimestamp(),
-  });
+  const sanitizedPublic = buildSanitizedPublicProfile(updatedProfile, inactiveMessage);
+  if (existingPublicDocExists && (!previousSlug || previousSlug === cleanSlug)) {
+    batch.update(doc(db, 'publicProfiles', cleanSlug), {
+      profileType: sanitizedPublic.profileType || 'adult',
+      isPublic: sanitizedPublic.isPublic,
+      unavailableMessage: sanitizedPublic.unavailableMessage || '',
+      personalInformation: sanitizedPublic.personalInformation || {},
+      socialLinks: sanitizedPublic.socialLinks || [],
+      customFields: sanitizedPublic.customFields || [],
+      updatedAt: serverTimestamp(),
+    });
+  } else {
+    const {
+      paymentConfirmed: _omitPayConfirmed,
+      paymentCompletedAt: _omitPayCompletedAt,
+      lastPaidOrderId: _omitLastPaidOrderId,
+      ...safePublicCreate
+    } = sanitizedPublic;
+    batch.set(doc(db, 'publicProfiles', cleanSlug), {
+      ...safePublicCreate,
+      updatedAt: serverTimestamp(),
+    });
+  }
 
   try {
     await batch.commit();
@@ -844,20 +788,21 @@ export async function adminToggleProfileStatus(params: {
 }): Promise<ProfileRecord> {
   const adminDisabled = !params.isPublic;
   const updated: ProfileRecord = { ...params.profile, isPublic: params.isPublic, adminDisabled };
-  let existingPaymentConfirmed = Boolean(params.profile.paymentConfirmed);
-  let existingPaymentCompletedAt = params.profile.paymentCompletedAt || '';
-  let existingLastPaidOrderId = '';
+  let existingPubExists = false;
   try {
     const existingPub = await getDoc(doc(db, 'publicProfiles', params.profile.slug));
-    if (existingPub.exists()) {
-      const pubData = existingPub.data() as PublicProfileRecord;
-      existingPaymentConfirmed = existingPaymentConfirmed || Boolean(pubData.paymentConfirmed);
-      existingPaymentCompletedAt = existingPaymentCompletedAt || pubData.paymentCompletedAt || '';
-      existingLastPaidOrderId = pubData.lastPaidOrderId || '';
-    }
+    existingPubExists = existingPub.exists();
   } catch {
     // ignore read fallback
   }
+
+  const sanitizedPublic = buildSanitizedPublicProfile(updated, params.inactiveMessage);
+  const {
+    paymentConfirmed: _omitPayConfirmed,
+    paymentCompletedAt: _omitPayCompletedAt,
+    lastPaidOrderId: _omitLastPaidOrderId,
+    ...safePublicCreate
+  } = sanitizedPublic;
 
   const batch = writeBatch(db);
   batch.update(doc(db, 'profiles', params.profile.profileId), {
@@ -865,21 +810,27 @@ export async function adminToggleProfileStatus(params: {
     adminDisabled,
     updatedAt: serverTimestamp(),
   });
-  batch.set(doc(db, 'publicProfiles', params.profile.slug), {
-    ...buildSanitizedPublicProfile(updated, params.inactiveMessage),
-    paymentConfirmed: existingPaymentConfirmed,
-    ...(existingPaymentCompletedAt ? { paymentCompletedAt: existingPaymentCompletedAt } : {}),
-    adminDisabled,
-    ...(params.profile.adminApproved
-      ? {
-          adminApproved: true,
-          ...(params.profile.adminApprovedAt ? { adminApprovedAt: params.profile.adminApprovedAt } : {}),
-          ...(params.profile.adminApprovedBy ? { adminApprovedBy: params.profile.adminApprovedBy } : {}),
-        }
-      : {}),
-    ...(existingLastPaidOrderId ? { lastPaidOrderId: existingLastPaidOrderId } : {}),
-    updatedAt: serverTimestamp(),
-  });
+  if (existingPubExists) {
+    batch.update(doc(db, 'publicProfiles', params.profile.slug), {
+      isPublic: sanitizedPublic.isPublic,
+      unavailableMessage: sanitizedPublic.unavailableMessage || '',
+      adminDisabled,
+      updatedAt: serverTimestamp(),
+    });
+  } else {
+    batch.set(doc(db, 'publicProfiles', params.profile.slug), {
+      ...safePublicCreate,
+      adminDisabled,
+      ...(params.profile.adminApproved
+        ? {
+            adminApproved: true,
+            ...(params.profile.adminApprovedAt ? { adminApprovedAt: params.profile.adminApprovedAt } : {}),
+            ...(params.profile.adminApprovedBy ? { adminApprovedBy: params.profile.adminApprovedBy } : {}),
+          }
+        : {}),
+      updatedAt: serverTimestamp(),
+    });
+  }
   try {
     await batch.commit();
     await recordAuditLog({
@@ -890,76 +841,6 @@ export async function adminToggleProfileStatus(params: {
       targetCollection: 'profiles',
       targetId: params.profile.profileId,
       details: `${params.isPublic ? 'Enabled' : 'Disabled'} digital profile /p/${params.profile.slug}`,
-    });
-    return updated;
-  } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, `profiles/${params.profile.profileId}`);
-  }
-}
-
-export async function markProfilePaymentCompleted(params: {
-  profile: ProfileRecord;
-  completed?: boolean;
-  reference?: string;
-  actor: { uid: string; email?: string; role: UserRole };
-  inactiveMessage?: string;
-}): Promise<ProfileRecord> {
-  const completed = params.completed ?? true;
-  const completedAt = completed ? new Date().toISOString() : '';
-  const paymentRef = (params.reference || '').trim().slice(0, 128);
-  const updated: ProfileRecord = {
-    ...params.profile,
-    isPublic: completed ? true : params.profile.isPublic,
-    paymentConfirmed: completed,
-    paymentCompletedAt: completedAt,
-    paymentReference: paymentRef,
-  };
-
-  let existingLastPaidOrderId = '';
-  try {
-    const existingPub = await getDoc(doc(db, 'publicProfiles', params.profile.slug));
-    if (existingPub.exists()) {
-      const pubData = existingPub.data() as PublicProfileRecord;
-      existingLastPaidOrderId = pubData.lastPaidOrderId || '';
-    }
-  } catch {
-    // ignore read fallback
-  }
-
-  const batch = writeBatch(db);
-  batch.update(doc(db, 'profiles', params.profile.profileId), {
-    isPublic: updated.isPublic,
-    paymentConfirmed: completed,
-    paymentCompletedAt: completedAt,
-    paymentReference: paymentRef,
-    updatedAt: serverTimestamp(),
-  });
-  batch.set(doc(db, 'publicProfiles', params.profile.slug), {
-    ...buildSanitizedPublicProfile(updated, params.inactiveMessage),
-    paymentConfirmed: completed,
-    paymentCompletedAt: completedAt,
-    adminDisabled: Boolean(updated.adminDisabled),
-    ...(updated.adminApproved
-      ? {
-          adminApproved: true,
-          ...(updated.adminApprovedAt ? { adminApprovedAt: updated.adminApprovedAt } : {}),
-          ...(updated.adminApprovedBy ? { adminApprovedBy: updated.adminApprovedBy } : {}),
-        }
-      : { adminApproved: false }),
-    ...(existingLastPaidOrderId ? { lastPaidOrderId: existingLastPaidOrderId } : {}),
-    updatedAt: serverTimestamp(),
-  });
-
-  try {
-    await batch.commit();
-    await recordAuditLog({
-      actorUid: params.actor.uid,
-      actorEmail: params.actor.email,
-      actorRole: params.actor.role,
-      action: completed ? 'MARK_PROFILE_PAYMENT_COMPLETED' : 'REVOKE_PROFILE_PAYMENT_STATUS',
-      targetCollection: 'profiles',
-      targetId: params.profile.profileId,
-      details: `${completed ? 'Marked payment completed' : 'Cleared payment completion'} for /p/${params.profile.slug}${paymentRef ? ` (Ref: ${paymentRef})` : ''}`,
     });
     return updated;
   } catch (err) {
@@ -984,20 +865,21 @@ export async function adminSetProfileApproval(params: {
     adminApprovedBy: approvedBy,
   };
 
-  let existingPaymentConfirmed = Boolean(params.profile.paymentConfirmed);
-  let existingPaymentCompletedAt = params.profile.paymentCompletedAt || '';
-  let existingLastPaidOrderId = '';
+  let existingPubExists = false;
   try {
     const existingPub = await getDoc(doc(db, 'publicProfiles', params.profile.slug));
-    if (existingPub.exists()) {
-      const pubData = existingPub.data() as PublicProfileRecord;
-      existingPaymentConfirmed = existingPaymentConfirmed || Boolean(pubData.paymentConfirmed);
-      existingPaymentCompletedAt = existingPaymentCompletedAt || pubData.paymentCompletedAt || '';
-      existingLastPaidOrderId = pubData.lastPaidOrderId || '';
-    }
+    existingPubExists = existingPub.exists();
   } catch {
     // ignore read fallback
   }
+
+  const sanitizedPublic = buildSanitizedPublicProfile(updated, params.inactiveMessage);
+  const {
+    paymentConfirmed: _omitPayConfirmed,
+    paymentCompletedAt: _omitPayCompletedAt,
+    lastPaidOrderId: _omitLastPaidOrderId,
+    ...safePublicCreate
+  } = sanitizedPublic;
 
   const batch = writeBatch(db);
   batch.update(doc(db, 'profiles', params.profile.profileId), {
@@ -1008,17 +890,26 @@ export async function adminSetProfileApproval(params: {
     adminApprovedBy: approvedBy,
     updatedAt: serverTimestamp(),
   });
-  batch.set(doc(db, 'publicProfiles', params.profile.slug), {
-    ...buildSanitizedPublicProfile(updated, params.inactiveMessage),
-    paymentConfirmed: existingPaymentConfirmed,
-    ...(existingPaymentCompletedAt ? { paymentCompletedAt: existingPaymentCompletedAt } : {}),
-    adminDisabled: Boolean(updated.adminDisabled),
-    adminApproved: params.approved,
-    adminApprovedAt: approvedAt,
-    adminApprovedBy: approvedBy,
-    ...(existingLastPaidOrderId ? { lastPaidOrderId: existingLastPaidOrderId } : {}),
-    updatedAt: serverTimestamp(),
-  });
+  if (existingPubExists) {
+    batch.update(doc(db, 'publicProfiles', params.profile.slug), {
+      isPublic: sanitizedPublic.isPublic,
+      unavailableMessage: sanitizedPublic.unavailableMessage || '',
+      adminDisabled: Boolean(updated.adminDisabled),
+      adminApproved: params.approved,
+      adminApprovedAt: approvedAt,
+      adminApprovedBy: approvedBy,
+      updatedAt: serverTimestamp(),
+    });
+  } else {
+    batch.set(doc(db, 'publicProfiles', params.profile.slug), {
+      ...safePublicCreate,
+      adminDisabled: Boolean(updated.adminDisabled),
+      adminApproved: params.approved,
+      adminApprovedAt: approvedAt,
+      adminApprovedBy: approvedBy,
+      updatedAt: serverTimestamp(),
+    });
+  }
 
   try {
     await batch.commit();
@@ -1540,83 +1431,6 @@ export async function createPendingShopOrder(params: {
   }
 }
 
-export async function finalizeVerifiedOrderPayment(params: {
-  orderId: string;
-  uid: string;
-  profileSlug?: string;
-  gateway: PaymentRecord['gateway'];
-  gatewayOrderId: string;
-  gatewayPaymentId: string;
-  amount: number;
-  qrArtifact: {
-    targetUrl: string;
-    svgContent: string;
-    pngDataUrl: string;
-  };
-}): Promise<void> {
-  const batch = writeBatch(db);
-  const paymentRef = doc(db, 'payments', params.orderId);
-  const qrRef = doc(db, 'qrCodes', params.orderId);
-  const orderRef = doc(db, 'orders', params.orderId);
-
-  batch.set(paymentRef, {
-    paymentId: params.orderId,
-    orderId: params.orderId,
-    uid: params.uid,
-    gateway: params.gateway,
-    gatewayOrderId: params.gatewayOrderId,
-    gatewayPaymentId: params.gatewayPaymentId,
-    signatureVerified: true,
-    amount: params.amount,
-    currency: 'INR',
-    status: 'Verified',
-    verifiedAt: new Date().toISOString(),
-    createdAt: serverTimestamp(),
-  });
-
-  batch.set(qrRef, {
-    qrCodeId: params.orderId,
-    uid: params.uid,
-    orderId: params.orderId,
-    printerId: '',
-    targetUrl: params.qrArtifact.targetUrl,
-    svgContent: params.qrArtifact.svgContent,
-    pngDataUrl: params.qrArtifact.pngDataUrl,
-    storagePath: `qrCodes/${params.orderId}/qr.png`,
-    format: 'PNG_SVG',
-    qrType: 'CUSTOMER_ORDER',
-    version: 1,
-    createdBy: params.uid,
-    createdAt: serverTimestamp(),
-  });
-
-  batch.update(orderRef, {
-    paymentStatus: 'Verified',
-    orderStatus: 'Payment Successful',
-    qrCodeId: params.orderId,
-    printFileReady: true,
-    updatedAt: serverTimestamp(),
-  });
-
-  if (params.profileSlug) {
-    batch.set(
-      doc(db, 'publicProfiles', params.profileSlug),
-      {
-        paymentConfirmed: true,
-        lastPaidOrderId: params.orderId,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-  }
-
-  try {
-    await batch.commit();
-  } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, `orders/${params.orderId}`);
-  }
-}
-
 export async function getCustomerOrders(uid: string): Promise<OrderRecord[]> {
   try {
     const q = query(collection(db, 'orders'), where('uid', '==', uid));
@@ -1655,114 +1469,21 @@ export async function getOrderById(orderId: string): Promise<OrderRecord | null>
   }
 }
 
-export async function unlockProfileForOrder(
-  order: OrderRecord,
-  actorRole: UserRole
-): Promise<boolean> {
-  const isUnlockedOrder =
-    order.orderStatus === 'Delivered' ||
-    order.paymentStatus === 'Verified' ||
-    order.paymentStatus === 'Completed';
-  if (!isUnlockedOrder) return false;
-
-  const isPrivileged = actorRole === 'ADMIN' || actorRole === 'SUPERADMIN';
-  let linkedProfile: ProfileRecord | null = null;
-  if (order.profileId && actorRole !== 'PRINTER') {
-    linkedProfile = await getProfileById(order.profileId);
-    if (linkedProfile && (!linkedProfile.paymentConfirmed || !linkedProfile.isPublic) && !linkedProfile.adminDisabled) {
-      await updateDoc(doc(db, 'profiles', linkedProfile.profileId), {
-        paymentConfirmed: true,
-        isPublic: true,
-        updatedAt: serverTimestamp(),
-      }).catch(() => null);
-    }
-  }
-
-  const targetSlugs = new Set<string>();
-  if (order.profileSlug) {
-    const s = sanitizeSlug(order.profileSlug);
-    if (s) targetSlugs.add(s);
-  }
-  if (linkedProfile?.slug) {
-    const s = sanitizeSlug(linkedProfile.slug);
-    if (s) targetSlugs.add(s);
-  }
-
-  let updatedAny = false;
-  for (const targetSlug of targetSlugs) {
-    const pubRef = doc(db, 'publicProfiles', targetSlug);
-    const pubSnap = await getDoc(pubRef).catch(() => null);
-    if (pubSnap && pubSnap.exists()) {
-      const pubData = pubSnap.data() as PublicProfileRecord;
-      if (pubData.adminDisabled) continue;
-      if (!pubData.paymentConfirmed || !pubData.isPublic || pubData.lastPaidOrderId !== order.orderId) {
-        await updateDoc(pubRef, {
-          paymentConfirmed: true,
-          isPublic: true,
-          lastPaidOrderId: order.orderId,
-          updatedAt: serverTimestamp(),
-        }).catch(() => null);
-        updatedAny = true;
-      }
-    } else if (linkedProfile && (isPrivileged || actorRole === 'USER')) {
-      if (linkedProfile.adminDisabled) continue;
-      await setDoc(pubRef, {
-        ...buildSanitizedPublicProfile({ ...linkedProfile, slug: targetSlug, isPublic: true }),
-        paymentConfirmed: true,
-        isPublic: true,
-        adminDisabled: false,
-        lastPaidOrderId: order.orderId,
-        updatedAt: serverTimestamp(),
-      }).catch(() => null);
-      updatedAny = true;
-    }
-  }
-  return updatedAny;
-}
-
-export async function reconcileDeliveredOrdersToProfiles(
-  orders: OrderRecord[],
-  actorRole: UserRole,
-  profiles?: ProfileRecord[]
-): Promise<boolean> {
-  const unlockedOrders = orders.filter(
-    (o) =>
-      o.orderStatus === 'Delivered' ||
-      o.paymentStatus === 'Verified' ||
-      o.paymentStatus === 'Completed'
-  );
-  if (unlockedOrders.length === 0) return false;
-
-  const profileById = new Map<string, ProfileRecord>();
-  if (profiles) {
-    for (const p of profiles) {
-      profileById.set(p.profileId, p);
-    }
-  }
-
-  const seenProfileKeys = new Set<string>();
-  let anyReconciled = false;
-  for (const ord of unlockedOrders) {
-    const key = ord.profileId || ord.profileSlug || ord.orderId;
-    if (seenProfileKeys.has(key)) continue;
-    seenProfileKeys.add(key);
-
-    const knownProfile = ord.profileId ? profileById.get(ord.profileId) : undefined;
-    if (knownProfile?.adminDisabled) continue;
-    if (knownProfile && knownProfile.paymentConfirmed && knownProfile.isPublic && ord.profileSlug) {
-      // Still verify publicProfiles doc isn't missing paymentConfirmed/isPublic if needed
-      const pubSnap = await getDoc(doc(db, 'publicProfiles', sanitizeSlug(knownProfile.slug || ord.profileSlug))).catch(() => null);
-      if (pubSnap?.exists()) {
-        const pub = pubSnap.data() as PublicProfileRecord;
-        if ((pub.paymentConfirmed && pub.isPublic) || pub.adminDisabled) continue;
-      }
-    }
-
-    const changed = await unlockProfileForOrder(ord, actorRole).catch(() => false);
-    if (changed) anyReconciled = true;
-  }
-  return anyReconciled;
-}
+const FORBIDDEN_CLIENT_ORDER_FIELDS = new Set([
+  'paymentStatus',
+  'subtotal',
+  'tax',
+  'shipping',
+  'total',
+  'currency',
+  'qrCodeId',
+  'printerId',
+  'razorpayOrderId',
+  'razorpayPaymentId',
+  'razorpayAmountPaise',
+  'razorpayCurrency',
+  'razorpayOrderLock',
+]);
 
 export async function updateOrderWorkflow(params: {
   orderId: string;
@@ -1771,26 +1492,25 @@ export async function updateOrderWorkflow(params: {
   auditAction: string;
   auditDetails: string;
 }): Promise<void> {
+  const safeUpdates: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(params.updates)) {
+    if (FORBIDDEN_CLIENT_ORDER_FIELDS.has(key)) {
+      throw new Error(`Order field "${key}" must be updated via server Cloud Functions.`);
+    }
+    safeUpdates[key] = val;
+  }
+  if (
+    safeUpdates.orderStatus === 'Payment Successful' ||
+    safeUpdates.orderStatus === 'Refunded'
+  ) {
+    throw new Error(`Order status "${String(safeUpdates.orderStatus)}" must be updated via server payment verification or reconciliation.`);
+  }
+
   try {
     await updateDoc(doc(db, 'orders', params.orderId), {
-      ...params.updates,
+      ...safeUpdates,
       updatedAt: serverTimestamp(),
     });
-    if (params.updates.printerId) {
-      await updateDoc(doc(db, 'qrCodes', params.orderId), {
-        printerId: params.updates.printerId,
-      }).catch(() => null);
-    }
-    if (
-      params.updates.orderStatus === 'Delivered' ||
-      params.updates.paymentStatus === 'Verified' ||
-      params.updates.paymentStatus === 'Completed'
-    ) {
-      const ordSnap = await getDoc(doc(db, 'orders', params.orderId)).catch(() => null);
-      if (ordSnap?.exists()) {
-        await unlockProfileForOrder(ordSnap.data() as OrderRecord, params.actor.role).catch(() => null);
-      }
-    }
     await recordAuditLog({
       actorUid: params.actor.uid,
       actorEmail: params.actor.email,
@@ -1802,115 +1522,6 @@ export async function updateOrderWorkflow(params: {
     });
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `orders/${params.orderId}`);
-  }
-}
-
-export async function updateOrderAndPaymentStatus(params: {
-  order: OrderRecord;
-  paymentStatus: PaymentStatus;
-  orderStatus?: OrderStatus;
-  actor: { uid: string; email?: string; role: UserRole };
-}): Promise<void> {
-  const batch = writeBatch(db);
-  const orderRef = doc(db, 'orders', params.order.orderId);
-  const nextOrderStatus = params.orderStatus || params.order.orderStatus;
-
-  batch.update(orderRef, {
-    paymentStatus: params.paymentStatus,
-    orderStatus: nextOrderStatus,
-    updatedAt: serverTimestamp(),
-  });
-
-  const paymentRef = doc(db, 'payments', params.order.orderId);
-  try {
-    const paySnap = await getDoc(paymentRef);
-    const isPaymentDone = params.paymentStatus === 'Completed' || params.paymentStatus === 'Verified';
-    const isUnlocked = isPaymentDone || nextOrderStatus === 'Delivered';
-    if (paySnap.exists()) {
-      batch.update(paymentRef, {
-        status: params.paymentStatus,
-        signatureVerified: isPaymentDone,
-        verifiedAt: isPaymentDone ? new Date().toISOString() : '',
-      });
-    } else {
-      batch.set(paymentRef, {
-        paymentId: params.order.orderId,
-        orderId: params.order.orderId,
-        uid: params.order.uid,
-        gateway: 'razorpay_sandbox',
-        gatewayOrderId: `manual_${params.order.orderNumber}`,
-        gatewayPaymentId: '',
-        signatureVerified: isPaymentDone,
-        amount: params.order.total,
-        currency: 'INR',
-        status: params.paymentStatus,
-        verifiedAt: isPaymentDone ? new Date().toISOString() : '',
-        createdAt: serverTimestamp(),
-      });
-    }
-    const targetSlugs = new Set<string>();
-    if (params.order.profileSlug) {
-      targetSlugs.add(sanitizeSlug(params.order.profileSlug));
-    }
-    let linkedProfile: ProfileRecord | null = null;
-    if (params.order.profileId) {
-      const profSnap = await getDoc(doc(db, 'profiles', params.order.profileId));
-      if (profSnap.exists()) {
-        linkedProfile = profSnap.data() as ProfileRecord;
-        if (linkedProfile.slug) {
-          targetSlugs.add(sanitizeSlug(linkedProfile.slug));
-        }
-        if (isUnlocked && !linkedProfile.adminDisabled) {
-          batch.update(doc(db, 'profiles', linkedProfile.profileId), {
-            paymentConfirmed: true,
-            isPublic: true,
-            updatedAt: serverTimestamp(),
-          });
-        } else if (!isUnlocked && linkedProfile.paymentConfirmed) {
-          batch.update(doc(db, 'profiles', linkedProfile.profileId), {
-            paymentConfirmed: false,
-            updatedAt: serverTimestamp(),
-          });
-        }
-      }
-    }
-
-    for (const targetSlug of targetSlugs) {
-      if (!targetSlug) continue;
-      const pubRef = doc(db, 'publicProfiles', targetSlug);
-      const pubSnap = await getDoc(pubRef);
-      if (pubSnap.exists()) {
-        batch.update(pubRef, {
-          paymentConfirmed: isUnlocked,
-          ...(isUnlocked ? { isPublic: true } : {}),
-          lastPaidOrderId: isUnlocked ? params.order.orderId : '',
-          updatedAt: serverTimestamp(),
-        });
-      } else if (linkedProfile) {
-        batch.set(pubRef, {
-          ...buildSanitizedPublicProfile({
-            ...linkedProfile,
-            slug: targetSlug,
-            isPublic: isUnlocked ? true : linkedProfile.isPublic,
-          }),
-          paymentConfirmed: isUnlocked,
-          ...(isUnlocked ? { lastPaidOrderId: params.order.orderId } : {}),
-          updatedAt: serverTimestamp(),
-        });
-      }
-    }
-    await batch.commit();
-    await recordAuditLog({
-      actorUid: params.actor.uid,
-      actorEmail: params.actor.email,
-      actorRole: params.actor.role,
-      action: 'ADMIN_PAYMENT_STATUS_UPDATE',
-      targetCollection: 'orders',
-      targetId: params.order.orderId,
-      details: `Order ${params.order.orderNumber}: paymentStatus=${params.paymentStatus}, orderStatus=${nextOrderStatus}`,
-    });
-  } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, `orders/${params.order.orderId}`);
   }
 }
 
@@ -1963,258 +1574,6 @@ export async function dispatchOrderWithCourier(params: {
   }
 }
 
-export async function ensureOrderQrArtifact(params: {
-  order: OrderRecord;
-  profileSlug?: string;
-  actor: { uid: string; email?: string; role: UserRole };
-}): Promise<QrCodeRecord> {
-  if (params.order.qrCodeId) {
-    const existing = await getQrCodeById(params.order.qrCodeId);
-    if (existing?.pngDataUrl) return existing;
-  }
-  const slug = sanitizeSlug(params.profileSlug || params.order.profileSlug || params.order.profileId);
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://tapnex.in';
-  const targetUrl = `${origin}/p/${slug}`;
-  const qrArtifact = await generateHighResQrArtwork(targetUrl, 1024);
-
-  const qrRecord: QrCodeRecord = {
-    qrCodeId: params.order.orderId,
-    uid: params.order.uid,
-    orderId: params.order.orderId,
-    printerId: params.order.printerId || '',
-    targetUrl: qrArtifact.targetUrl,
-    svgContent: qrArtifact.svgContent,
-    pngDataUrl: qrArtifact.pngDataUrl,
-    storagePath: `qrCodes/${params.order.orderId}/qr.png`,
-    format: 'PNG_SVG',
-    qrType: 'CUSTOMER_ORDER',
-    version: 1,
-    createdBy: params.actor.uid,
-    createdAt: serverTimestamp(),
-  };
-
-  const batch = writeBatch(db);
-  batch.set(doc(db, 'qrCodes', params.order.orderId), qrRecord);
-  batch.update(doc(db, 'orders', params.order.orderId), {
-    qrCodeId: params.order.orderId,
-    printFileReady: true,
-    updatedAt: serverTimestamp(),
-  });
-  try {
-    await batch.commit();
-    await recordAuditLog({
-      actorUid: params.actor.uid,
-      actorEmail: params.actor.email,
-      actorRole: params.actor.role,
-      action: 'GENERATE_ORDER_QR',
-      targetCollection: 'qrCodes',
-      targetId: params.order.orderId,
-      details: `Prepared high-res print QR for order ${params.order.orderNumber} (${qrArtifact.targetUrl})`,
-    });
-    return qrRecord;
-  } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, `qrCodes/${params.order.orderId}`);
-  }
-}
-
-export async function sendApprovedDesignToPrint(params: {
-  design: CardDesignRecord;
-  existingOrder?: OrderRecord | null;
-  profile?: ProfileRecord | null;
-  owner?: UserRecord | null;
-  actor: { uid: string; email?: string; role: UserRole };
-  quantity: number;
-  cardType: string;
-  subtotal: number;
-  tax: number;
-  shippingFee: number;
-  total: number;
-  printerId: string;
-  initialOrderStatus: OrderStatus;
-  markPaymentCompleted: boolean;
-  shippingAddress: ShippingAddress;
-  notes?: string;
-}): Promise<{ orderId: string; orderNumber: string; qrRecord: QrCodeRecord }> {
-  const existingOrder = params.existingOrder || null;
-  const orderId = existingOrder?.orderId || `ord_${Date.now()}`;
-  const year = new Date().getFullYear();
-  const orderNumber =
-    existingOrder?.orderNumber || `TNX-${year}-${String(Math.floor(100000 + Math.random() * 900000))}`;
-  const slug = sanitizeSlug(
-    params.profile?.slug || existingOrder?.profileSlug || params.design.profileId
-  );
-
-  let qrRecord: QrCodeRecord | null = null;
-  if (existingOrder?.qrCodeId) {
-    qrRecord = await getQrCodeById(existingOrder.qrCodeId);
-  }
-
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://tapnex.in';
-  const targetUrl = `${origin}/p/${slug}`;
-  if (!qrRecord?.pngDataUrl) {
-    const qrArtifact = await generateHighResQrArtwork(targetUrl, 1024);
-    qrRecord = {
-      qrCodeId: orderId,
-      uid: params.design.uid,
-      orderId,
-      printerId: params.printerId,
-      targetUrl: qrArtifact.targetUrl,
-      svgContent: qrArtifact.svgContent,
-      pngDataUrl: qrArtifact.pngDataUrl,
-      storagePath: `qrCodes/${orderId}/qr.png`,
-      format: 'PNG_SVG',
-      qrType: 'CUSTOMER_ORDER',
-      version: 1,
-      createdBy: params.actor.uid,
-      createdAt: serverTimestamp(),
-    };
-  }
-
-  const effectivePaymentStatus: PaymentStatus = params.markPaymentCompleted
-    ? 'Verified'
-    : existingOrder?.paymentStatus || 'Pending';
-
-  const batch = writeBatch(db);
-  const qrDocId = qrRecord.qrCodeId || orderId;
-  if (existingOrder?.qrCodeId && existingOrder.qrCodeId === qrDocId && qrRecord.createdAt) {
-    batch.update(doc(db, 'qrCodes', qrDocId), {
-      printerId: params.printerId,
-    });
-  } else {
-    batch.set(doc(db, 'qrCodes', qrDocId), {
-      ...qrRecord,
-      qrCodeId: qrDocId,
-      orderId,
-      printerId: params.printerId,
-      createdAt: serverTimestamp(),
-    });
-  }
-
-  if (existingOrder) {
-    batch.update(doc(db, 'orders', orderId), {
-      printerId: params.printerId,
-      quantity: Math.max(1, Number(params.quantity) || 1),
-      cardType: params.cardType,
-      subtotal: params.subtotal,
-      tax: params.tax,
-      shipping: params.shippingFee,
-      total: params.total,
-      paymentStatus: effectivePaymentStatus,
-      orderStatus: params.initialOrderStatus,
-      shippingAddress: params.shippingAddress,
-      qrCodeId: qrDocId,
-      printFileReady: true,
-      ...(params.notes !== undefined ? { internalNotes: params.notes } : {}),
-      updatedAt: serverTimestamp(),
-    });
-  } else {
-    batch.set(doc(db, 'orders', orderId), {
-      orderId,
-      orderNumber,
-      uid: params.design.uid,
-      profileId: params.design.profileId,
-      profileSlug: slug,
-      designId: params.design.designId,
-      printerId: params.printerId,
-      quantity: Math.max(1, Number(params.quantity) || 1),
-      cardType: params.cardType,
-      subtotal: params.subtotal,
-      tax: params.tax,
-      shipping: params.shippingFee,
-      total: params.total,
-      currency: 'INR',
-      paymentStatus: effectivePaymentStatus,
-      orderStatus: params.initialOrderStatus,
-      shippingAddress: params.shippingAddress,
-      qrCodeId: qrDocId,
-      printFileReady: true,
-      ...(params.notes ? { internalNotes: params.notes } : {}),
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-  }
-
-  batch.update(doc(db, 'cardDesigns', params.design.designId), {
-    approved: true,
-    locked: true,
-    orderId,
-    updatedAt: serverTimestamp(),
-  });
-
-  if (params.markPaymentCompleted) {
-    const paymentRef = doc(db, 'payments', orderId);
-    const paySnap = await getDoc(paymentRef);
-    if (paySnap.exists()) {
-      batch.update(paymentRef, {
-        status: 'Verified',
-        signatureVerified: true,
-        verifiedAt: new Date().toISOString(),
-      });
-    } else {
-      batch.set(paymentRef, {
-        paymentId: orderId,
-        orderId,
-        uid: params.design.uid,
-        gateway: 'razorpay_sandbox',
-        gatewayOrderId: `admin_direct_${orderNumber}`,
-        gatewayPaymentId: `admin_${Date.now()}`,
-        signatureVerified: true,
-        amount: params.total,
-        currency: 'INR',
-        status: 'Verified',
-        verifiedAt: new Date().toISOString(),
-        createdAt: serverTimestamp(),
-      });
-    }
-  }
-
-  if (params.markPaymentCompleted || params.initialOrderStatus === 'Delivered') {
-    if (params.profile && !params.profile.adminDisabled) {
-      batch.update(doc(db, 'profiles', params.profile.profileId), {
-        paymentConfirmed: true,
-        isPublic: true,
-        updatedAt: serverTimestamp(),
-      });
-    }
-    if (slug) {
-      const pubRef = doc(db, 'publicProfiles', slug);
-      const pubSnap = await getDoc(pubRef);
-      if (pubSnap.exists()) {
-        batch.update(pubRef, {
-          paymentConfirmed: true,
-          isPublic: true,
-          lastPaidOrderId: orderId,
-          updatedAt: serverTimestamp(),
-        });
-      } else if (params.profile) {
-        batch.set(pubRef, {
-          ...buildSanitizedPublicProfile({ ...params.profile, slug, isPublic: true }),
-          paymentConfirmed: true,
-          isPublic: true,
-          lastPaidOrderId: orderId,
-          updatedAt: serverTimestamp(),
-        });
-      }
-    }
-  }
-
-  try {
-    await batch.commit();
-    await recordAuditLog({
-      actorUid: params.actor.uid,
-      actorEmail: params.actor.email,
-      actorRole: params.actor.role,
-      action: 'SEND_DESIGN_TO_PRINT',
-      targetCollection: 'orders',
-      targetId: orderId,
-      details: `Sent design ${params.design.designId} (${orderNumber}) directly to print [${params.printerId}] status=${params.initialOrderStatus}, payment=${effectivePaymentStatus}`,
-    });
-    return { orderId, orderNumber, qrRecord };
-  } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, `orders/${orderId}`);
-  }
-}
-
 // --- QR Codes ---
 export async function getQrCodeById(qrCodeId: string): Promise<QrCodeRecord | null> {
   try {
@@ -2231,47 +1590,6 @@ export async function getAllQrCodes(): Promise<QrCodeRecord[]> {
     return snap.docs.map((d) => d.data() as QrCodeRecord);
   } catch (err) {
     handleFirestoreError(err, OperationType.LIST, 'qrCodes');
-  }
-}
-
-export async function saveAdminQrCode(params: {
-  targetUrl: string;
-  svgContent: string;
-  pngDataUrl: string;
-  customerName?: string;
-  orderId?: string;
-  description?: string;
-  actor: { uid: string; email?: string; role: UserRole };
-}): Promise<QrCodeRecord> {
-  const qrCodeId = `qr_admin_${Date.now()}`;
-  const record: QrCodeRecord = {
-    qrCodeId,
-    orderId: params.orderId || '',
-    targetUrl: params.targetUrl,
-    svgContent: params.svgContent,
-    pngDataUrl: params.pngDataUrl,
-    format: 'PNG_SVG',
-    qrType: 'ADMIN_CUSTOM',
-    customerName: params.customerName || '',
-    description: params.description || '',
-    version: 1,
-    createdBy: params.actor.uid,
-    createdAt: serverTimestamp(),
-  };
-  try {
-    await setDoc(doc(db, 'qrCodes', qrCodeId), record);
-    await recordAuditLog({
-      actorUid: params.actor.uid,
-      actorEmail: params.actor.email,
-      actorRole: params.actor.role,
-      action: 'GENERATE_ADMIN_QR',
-      targetCollection: 'qrCodes',
-      targetId: qrCodeId,
-      details: `Generated QR for URL ${params.targetUrl}`,
-    });
-    return record;
-  } catch (err) {
-    handleFirestoreError(err, OperationType.CREATE, `qrCodes/${qrCodeId}`);
   }
 }
 
@@ -2958,8 +2276,6 @@ export function formatOrderStatusLabel(status: OrderStatus): string {
 
 export const RESETTABLE_OPERATIONAL_COLLECTIONS = [
   'orders',
-  'payments',
-  'qrCodes',
   'shippingRecords',
   'cardDesigns',
   'supportTickets',
@@ -2967,16 +2283,34 @@ export const RESETTABLE_OPERATIONAL_COLLECTIONS = [
   'printers',
   'profiles',
   'publicProfiles',
-  'auditLogs',
+] as const;
+
+export const RETAINED_FACTORY_RESET_COLLECTIONS = [
+  {
+    collection: 'payments',
+    reason: 'Server-only payment ledger is protected from browser deletion and retained for reconciliation.',
+  },
+  {
+    collection: 'qrCodes',
+    reason: 'Server-only QR code artifacts are protected from browser deletion.',
+  },
+  {
+    collection: 'auditLogs',
+    reason: 'Security and administrative audit logs are preserved unconditionally.',
+  },
+  {
+    collection: 'authUsersAndStorage',
+    reason: 'Firebase Authentication logins and Storage QR assets remain intact.',
+  },
 ] as const;
 
 export interface ApplicationResetOptions {
-  includeAuditLogs?: boolean;
   restoreDefaultCatalog?: boolean;
 }
 
 export interface ApplicationResetResult {
   deletedCounts: Record<string, number>;
+  retainedCollections: Array<{ collection: string; reason: string }>;
   localDraftsCleared: number;
   totalDeleted: number;
   errors: Array<{ collection: string; message: string }>;
@@ -3009,17 +2343,12 @@ export async function resetApplicationToFreshBlank(
     throw new Error('Only SuperAdmin accounts can reset all application data.');
   }
 
-  const includeAuditLogs = options.includeAuditLogs ?? true;
   const restoreDefaultCatalog = options.restoreDefaultCatalog ?? true;
 
   const deletedCounts: Record<string, number> = {};
   const errors: Array<{ collection: string; message: string }> = [];
 
-  const operationalTargets = RESETTABLE_OPERATIONAL_COLLECTIONS.filter(
-    (col) => includeAuditLogs || col !== 'auditLogs'
-  );
-
-  for (const col of operationalTargets) {
+  for (const col of RESETTABLE_OPERATIONAL_COLLECTIONS) {
     try {
       deletedCounts[col] = await deleteCollectionDocsInBatches(col);
     } catch (err) {
@@ -3102,21 +2431,21 @@ export async function resetApplicationToFreshBlank(
 
   const localDraftsCleared = clearAllLocalStudioDrafts();
   const totalDeleted = Object.values(deletedCounts).reduce((sum, count) => sum + count, 0);
+  const retainedCollections = RETAINED_FACTORY_RESET_COLLECTIONS.map((item) => ({ ...item }));
 
-  if (!includeAuditLogs) {
-    await recordAuditLog({
-      actorUid: actor.uid,
-      actorEmail: actor.email,
-      actorRole: actor.role,
-      action: 'APPLICATION_FACTORY_RESET',
-      targetCollection: 'system',
-      targetId: 'all',
-      details: `Cleared ${totalDeleted} Firestore records and ${localDraftsCleared} local drafts`,
-    });
-  }
+  await recordAuditLog({
+    actorUid: actor.uid,
+    actorEmail: actor.email,
+    actorRole: actor.role,
+    action: 'APPLICATION_FACTORY_RESET',
+    targetCollection: 'system',
+    targetId: 'operational_reset',
+    details: `Cleared ${totalDeleted} operational Firestore records and ${localDraftsCleared} local drafts; retained payments, qrCodes, and auditLogs.`,
+  });
 
   return {
     deletedCounts,
+    retainedCollections,
     localDraftsCleared,
     totalDeleted,
     errors,

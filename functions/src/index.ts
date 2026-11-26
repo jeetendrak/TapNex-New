@@ -87,18 +87,121 @@ if (db.databaseId !== EXPECTED_FIRESTORE_DATABASE_ID) {
 
 type Role = 'USER' | 'PRINTER' | 'ADMIN' | 'SUPERADMIN';
 
-async function assertRole(uid: string, allowed: Role[]): Promise<Role> {
-  const adminSnap = await db.collection('admins').doc(uid).get();
-  if (adminSnap.exists && adminSnap.data()?.active) {
-    const role = adminSnap.data()?.role as Role;
-    if (allowed.includes(role)) return role;
-  }
+interface CallableAuthContext {
+  uid: string;
+  token?: Record<string, unknown>;
+}
+
+async function assertRole(authInfo: CallableAuthContext, allowed: Role[]): Promise<Role> {
+  const uid = authInfo.uid;
   const userSnap = await db.collection('users').doc(uid).get();
-  const userRole = (userSnap.data()?.role || 'USER') as Role;
-  if (!allowed.includes(userRole)) {
-    throw new HttpsError('permission-denied', `Requires one of roles: ${allowed.join(', ')}`);
+  const userData = userSnap.data();
+  const userStatus = typeof userData?.status === 'string' ? userData.status : '';
+  if (userStatus === 'Blocked' || userStatus === 'Disabled') {
+    throw new HttpsError('permission-denied', 'Account is blocked or disabled.');
   }
-  return userRole;
+
+  const requiresPrivilegedAccount = !allowed.includes('USER');
+  if (requiresPrivilegedAccount && userStatus === 'Pending Verification') {
+    throw new HttpsError('permission-denied', 'Account verification is pending.');
+  }
+
+  const adminSnap = await db.collection('admins').doc(uid).get();
+  let resolvedRole: Role;
+  if (adminSnap.exists) {
+    const adminData = adminSnap.data() || {};
+    if (adminData.active !== true) {
+      throw new HttpsError('permission-denied', 'Admin account is inactive.');
+    }
+    const adminRole = adminData.role as Role;
+    if (adminRole !== 'ADMIN' && adminRole !== 'SUPERADMIN') {
+      throw new HttpsError('permission-denied', 'Admin record has an invalid role.');
+    }
+    if (!allowed.includes(adminRole)) {
+      throw new HttpsError('permission-denied', `Requires one of roles: ${allowed.join(', ')}`);
+    }
+    resolvedRole = adminRole;
+  } else {
+    // Legacy users.role fallback applies only when admins/{uid} does not exist
+    const userRole = (userData?.role || 'USER') as Role;
+    if (!allowed.includes(userRole)) {
+      throw new HttpsError('permission-denied', `Requires one of roles: ${allowed.join(', ')}`);
+    }
+    resolvedRole = userRole;
+  }
+
+  if (resolvedRole === 'ADMIN' || resolvedRole === 'SUPERADMIN') {
+    if (authInfo.token?.email_verified !== true) {
+      throw new HttpsError(
+        'permission-denied',
+        'Verified email session is required for administrator operations.'
+      );
+    }
+  }
+
+  if (resolvedRole === 'PRINTER') {
+    const printerSnap = await db.collection('printers').doc(uid).get();
+    const printerStatus = typeof printerSnap.data()?.status === 'string' ? printerSnap.data()?.status : '';
+    if (
+      printerSnap.exists &&
+      (printerStatus === 'Blocked' ||
+        printerStatus === 'Disabled' ||
+        (requiresPrivilegedAccount && printerStatus === 'Pending Verification'))
+    ) {
+      throw new HttpsError('permission-denied', 'Printer account is blocked, disabled, or pending verification.');
+    }
+  }
+
+  return resolvedRole;
+}
+
+function assertValidDocId(raw: unknown, label: string): string {
+  const clean = typeof raw === 'string' ? raw.trim() : '';
+  if (!clean || clean.length > 128 || !/^[a-zA-Z0-9_-]+$/.test(clean)) {
+    throw new HttpsError('invalid-argument', `Valid ${label} is required.`);
+  }
+  return clean;
+}
+
+function normalizePublicHttpUrl(raw: unknown): string {
+  const trimmed = typeof raw === 'string' ? raw.trim() : '';
+  if (!trimmed || trimmed.length > 2048) {
+    throw new HttpsError('invalid-argument', 'Valid public http/https targetUrl is required.');
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    throw new HttpsError('invalid-argument', 'Invalid targetUrl format.');
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new HttpsError('invalid-argument', 'targetUrl must use http:// or https:// protocol.');
+  }
+  if (!parsed.hostname) {
+    throw new HttpsError('invalid-argument', 'targetUrl must include a valid hostname.');
+  }
+  return parsed.toString();
+}
+
+async function generateServerQrArtwork(params: {
+  targetUrl: string;
+  storagePath?: string;
+}): Promise<{ svgContent: string; pngDataUrl: string }> {
+  const svgContent = await QRCode.toString(params.targetUrl, {
+    type: 'svg',
+    errorCorrectionLevel: 'H',
+    margin: 4,
+  });
+  const pngBuffer = await QRCode.toBuffer(params.targetUrl, {
+    errorCorrectionLevel: 'H',
+    margin: 4,
+    width: 1024,
+  });
+  const pngDataUrl = `data:image/png;base64,${pngBuffer.toString('base64')}`;
+  if (params.storagePath) {
+    await storage.bucket().file(params.storagePath).save(pngBuffer, { contentType: 'image/png' });
+  }
+  return { svgContent, pngDataUrl };
 }
 
 async function writeAuditLog(params: {
@@ -206,7 +309,7 @@ export const bootstrapSuperAdmin = onCall(async (req) => {
 // 3. assignUserRole
 export const assignUserRole = onCall(async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
-  const actorRole = await assertRole(req.auth.uid, ['ADMIN', 'SUPERADMIN']);
+  const actorRole = await assertRole(req.auth, ['ADMIN', 'SUPERADMIN']);
   const { targetUid, newRole } = req.data as { targetUid: string; newRole: Role };
   if (!['USER', 'PRINTER', 'ADMIN', 'SUPERADMIN'].includes(newRole)) {
     throw new HttpsError('invalid-argument', 'Invalid role.');
@@ -247,7 +350,7 @@ export const assignUserRole = onCall(async (req) => {
 // 4. updateUserStatus
 export const updateUserStatus = onCall(async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
-  const actorRole = await assertRole(req.auth.uid, ['ADMIN', 'SUPERADMIN']);
+  const actorRole = await assertRole(req.auth, ['ADMIN', 'SUPERADMIN']);
   const { targetUid, status } = req.data as { targetUid: string; status: string };
   await auth.updateUser(targetUid, { disabled: status === 'Blocked' || status === 'Disabled' });
   await db.collection('users').doc(targetUid).update({ status, updatedAt: FieldValue.serverTimestamp() });
@@ -1877,76 +1980,247 @@ export const razorpayWebhook = onRequest(
 // 9. generatePurchasedQr
 export const generatePurchasedQr = onCall(async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
-  const { orderId } = req.data as { orderId: string };
-  const orderSnap = await db.collection('orders').doc(orderId).get();
-  if (!orderSnap.exists || orderSnap.data()?.paymentStatus !== 'Verified') {
+  const uid = req.auth.uid;
+  const orderId = typeof req.data?.orderId === 'string' ? req.data.orderId.trim() : '';
+  if (!orderId || orderId.length > 128 || orderId.includes('/')) {
+    throw new HttpsError('invalid-argument', 'Valid orderId is required.');
+  }
+
+  const orderRef = db.collection('orders').doc(orderId);
+  const orderSnap = await orderRef.get();
+  if (!orderSnap.exists) {
+    throw new HttpsError('not-found', 'Order not found.');
+  }
+  const orderData = (orderSnap.data() || {}) as Record<string, unknown>;
+  if (orderData.uid !== uid) {
+    throw new HttpsError('permission-denied', 'You do not own this order.');
+  }
+  if (orderData.paymentStatus !== 'Verified') {
     throw new HttpsError('failed-precondition', 'Payment must be verified before QR generation.');
   }
-  const slug = orderSnap.data()?.profileSlug;
-  const targetUrl = `${process.env.APP_URL || 'https://tapnex.in'}/p/${slug}`;
-  const svgContent = await QRCode.toString(targetUrl, { type: 'svg', errorCorrectionLevel: 'H', margin: 4 });
-  const pngBuffer = await QRCode.toBuffer(targetUrl, { errorCorrectionLevel: 'H', margin: 4, width: 1024 });
+
+  let slug = sanitizeSlug(orderData.profileSlug);
+  const isShopOrder = orderData.orderSource === 'shop' || orderData.designId === 'shop_direct';
+  const profileId = typeof orderData.profileId === 'string' ? orderData.profileId.trim() : '';
+
+  if (!slug && profileId && profileId !== 'shop_cart') {
+    const profSnap = await db.collection('profiles').doc(profileId).get();
+    if (profSnap.exists && profSnap.data()?.uid === uid) {
+      slug = sanitizeSlug(profSnap.data()?.slug);
+    }
+  }
+
+  if (
+    !slug ||
+    slug.length < 3 ||
+    slug.length > 64 ||
+    !/^[a-z0-9-]+$/.test(slug) ||
+    slug === 'undefined' ||
+    slug === 'null' ||
+    slug === 'shop-cart' ||
+    (isShopOrder && (!profileId || profileId === 'shop_cart') && !orderData.profileSlug)
+  ) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Order does not have a valid linked profileSlug for QR generation.'
+    );
+  }
+
+  const qrRef = db.collection('qrCodes').doc(orderId);
+  const existingQrSnap = await qrRef.get();
+  if (existingQrSnap.exists) {
+    const existingQr = (existingQrSnap.data() || {}) as Record<string, unknown>;
+    const existingTargetUrl = typeof existingQr.targetUrl === 'string' ? existingQr.targetUrl.trim() : '';
+    if (existingTargetUrl && !existingTargetUrl.endsWith('/p/undefined')) {
+      if (orderData.qrCodeId !== orderId) {
+        await orderRef.update({
+          qrCodeId: orderId,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+      return { qrCodeId: orderId, targetUrl: existingTargetUrl, alreadyExists: true };
+    }
+  }
+
+  const baseUrl = (process.env.APP_URL || 'https://tapnex.in').replace(/\/+$/, '');
+  const targetUrl = `${baseUrl}/p/${slug}`;
+  const svgContent = await QRCode.toString(targetUrl, {
+    type: 'svg',
+    errorCorrectionLevel: 'H',
+    margin: 4,
+  });
+  const pngBuffer = await QRCode.toBuffer(targetUrl, {
+    errorCorrectionLevel: 'H',
+    margin: 4,
+    width: 1024,
+  });
+  const pngDataUrl = `data:image/png;base64,${pngBuffer.toString('base64')}`;
   const storagePath = `qrCodes/${orderId}/qr.png`;
   await storage.bucket().file(storagePath).save(pngBuffer, { contentType: 'image/png' });
-  const qrRef = db.collection('qrCodes').doc(orderId);
-  await qrRef.set({
-    qrCodeId: orderId,
-    uid: orderSnap.data()?.uid,
-    orderId,
-    printerId: orderSnap.data()?.printerId || '',
-    targetUrl,
-    svgContent,
-    storagePath,
-    format: 'PNG_SVG',
-    qrType: 'CUSTOMER_ORDER',
-    version: 1,
-    createdBy: req.auth.uid,
-    createdAt: FieldValue.serverTimestamp(),
+
+  const txOutcome = await db.runTransaction(async (tx) => {
+    const [latestOrderSnap, latestQrSnap] = await Promise.all([tx.get(orderRef), tx.get(qrRef)]);
+    if (!latestOrderSnap.exists) {
+      throw new HttpsError('not-found', 'Order not found.');
+    }
+    const latestOrder = (latestOrderSnap.data() || {}) as Record<string, unknown>;
+    if (latestOrder.uid !== uid) {
+      throw new HttpsError('permission-denied', 'You do not own this order.');
+    }
+    if (latestOrder.paymentStatus !== 'Verified') {
+      throw new HttpsError('failed-precondition', 'Payment must be verified before QR generation.');
+    }
+
+    const now = FieldValue.serverTimestamp();
+    if (latestQrSnap.exists) {
+      const existingData = (latestQrSnap.data() || {}) as Record<string, unknown>;
+      const existingUrl = typeof existingData.targetUrl === 'string' ? existingData.targetUrl.trim() : '';
+      if (existingUrl && !existingUrl.endsWith('/p/undefined')) {
+        if (latestOrder.qrCodeId !== orderId) {
+          tx.update(orderRef, {
+            qrCodeId: orderId,
+            updatedAt: now,
+          });
+        }
+        return { qrCodeId: orderId, targetUrl: existingUrl, alreadyExists: true };
+      }
+    }
+
+    tx.set(qrRef, {
+      qrCodeId: orderId,
+      uid: latestOrder.uid,
+      orderId,
+      printerId: typeof latestOrder.printerId === 'string' ? latestOrder.printerId : '',
+      targetUrl,
+      svgContent,
+      pngDataUrl,
+      storagePath,
+      format: 'PNG_SVG',
+      qrType: 'CUSTOMER_ORDER',
+      version: 1,
+      createdBy: uid,
+      createdAt: now,
+    });
+    tx.update(orderRef, {
+      qrCodeId: orderId,
+      printFileReady: true,
+      updatedAt: now,
+    });
+    return { qrCodeId: orderId, targetUrl, alreadyExists: false };
   });
-  return { qrCodeId: orderId, targetUrl };
+
+  return txOutcome;
 });
+
+const ALL_ORDER_STATUSES = new Set([
+  'Design Pending',
+  'Design Approved',
+  'Awaiting Payment',
+  'Payment Successful',
+  'Processing',
+  'Assigned to Printer',
+  'Printing in Progress',
+  'Quality Check',
+  'Ready for Dispatch',
+  'Dispatched',
+  'In Transit',
+  'Delivered',
+  'Cancelled',
+  'Refunded',
+]);
+
+const PRINTER_ALLOWED_ORDER_STATUSES = new Set([
+  'Processing',
+  'Assigned to Printer',
+  'Printing in Progress',
+  'Quality Check',
+  'Ready for Dispatch',
+  'Dispatched',
+  'In Transit',
+  'Delivered',
+]);
+
+const ALLOWED_RECONCILE_PAYMENT_STATUSES = new Set([
+  'Pending',
+  'Completed',
+  'Verified',
+  'Rejected',
+  'Failed',
+  'Refunded',
+]);
 
 // 10. generateAdminQr
 export const generateAdminQr = onCall(async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
-  const actorRole = await assertRole(req.auth.uid, ['SUPERADMIN', 'ADMIN']);
-  const { targetUrl, customerName, orderId, description } = req.data as {
-    targetUrl: string;
-    customerName?: string;
-    orderId?: string;
-    description?: string;
+  const actorRole = await assertRole(req.auth, ['SUPERADMIN', 'ADMIN']);
+  const actorEmail = typeof req.auth.token?.email === 'string' ? req.auth.token.email : '';
+  const data = (req.data || {}) as {
+    targetUrl?: unknown;
+    customerName?: unknown;
+    orderId?: unknown;
+    description?: unknown;
   };
-  const svgContent = await QRCode.toString(targetUrl, { type: 'svg', errorCorrectionLevel: 'H', margin: 4 });
+
+  const targetUrl = normalizePublicHttpUrl(data.targetUrl);
+  const customerName = typeof data.customerName === 'string' ? data.customerName.trim().slice(0, 120) : '';
+  const orderId = typeof data.orderId === 'string' ? data.orderId.trim().slice(0, 128) : '';
+  if (orderId.includes('/')) {
+    throw new HttpsError('invalid-argument', 'orderId reference cannot contain "/".');
+  }
+  const description = typeof data.description === 'string' ? data.description.trim().slice(0, 400) : '';
+
   const qrRef = db.collection('qrCodes').doc();
+  const storagePath = `qrCodes/${qrRef.id}/qr.png`;
+  const { svgContent, pngDataUrl } = await generateServerQrArtwork({ targetUrl, storagePath });
+
+  const now = FieldValue.serverTimestamp();
   await qrRef.set({
     qrCodeId: qrRef.id,
-    orderId: orderId || '',
+    orderId,
     targetUrl,
     svgContent,
+    pngDataUrl,
+    storagePath,
     format: 'PNG_SVG',
     qrType: 'ADMIN_CUSTOM',
-    customerName: customerName || '',
-    description: description || '',
+    customerName,
+    description,
     version: 1,
     createdBy: req.auth.uid,
-    createdAt: FieldValue.serverTimestamp(),
+    createdAt: now,
   });
+
   await writeAuditLog({
     actorUid: req.auth.uid,
+    actorEmail,
     actorRole,
     action: 'GENERATE_ADMIN_QR',
     targetCollection: 'qrCodes',
     targetId: qrRef.id,
-    details: `Generated QR for ${targetUrl}`,
+    details: `Generated admin QR for ${targetUrl}`,
   });
-  return { qrCodeId: qrRef.id, svgContent };
+
+  return {
+    qrCodeId: qrRef.id,
+    orderId,
+    targetUrl,
+    svgContent,
+    pngDataUrl,
+    storagePath,
+    format: 'PNG_SVG',
+    qrType: 'ADMIN_CUSTOM',
+    customerName,
+    description,
+    version: 1,
+    createdBy: req.auth.uid,
+  };
 });
 
 // 11. generatePrintReadyPdf (Exact 85.6x54mm + 3mm bleed)
 export const generatePrintReadyPdf = onCall(async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
-  await assertRole(req.auth.uid, ['PRINTER', 'ADMIN', 'SUPERADMIN']);
-  const { orderId } = req.data as { orderId: string };
+  await assertRole(req.auth, ['PRINTER', 'ADMIN', 'SUPERADMIN']);
+  const orderId = assertValidDocId((req.data as { orderId?: unknown })?.orderId, 'orderId');
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [91.6, 60] });
   doc.setFillColor(11, 29, 58);
   doc.rect(0, 0, 91.6, 60, 'F');
@@ -1963,40 +2237,106 @@ export const generatePrintReadyPdf = onCall(async (req) => {
 // 12. assignPrinter
 export const assignPrinter = onCall(async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
-  const actorRole = await assertRole(req.auth.uid, ['ADMIN', 'SUPERADMIN']);
-  const { orderId, printerId } = req.data as { orderId: string; printerId: string };
-  await db.collection('orders').doc(orderId).update({
-    printerId,
-    orderStatus: 'Assigned to Printer',
-    updatedAt: FieldValue.serverTimestamp(),
+  const actorRole = await assertRole(req.auth, ['ADMIN', 'SUPERADMIN']);
+  const actorEmail = typeof req.auth.token?.email === 'string' ? req.auth.token.email : '';
+  const data = (req.data || {}) as { orderId?: unknown; printerId?: unknown };
+  const orderId = assertValidDocId(data.orderId, 'orderId');
+  const printerId = assertValidDocId(data.printerId, 'printerId');
+
+  if (printerId !== 'admin_inhouse') {
+    const printerSnap = await db.collection('printers').doc(printerId).get();
+    if (!printerSnap.exists || printerSnap.data()?.status !== 'Active') {
+      throw new HttpsError('failed-precondition', `Printer ${printerId} is not active.`);
+    }
+  }
+
+  const orderRef = db.collection('orders').doc(orderId);
+  const qrRef = db.collection('qrCodes').doc(orderId);
+
+  const result = await db.runTransaction(async (tx) => {
+    const [orderSnap, qrSnap] = await Promise.all([tx.get(orderRef), tx.get(qrRef)]);
+    if (!orderSnap.exists) {
+      throw new HttpsError('not-found', `Order ${orderId} not found.`);
+    }
+    const existingOrder = (orderSnap.data() || {}) as Record<string, unknown>;
+    const currentStatus = String(existingOrder.orderStatus || '');
+    const preserveStatuses = new Set([
+      'Printing in Progress',
+      'Quality Check',
+      'Ready for Dispatch',
+      'Dispatched',
+      'In Transit',
+      'Delivered',
+      'Cancelled',
+      'Refunded',
+    ]);
+    const nextOrderStatus = preserveStatuses.has(currentStatus) ? currentStatus : 'Assigned to Printer';
+    const now = FieldValue.serverTimestamp();
+
+    tx.update(orderRef, {
+      printerId,
+      orderStatus: nextOrderStatus,
+      updatedAt: now,
+    });
+    if (qrSnap.exists) {
+      tx.update(qrRef, { printerId });
+    }
+    return { orderId, printerId, orderStatus: nextOrderStatus };
   });
-  await db.collection('qrCodes').doc(orderId).update({ printerId }).catch(() => null);
+
   await writeAuditLog({
     actorUid: req.auth.uid,
+    actorEmail,
     actorRole,
     action: 'ASSIGN_PRINTER',
     targetCollection: 'orders',
     targetId: orderId,
-    details: `Assigned to printer ${printerId}`,
+    details: `Assigned to printer ${printerId} (status=${result.orderStatus})`,
   });
-  return { orderId, printerId };
+  return result;
 });
 
 // 13. updateOrderStatus
 export const updateOrderStatus = onCall(async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
-  const actorRole = await assertRole(req.auth.uid, ['PRINTER', 'ADMIN', 'SUPERADMIN']);
-  const { orderId, orderStatus } = req.data as { orderId: string; orderStatus: string };
-  const orderSnap = await db.collection('orders').doc(orderId).get();
+  const actorRole = await assertRole(req.auth, ['PRINTER', 'ADMIN', 'SUPERADMIN']);
+  const actorEmail = typeof req.auth.token?.email === 'string' ? req.auth.token.email : '';
+  const data = (req.data || {}) as { orderId?: unknown; orderStatus?: unknown };
+  const orderId = assertValidDocId(data.orderId, 'orderId');
+  const orderStatus = typeof data.orderStatus === 'string' ? data.orderStatus.trim() : '';
+
+  if (!ALL_ORDER_STATUSES.has(orderStatus)) {
+    throw new HttpsError('invalid-argument', `Unsupported orderStatus "${orderStatus}".`);
+  }
+  if (orderStatus === 'Payment Successful' || orderStatus === 'Refunded') {
+    throw new HttpsError(
+      'failed-precondition',
+      `Status "${orderStatus}" affects payment state and must be updated via payment verification or adminReconcileOrderPayment.`
+    );
+  }
+  if (actorRole === 'PRINTER' && !PRINTER_ALLOWED_ORDER_STATUSES.has(orderStatus)) {
+    throw new HttpsError(
+      'permission-denied',
+      `Printer role is not allowed to set orderStatus "${orderStatus}".`
+    );
+  }
+
+  const orderRef = db.collection('orders').doc(orderId);
+  const orderSnap = await orderRef.get();
+  if (!orderSnap.exists) {
+    throw new HttpsError('not-found', `Order ${orderId} not found.`);
+  }
   if (actorRole === 'PRINTER' && orderSnap.data()?.printerId !== req.auth.uid) {
     throw new HttpsError('permission-denied', 'Printer can only update assigned orders.');
   }
-  await db.collection('orders').doc(orderId).update({
+
+  await orderRef.update({
     orderStatus,
     updatedAt: FieldValue.serverTimestamp(),
   });
   await writeAuditLog({
     actorUid: req.auth.uid,
+    actorEmail,
     actorRole,
     action: 'UPDATE_ORDER_STATUS',
     targetCollection: 'orders',
@@ -2004,6 +2344,837 @@ export const updateOrderStatus = onCall(async (req) => {
     details: `Order status set to ${orderStatus}`,
   });
   return { orderId, orderStatus };
+});
+
+// 20. adminReconcileOrderPayment (Explicit, audited server-only payment reconciliation)
+export const adminReconcileOrderPayment = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
+  const actorRole = await assertRole(req.auth, ['ADMIN', 'SUPERADMIN']);
+  const actorEmail = typeof req.auth.token?.email === 'string' ? req.auth.token.email : '';
+  const data = (req.data || {}) as {
+    orderId?: unknown;
+    paymentStatus?: unknown;
+    orderStatus?: unknown;
+    reason?: unknown;
+    gatewayReference?: unknown;
+  };
+
+  const orderId = assertValidDocId(data.orderId, 'orderId');
+  const paymentStatus = typeof data.paymentStatus === 'string' ? data.paymentStatus.trim() : '';
+  if (!ALLOWED_RECONCILE_PAYMENT_STATUSES.has(paymentStatus)) {
+    throw new HttpsError('invalid-argument', `Invalid paymentStatus "${paymentStatus}".`);
+  }
+
+  const requestedOrderStatus =
+    typeof data.orderStatus === 'string' && data.orderStatus.trim() ? data.orderStatus.trim() : '';
+  if (requestedOrderStatus && !ALL_ORDER_STATUSES.has(requestedOrderStatus)) {
+    throw new HttpsError('invalid-argument', `Invalid orderStatus "${requestedOrderStatus}".`);
+  }
+
+  const cleanReason = typeof data.reason === 'string' ? data.reason.trim().slice(0, 400) : '';
+  if (cleanReason.length < 3) {
+    throw new HttpsError(
+      'invalid-argument',
+      'An explicit reconciliation reason (at least 3 characters) is required.'
+    );
+  }
+  const cleanGatewayRef =
+    typeof data.gatewayReference === 'string' ? data.gatewayReference.trim().slice(0, 128) : '';
+
+  const orderRef = db.collection('orders').doc(orderId);
+  const paymentRef = db.collection('payments').doc(orderId);
+
+  const txResult = await db.runTransaction(async (tx) => {
+    const [orderSnap, paymentSnap] = await Promise.all([tx.get(orderRef), tx.get(paymentRef)]);
+    if (!orderSnap.exists) {
+      throw new HttpsError('not-found', `Order ${orderId} not found.`);
+    }
+    const orderData = (orderSnap.data() || {}) as Record<string, unknown>;
+    const existingPaymentData = (paymentSnap.data() || {}) as Record<string, unknown>;
+
+    const profileId = typeof orderData.profileId === 'string' ? orderData.profileId.trim() : '';
+    const profileRef =
+      profileId && profileId !== 'shop_cart' && /^[a-zA-Z0-9_-]+$/.test(profileId)
+        ? db.collection('profiles').doc(profileId)
+        : null;
+    const profileSnap = profileRef ? await tx.get(profileRef) : null;
+
+    const resolvedSlug = sanitizeSlug(
+      orderData.profileSlug || (profileSnap?.exists ? profileSnap.data()?.slug : '')
+    );
+    const publicProfileRef = resolvedSlug ? db.collection('publicProfiles').doc(resolvedSlug) : null;
+    const publicProfileSnap = publicProfileRef ? await tx.get(publicProfileRef) : null;
+
+    const currentPaymentStatus = String(orderData.paymentStatus || 'Pending');
+    const currentOrderStatus = String(orderData.orderStatus || 'Awaiting Payment');
+    const isPaid = paymentStatus === 'Verified' || paymentStatus === 'Completed';
+
+    const nextOrderStatus = requestedOrderStatus
+      ? requestedOrderStatus
+      : isPaid
+        ? currentOrderStatus === 'Awaiting Payment' ||
+          currentOrderStatus === 'Design Pending' ||
+          currentOrderStatus === 'Design Approved'
+          ? 'Payment Successful'
+          : currentOrderStatus
+        : paymentStatus === 'Refunded'
+          ? 'Refunded'
+          : paymentStatus === 'Rejected'
+            ? 'Cancelled'
+            : currentOrderStatus;
+
+    const now = FieldValue.serverTimestamp();
+    const totalInr = typeof orderData.total === 'number' && Number.isFinite(orderData.total) ? orderData.total : 0;
+    const amountPaise = Math.round(totalInr * 100);
+
+    tx.update(orderRef, {
+      paymentStatus,
+      orderStatus: nextOrderStatus,
+      updatedAt: now,
+    });
+
+    tx.set(
+      paymentRef,
+      {
+        paymentId: orderId,
+        orderId,
+        uid: orderData.uid || '',
+        gateway:
+          typeof existingPaymentData.gateway === 'string' && existingPaymentData.gateway
+            ? existingPaymentData.gateway
+            : 'razorpay_live',
+        gatewayOrderId:
+          cleanGatewayRef ||
+          (typeof existingPaymentData.gatewayOrderId === 'string' && existingPaymentData.gatewayOrderId) ||
+          (typeof orderData.razorpayOrderId === 'string' && orderData.razorpayOrderId) ||
+          `admin_reconcile_${orderId}`,
+        signatureVerified: Boolean(existingPaymentData.signatureVerified),
+        amount: totalInr,
+        amountPaise,
+        currency: 'INR',
+        status: paymentStatus,
+        verifiedVia: 'adminReconciliation',
+        reconciledByUid: req.auth!.uid,
+        reconciledByEmail: actorEmail,
+        reconciliationReason: cleanReason,
+        ...(isPaid ? { verifiedAt: now } : {}),
+        updatedAt: now,
+        ...(paymentSnap.exists ? {} : { createdAt: now }),
+      },
+      { merge: true }
+    );
+
+    if (profileRef && profileSnap?.exists) {
+      const profileData = (profileSnap.data() || {}) as Record<string, unknown>;
+      if (isPaid && !profileData.adminDisabled) {
+        tx.update(profileRef, {
+          paymentConfirmed: true,
+          isPublic: true,
+          updatedAt: now,
+        });
+      } else if (!isPaid && profileData.paymentConfirmed) {
+        tx.update(profileRef, {
+          paymentConfirmed: false,
+          updatedAt: now,
+        });
+      }
+    }
+
+    if (publicProfileRef && publicProfileSnap?.exists) {
+      const pubData = (publicProfileSnap.data() || {}) as Record<string, unknown>;
+      if (isPaid && !pubData.adminDisabled) {
+        tx.update(publicProfileRef, {
+          paymentConfirmed: true,
+          isPublic: true,
+          lastPaidOrderId: orderId,
+          updatedAt: now,
+        });
+      } else if (!isPaid) {
+        tx.update(publicProfileRef, {
+          paymentConfirmed: false,
+          lastPaidOrderId: '',
+          updatedAt: now,
+        });
+      }
+    }
+
+    return {
+      orderId,
+      orderNumber: String(orderData.orderNumber || orderId),
+      previousPaymentStatus: currentPaymentStatus,
+      previousOrderStatus: currentOrderStatus,
+      paymentStatus,
+      orderStatus: nextOrderStatus,
+    };
+  });
+
+  await writeAuditLog({
+    actorUid: req.auth.uid,
+    actorEmail,
+    actorRole,
+    action: 'ADMIN_RECONCILE_ORDER_PAYMENT',
+    targetCollection: 'orders',
+    targetId: orderId,
+    details: `Order ${txResult.orderNumber}: paymentStatus ${txResult.previousPaymentStatus} -> ${txResult.paymentStatus}, orderStatus ${txResult.previousOrderStatus} -> ${txResult.orderStatus}. Reason: ${cleanReason}`,
+  });
+
+  return {
+    orderId: txResult.orderId,
+    paymentStatus: txResult.paymentStatus,
+    orderStatus: txResult.orderStatus,
+  };
+});
+
+// 21. adminReconcileProfilePayment (Server-only profile unlock/revoke for verified admin)
+export const adminReconcileProfilePayment = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
+  const actorRole = await assertRole(req.auth, ['ADMIN', 'SUPERADMIN']);
+  const actorEmail = typeof req.auth.token?.email === 'string' ? req.auth.token.email : '';
+  const data = (req.data || {}) as {
+    profileId?: unknown;
+    completed?: unknown;
+    reference?: unknown;
+    reason?: unknown;
+  };
+
+  const profileId = assertValidDocId(data.profileId, 'profileId');
+  const completed = data.completed === undefined ? true : Boolean(data.completed);
+  const reference = typeof data.reference === 'string' ? data.reference.trim().slice(0, 128) : '';
+  const reason =
+    typeof data.reason === 'string' && data.reason.trim()
+      ? data.reason.trim().slice(0, 400)
+      : completed
+        ? 'Admin profile payment reconciliation'
+        : 'Admin revoked profile payment status';
+
+  const profileRef = db.collection('profiles').doc(profileId);
+  const completedAt = completed ? new Date().toISOString() : '';
+
+  const outcome = await db.runTransaction(async (tx) => {
+    const profileSnap = await tx.get(profileRef);
+    if (!profileSnap.exists) {
+      throw new HttpsError('not-found', `Profile ${profileId} not found.`);
+    }
+    const profileData = (profileSnap.data() || {}) as Record<string, unknown>;
+    const slug = sanitizeSlug(profileData.slug);
+    const pubRef = slug ? db.collection('publicProfiles').doc(slug) : null;
+    const pubSnap = pubRef ? await tx.get(pubRef) : null;
+
+    const now = FieldValue.serverTimestamp();
+    const nextIsPublic = completed && !profileData.adminDisabled ? true : Boolean(profileData.isPublic);
+
+    tx.update(profileRef, {
+      paymentConfirmed: completed,
+      paymentCompletedAt: completedAt,
+      paymentReference: reference,
+      isPublic: nextIsPublic,
+      updatedAt: now,
+    });
+
+    if (pubRef && pubSnap?.exists) {
+      tx.update(pubRef, {
+        paymentConfirmed: completed,
+        paymentCompletedAt: completedAt,
+        isPublic: completed && !pubSnap.data()?.adminDisabled ? true : Boolean(pubSnap.data()?.isPublic),
+        updatedAt: now,
+      });
+    } else if (pubRef) {
+      tx.set(pubRef, {
+        slug,
+        profileId,
+        uid: profileData.uid || '',
+        profileType: profileData.profileType || 'adult',
+        isPublic: nextIsPublic,
+        personalInformation: profileData.personalInformation || {},
+        socialLinks: Array.isArray(profileData.socialLinks) ? profileData.socialLinks : [],
+        customFields: Array.isArray(profileData.customFields) ? profileData.customFields : [],
+        themeColor: '#0B1D3A',
+        paymentConfirmed: completed,
+        paymentCompletedAt: completedAt,
+        adminDisabled: Boolean(profileData.adminDisabled),
+        adminApproved: Boolean(profileData.adminApproved),
+        updatedAt: now,
+      });
+    }
+
+    return {
+      profileId,
+      slug,
+      previousPaymentConfirmed: Boolean(profileData.paymentConfirmed),
+      paymentConfirmed: completed,
+      paymentCompletedAt: completedAt,
+      paymentReference: reference,
+      isPublic: nextIsPublic,
+    };
+  });
+
+  await writeAuditLog({
+    actorUid: req.auth.uid,
+    actorEmail,
+    actorRole,
+    action: completed ? 'MARK_PROFILE_PAYMENT_COMPLETED' : 'REVOKE_PROFILE_PAYMENT_STATUS',
+    targetCollection: 'profiles',
+    targetId: profileId,
+    details: `/p/${outcome.slug}: paymentConfirmed ${outcome.previousPaymentConfirmed} -> ${completed}${reference ? ` (Ref: ${reference})` : ''}. Reason: ${reason}`,
+  });
+
+  return {
+    profileId: outcome.profileId,
+    slug: outcome.slug,
+    paymentConfirmed: outcome.paymentConfirmed,
+    paymentCompletedAt: outcome.paymentCompletedAt,
+    paymentReference: outcome.paymentReference,
+    isPublic: outcome.isPublic,
+  };
+});
+
+// 22. adminEnsureOrderQr (Admin server-only CUSTOMER_ORDER QR preparation for paid orders)
+export const adminEnsureOrderQr = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
+  const actorRole = await assertRole(req.auth, ['ADMIN', 'SUPERADMIN']);
+  const actorEmail = typeof req.auth.token?.email === 'string' ? req.auth.token.email : '';
+  const orderId = assertValidDocId((req.data as { orderId?: unknown })?.orderId, 'orderId');
+
+  const orderRef = db.collection('orders').doc(orderId);
+  const orderSnap = await orderRef.get();
+  if (!orderSnap.exists) {
+    throw new HttpsError('not-found', `Order ${orderId} not found.`);
+  }
+  const orderData = (orderSnap.data() || {}) as Record<string, unknown>;
+  const paymentStatus = String(orderData.paymentStatus || '');
+  if (paymentStatus !== 'Verified' && paymentStatus !== 'Completed') {
+    throw new HttpsError(
+      'failed-precondition',
+      `Order ${orderId} paymentStatus is "${paymentStatus}". Payment must be Verified or Completed before generating CUSTOMER_ORDER QR artwork.`
+    );
+  }
+
+  let slug = sanitizeSlug(orderData.profileSlug);
+  const profileId = typeof orderData.profileId === 'string' ? orderData.profileId.trim() : '';
+  if (!slug && profileId && profileId !== 'shop_cart') {
+    const profSnap = await db.collection('profiles').doc(profileId).get();
+    if (profSnap.exists) {
+      slug = sanitizeSlug(profSnap.data()?.slug);
+    }
+  }
+  if (!slug || slug.length < 3 || slug.length > 64 || !/^[a-z0-9-]+$/.test(slug) || slug === 'undefined' || slug === 'null' || slug === 'shop-cart') {
+    throw new HttpsError(
+      'failed-precondition',
+      `Order ${orderId} is missing a valid linked profileSlug for QR generation.`
+    );
+  }
+
+  const qrRef = db.collection('qrCodes').doc(orderId);
+  const existingQrSnap = await qrRef.get();
+  if (existingQrSnap.exists) {
+    const existingQr = (existingQrSnap.data() || {}) as Record<string, unknown>;
+    const existingTargetUrl = typeof existingQr.targetUrl === 'string' ? existingQr.targetUrl.trim() : '';
+    const existingPng = typeof existingQr.pngDataUrl === 'string' ? existingQr.pngDataUrl : '';
+    const existingSvg = typeof existingQr.svgContent === 'string' ? existingQr.svgContent : '';
+    if (existingTargetUrl && !existingTargetUrl.endsWith('/p/undefined') && existingPng && existingSvg) {
+      if (orderData.qrCodeId !== orderId || orderData.printFileReady !== true) {
+        await orderRef.update({
+          qrCodeId: orderId,
+          printFileReady: true,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+      return {
+        qrCodeId: orderId,
+        uid: String(existingQr.uid || orderData.uid || ''),
+        orderId,
+        printerId: String(existingQr.printerId || orderData.printerId || ''),
+        targetUrl: existingTargetUrl,
+        svgContent: existingSvg,
+        pngDataUrl: existingPng,
+        storagePath: String(existingQr.storagePath || `qrCodes/${orderId}/qr.png`),
+        format: 'PNG_SVG',
+        qrType: String(existingQr.qrType || 'CUSTOMER_ORDER'),
+        version: Number(existingQr.version || 1),
+        createdBy: String(existingQr.createdBy || req.auth.uid),
+        alreadyExists: true,
+      };
+    }
+  }
+
+  const baseUrl = (process.env.APP_URL || 'https://tapnex.in').replace(/\/+$/, '');
+  const targetUrl = `${baseUrl}/p/${slug}`;
+  const storagePath = `qrCodes/${orderId}/qr.png`;
+  const { svgContent, pngDataUrl } = await generateServerQrArtwork({ targetUrl, storagePath });
+
+  const txOutcome = await db.runTransaction(async (tx) => {
+    const [latestOrderSnap, latestQrSnap] = await Promise.all([tx.get(orderRef), tx.get(qrRef)]);
+    if (!latestOrderSnap.exists) {
+      throw new HttpsError('not-found', `Order ${orderId} not found.`);
+    }
+    const latestOrder = (latestOrderSnap.data() || {}) as Record<string, unknown>;
+    const latestPay = String(latestOrder.paymentStatus || '');
+    if (latestPay !== 'Verified' && latestPay !== 'Completed') {
+      throw new HttpsError(
+        'failed-precondition',
+        'Order payment must be Verified or Completed before QR generation.'
+      );
+    }
+
+    const now = FieldValue.serverTimestamp();
+    if (latestQrSnap.exists) {
+      const existingData = (latestQrSnap.data() || {}) as Record<string, unknown>;
+      const existingUrl = typeof existingData.targetUrl === 'string' ? existingData.targetUrl.trim() : '';
+      const exPng = typeof existingData.pngDataUrl === 'string' ? existingData.pngDataUrl : '';
+      if (existingUrl && !existingUrl.endsWith('/p/undefined') && exPng) {
+        if (latestOrder.qrCodeId !== orderId || latestOrder.printFileReady !== true) {
+          tx.update(orderRef, {
+            qrCodeId: orderId,
+            printFileReady: true,
+            updatedAt: now,
+          });
+        }
+        return {
+          qrCodeId: orderId,
+          uid: String(existingData.uid || latestOrder.uid || ''),
+          orderId,
+          printerId: String(existingData.printerId || latestOrder.printerId || ''),
+          targetUrl: existingUrl,
+          svgContent: String(existingData.svgContent || svgContent),
+          pngDataUrl: exPng,
+          storagePath: String(existingData.storagePath || storagePath),
+          format: 'PNG_SVG' as const,
+          qrType: String(existingData.qrType || 'CUSTOMER_ORDER'),
+          version: Number(existingData.version || 1),
+          createdBy: String(existingData.createdBy || req.auth!.uid),
+          alreadyExists: true,
+        };
+      }
+    }
+
+    const qrDocPayload = {
+      qrCodeId: orderId,
+      uid: String(latestOrder.uid || ''),
+      orderId,
+      printerId: typeof latestOrder.printerId === 'string' ? latestOrder.printerId : '',
+      targetUrl,
+      svgContent,
+      pngDataUrl,
+      storagePath,
+      format: 'PNG_SVG' as const,
+      qrType: 'CUSTOMER_ORDER' as const,
+      version: 1,
+      createdBy: req.auth!.uid,
+      createdAt: now,
+    };
+
+    tx.set(qrRef, qrDocPayload);
+    tx.update(orderRef, {
+      qrCodeId: orderId,
+      printFileReady: true,
+      updatedAt: now,
+    });
+
+    return {
+      ...qrDocPayload,
+      createdAt: new Date().toISOString(),
+      alreadyExists: false,
+    };
+  });
+
+  if (!txOutcome.alreadyExists) {
+    await writeAuditLog({
+      actorUid: req.auth.uid,
+      actorEmail,
+      actorRole,
+      action: 'GENERATE_ORDER_QR',
+      targetCollection: 'qrCodes',
+      targetId: orderId,
+      details: `Prepared verified print QR for order ${String(orderData.orderNumber || orderId)} (${txOutcome.targetUrl})`,
+    });
+  }
+
+  return txOutcome;
+});
+
+// 23. adminSendDesignToPrint (Server-authoritative direct-to-print order + QR for verified paid orders or explicit complimentary runs)
+export const adminSendDesignToPrint = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
+  const actorRole = await assertRole(req.auth, ['ADMIN', 'SUPERADMIN']);
+  const actorEmail = typeof req.auth.token?.email === 'string' ? req.auth.token.email : '';
+  const data = (req.data || {}) as {
+    designId?: unknown;
+    orderId?: unknown;
+    printerId?: unknown;
+    initialOrderStatus?: unknown;
+    cardType?: unknown;
+    quantity?: unknown;
+    markPaymentCompleted?: unknown;
+    complimentary?: unknown;
+    complimentaryReason?: unknown;
+    shippingAddress?: Record<string, unknown>;
+    notes?: unknown;
+  };
+
+  if (data.markPaymentCompleted !== undefined) {
+    throw new HttpsError(
+      'invalid-argument',
+      'markPaymentCompleted is no longer supported; use adminReconcileOrderPayment to verify payments or pass complimentary=true with complimentaryReason for unpaid complimentary runs.'
+    );
+  }
+
+  const designId = assertValidDocId(data.designId, 'designId');
+  const existingOrderId =
+    typeof data.orderId === 'string' && data.orderId.trim()
+      ? assertValidDocId(data.orderId, 'orderId')
+      : '';
+  const printerId = assertValidDocId(data.printerId || 'admin_inhouse', 'printerId');
+  const initialOrderStatus =
+    typeof data.initialOrderStatus === 'string' && data.initialOrderStatus.trim()
+      ? data.initialOrderStatus.trim()
+      : 'Assigned to Printer';
+  if (!ALL_ORDER_STATUSES.has(initialOrderStatus) || initialOrderStatus === 'Payment Successful' || initialOrderStatus === 'Refunded') {
+    throw new HttpsError('invalid-argument', `Invalid initialOrderStatus "${initialOrderStatus}".`);
+  }
+
+  const quantity = Number(data.quantity ?? 1);
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 500) {
+    throw new HttpsError('invalid-argument', 'Quantity must be an integer between 1 and 500.');
+  }
+
+  const complimentary = data.complimentary === true;
+  const complimentaryReason =
+    typeof data.complimentaryReason === 'string' ? data.complimentaryReason.trim().slice(0, 500) : '';
+  if (data.complimentary !== undefined && typeof data.complimentary !== 'boolean') {
+    throw new HttpsError('invalid-argument', 'complimentary must be a boolean.');
+  }
+
+  const rawAddr = (data.shippingAddress || {}) as Record<string, unknown>;
+  const shippingAddress = {
+    fullName: String(rawAddr.fullName || '').trim().slice(0, 120),
+    mobile: String(rawAddr.mobile || '').trim().slice(0, 30),
+    email: String(rawAddr.email || '').trim().slice(0, 254),
+    addressLine1: String(rawAddr.addressLine1 || '').trim().slice(0, 300),
+    addressLine2: String(rawAddr.addressLine2 || '').trim().slice(0, 300),
+    city: String(rawAddr.city || '').trim().slice(0, 100),
+    state: String(rawAddr.state || 'Maharashtra').trim().slice(0, 100),
+    pinCode: String(rawAddr.pinCode || '').trim().slice(0, 20),
+    country: String(rawAddr.country || 'India').trim().slice(0, 80),
+  };
+  if (!shippingAddress.fullName || !shippingAddress.mobile || !shippingAddress.email || !shippingAddress.addressLine1 || !shippingAddress.city || !shippingAddress.pinCode) {
+    throw new HttpsError('invalid-argument', 'Complete recipient shippingAddress is required.');
+  }
+  const notes = typeof data.notes === 'string' ? data.notes.trim().slice(0, 2000) : undefined;
+
+  if (printerId !== 'admin_inhouse') {
+    const printerSnap = await db.collection('printers').doc(printerId).get();
+    if (!printerSnap.exists || printerSnap.data()?.status !== 'Active') {
+      throw new HttpsError('failed-precondition', `Printer ${printerId} is not active.`);
+    }
+  }
+
+  const designSnap = await db.collection('cardDesigns').doc(designId).get();
+  if (!designSnap.exists) {
+    throw new HttpsError('not-found', `Card design cardDesigns/${designId} not found.`);
+  }
+  const designData = (designSnap.data() || {}) as Record<string, unknown>;
+  if (designData.approved !== true) {
+    throw new HttpsError('failed-precondition', `Card design ${designId} must be approved before sending to print.`);
+  }
+  const ownerUid = String(designData.uid || '').trim();
+  const profileId = String(designData.profileId || '').trim();
+  const templateId = String(designData.templateId || '').trim();
+  if (!ownerUid || !profileId || !templateId) {
+    throw new HttpsError('failed-precondition', `Card design ${designId} is missing uid, profileId, or templateId.`);
+  }
+
+  let existingOrderData: Record<string, unknown> | null = null;
+  if (existingOrderId) {
+    const ordSnap = await db.collection('orders').doc(existingOrderId).get();
+    if (!ordSnap.exists) {
+      throw new HttpsError('not-found', `Existing order ${existingOrderId} not found.`);
+    }
+    existingOrderData = (ordSnap.data() || {}) as Record<string, unknown>;
+    if (existingOrderData.uid !== ownerUid) {
+      throw new HttpsError('failed-precondition', 'Existing order owner does not match card design owner.');
+    }
+  }
+
+  const alreadyPaid =
+    existingOrderData?.paymentStatus === 'Verified' ||
+    existingOrderData?.paymentStatus === 'Completed';
+
+  if (alreadyPaid && complimentary) {
+    throw new HttpsError(
+      'invalid-argument',
+      'Order already has a verified payment and cannot be dispatched as complimentary.'
+    );
+  }
+  if (!alreadyPaid) {
+    if (!complimentary) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Order payment is not verified. Verify payment via adminReconcileOrderPayment first, or explicitly send as complimentary=true with complimentaryReason.'
+      );
+    }
+    if (complimentaryReason.length < 3) {
+      throw new HttpsError(
+        'invalid-argument',
+        'complimentaryReason (at least 3 characters) is required for complimentary unpaid print jobs.'
+      );
+    }
+  }
+
+  const [tplSnap, settingsSnap, profSnap] = await Promise.all([
+    db.collection('cardTemplates').doc(templateId).get(),
+    db.collection('appSettings').doc('global').get(),
+    db.collection('profiles').doc(profileId).get(),
+  ]);
+
+  if (!tplSnap.exists) {
+    throw new HttpsError('failed-precondition', `Missing authoritative template cardTemplates/${templateId}.`);
+  }
+  const tpl = (tplSnap.data() || {}) as Record<string, unknown>;
+  if (!settingsSnap.exists) {
+    throw new HttpsError('failed-precondition', 'Missing authoritative pricing settings appSettings/global.');
+  }
+  const settingsData = (settingsSnap.data() || {}) as Record<string, unknown>;
+  const taxRatePercent = typeof settingsData.taxRatePercent === 'number' && Number.isFinite(settingsData.taxRatePercent) ? settingsData.taxRatePercent : 18;
+  const shippingFeeInr = typeof settingsData.shippingFeeInr === 'number' && Number.isFinite(settingsData.shippingFeeInr) ? settingsData.shippingFeeInr : 0;
+
+  let cardTechnology: 'qr_only' | 'qr_smart' = 'qr_smart';
+  if (designData.cardTechnology === 'qr_only' || designData.cardTechnology === 'qr_smart') {
+    cardTechnology = designData.cardTechnology;
+  } else {
+    const front = designData.frontDesign as { showNfcIcon?: unknown } | undefined;
+    if (front?.showNfcIcon === false) cardTechnology = 'qr_only';
+  }
+
+  const isFixedPack = tpl.pricingMode === 'fixed_pack' || FIXED_PACK_TEMPLATE_IDS.has(templateId);
+  let unitPriceInr = 0;
+  if (isFixedPack) {
+    if (typeof tpl.priceInr !== 'number' || !Number.isFinite(tpl.priceInr) || tpl.priceInr <= 0) {
+      throw new HttpsError('failed-precondition', `Missing priceInr on fixed_pack template cardTemplates/${templateId}.`);
+    }
+    unitPriceInr = tpl.priceInr;
+  } else {
+    let designTier: 'minimal' | 'designer' | null = null;
+    if (tpl.designTier === 'minimal' || tpl.designTier === 'designer') {
+      designTier = tpl.designTier;
+    } else if (MINIMAL_TEMPLATE_IDS.has(templateId)) {
+      designTier = 'minimal';
+    } else if (typeof tpl.category === 'string' && tpl.category.trim().length > 0) {
+      const lowerCat = tpl.category.toLowerCase();
+      designTier = lowerCat.includes('minimal') || lowerCat.includes('custom upload') ? 'minimal' : 'designer';
+    }
+    if (!designTier) {
+      throw new HttpsError('failed-precondition', `Missing designTier on cardTemplates/${templateId}.`);
+    }
+    unitPriceInr = CARD_TIER_PRICING[designTier][cardTechnology];
+  }
+
+  const finalQuantity = alreadyPaid && typeof existingOrderData?.quantity === 'number'
+    ? existingOrderData.quantity
+    : quantity;
+  const subtotal = alreadyPaid && typeof existingOrderData?.subtotal === 'number'
+    ? existingOrderData.subtotal
+    : Math.round(unitPriceInr * finalQuantity * 100) / 100;
+  const tax = alreadyPaid && typeof existingOrderData?.tax === 'number'
+    ? existingOrderData.tax
+    : Math.round((subtotal * taxRatePercent) / 100);
+  const shipping = alreadyPaid && typeof existingOrderData?.shipping === 'number'
+    ? existingOrderData.shipping
+    : (subtotal > 0 ? Math.round(shippingFeeInr * 100) / 100 : 0);
+  const total = alreadyPaid && typeof existingOrderData?.total === 'number'
+    ? existingOrderData.total
+    : Math.round((subtotal + tax + shipping) * 100) / 100;
+
+  const isPaid = alreadyPaid;
+  const effectivePaymentStatus = isPaid
+    ? String(existingOrderData!.paymentStatus)
+    : 'Pending';
+  const effectiveNotes = !isPaid
+    ? `[COMPLIMENTARY: ${complimentaryReason}]${notes ? ` ${notes}` : ''}`.slice(0, 2000)
+    : notes;
+
+  const resolvedOrderId = existingOrderId || `ord_${Date.now()}`;
+  const resolvedOrderNumber =
+    (typeof existingOrderData?.orderNumber === 'string' && existingOrderData.orderNumber) ||
+    `TNX-${new Date().getFullYear()}-${String(Math.floor(100000 + Math.random() * 900000))}`;
+  const resolvedCardType =
+    (typeof data.cardType === 'string' && data.cardType.trim().slice(0, 80)) ||
+    (typeof tpl.cardType === 'string' && tpl.cardType) ||
+    (cardTechnology === 'qr_only' ? 'QR Only Card' : 'Matte PVC SMART');
+
+  const slug = sanitizeSlug(
+    (profSnap.exists ? profSnap.data()?.slug : '') || existingOrderData?.profileSlug || ''
+  );
+  if (!slug || slug.length < 3) {
+    throw new HttpsError('failed-precondition', `Linked profile ${profileId} does not have a valid public slug.`);
+  }
+
+  const baseUrl = (process.env.APP_URL || 'https://tapnex.in').replace(/\/+$/, '');
+  const targetUrl = `${baseUrl}/p/${slug}`;
+  const qrRef = db.collection('qrCodes').doc(resolvedOrderId);
+  const existingQrSnap = await qrRef.get();
+  const needsFreshQr =
+    !existingQrSnap.exists ||
+    !existingQrSnap.data()?.pngDataUrl ||
+    !existingQrSnap.data()?.svgContent ||
+    String(existingQrSnap.data()?.targetUrl || '').endsWith('/p/undefined');
+
+  const storagePath = `qrCodes/${resolvedOrderId}/qr.png`;
+  const generatedArt = needsFreshQr ? await generateServerQrArtwork({ targetUrl, storagePath }) : null;
+  const resolvedQrType = isPaid ? 'CUSTOMER_ORDER' : 'ADMIN_CUSTOM';
+
+  const orderRef = db.collection('orders').doc(resolvedOrderId);
+  const designRef = db.collection('cardDesigns').doc(designId);
+  const profileRef = db.collection('profiles').doc(profileId);
+  const pubProfileRef = db.collection('publicProfiles').doc(slug);
+
+  const txResult = await db.runTransaction(async (tx) => {
+    const [curOrderSnap, curQrSnap, curProfSnap, curPubSnap] = await Promise.all([
+      tx.get(orderRef),
+      tx.get(qrRef),
+      tx.get(profileRef),
+      tx.get(pubProfileRef),
+    ]);
+
+    const now = FieldValue.serverTimestamp();
+    let finalQrRecord: Record<string, unknown>;
+
+    if (curQrSnap.exists && !needsFreshQr) {
+      const existingQrData = (curQrSnap.data() || {}) as Record<string, unknown>;
+      tx.update(qrRef, {
+        printerId,
+        qrType: resolvedQrType,
+      });
+      finalQrRecord = {
+        ...existingQrData,
+        printerId,
+        qrType: resolvedQrType,
+      };
+    } else {
+      finalQrRecord = {
+        qrCodeId: resolvedOrderId,
+        uid: ownerUid,
+        orderId: resolvedOrderId,
+        printerId,
+        targetUrl,
+        svgContent: generatedArt!.svgContent,
+        pngDataUrl: generatedArt!.pngDataUrl,
+        storagePath,
+        format: 'PNG_SVG',
+        qrType: resolvedQrType,
+        version: 1,
+        createdBy: req.auth!.uid,
+        createdAt: now,
+      };
+      tx.set(qrRef, finalQrRecord);
+    }
+
+    if (curOrderSnap.exists) {
+      const curOrderData = (curOrderSnap.data() || {}) as Record<string, unknown>;
+      const curPaid =
+        curOrderData.paymentStatus === 'Verified' ||
+        curOrderData.paymentStatus === 'Completed';
+      if (isPaid && !curPaid) {
+        throw new HttpsError('failed-precondition', 'Order payment status changed before transaction completed.');
+      }
+      if (!isPaid && curPaid) {
+        throw new HttpsError('failed-precondition', 'Order was paid before complimentary dispatch completed.');
+      }
+      tx.update(orderRef, {
+        printerId,
+        quantity: finalQuantity,
+        cardType: resolvedCardType,
+        subtotal,
+        tax,
+        shipping,
+        total,
+        paymentStatus: effectivePaymentStatus,
+        orderStatus: initialOrderStatus,
+        shippingAddress,
+        qrCodeId: resolvedOrderId,
+        printFileReady: true,
+        ...(!isPaid ? { complimentary: true, complimentaryReason } : {}),
+        ...(effectiveNotes !== undefined ? { internalNotes: effectiveNotes } : {}),
+        updatedAt: now,
+      });
+    } else {
+      tx.set(orderRef, {
+        orderId: resolvedOrderId,
+        orderNumber: resolvedOrderNumber,
+        uid: ownerUid,
+        profileId,
+        profileSlug: slug,
+        designId,
+        orderSource: 'studio',
+        printerId,
+        quantity: finalQuantity,
+        cardType: resolvedCardType,
+        subtotal,
+        tax,
+        shipping,
+        total,
+        currency: 'INR',
+        paymentStatus: effectivePaymentStatus,
+        orderStatus: initialOrderStatus,
+        shippingAddress,
+        qrCodeId: resolvedOrderId,
+        printFileReady: true,
+        ...(!isPaid ? { complimentary: true, complimentaryReason } : {}),
+        ...(effectiveNotes ? { internalNotes: effectiveNotes } : {}),
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    tx.update(designRef, {
+      approved: true,
+      locked: true,
+      orderId: resolvedOrderId,
+      updatedAt: now,
+    });
+
+    if (isPaid) {
+      if (curProfSnap.exists && !curProfSnap.data()?.adminDisabled) {
+        tx.update(profileRef, {
+          paymentConfirmed: true,
+          isPublic: true,
+          updatedAt: now,
+        });
+      }
+      if (curPubSnap.exists && !curPubSnap.data()?.adminDisabled) {
+        tx.update(pubProfileRef, {
+          paymentConfirmed: true,
+          isPublic: true,
+          lastPaidOrderId: resolvedOrderId,
+          updatedAt: now,
+        });
+      }
+    }
+
+    return {
+      orderId: resolvedOrderId,
+      orderNumber: resolvedOrderNumber,
+      complimentary: !isPaid,
+      paymentStatus: effectivePaymentStatus,
+      qrRecord: {
+        ...finalQrRecord,
+        createdAt: new Date().toISOString(),
+      },
+    };
+  });
+
+  await writeAuditLog({
+    actorUid: req.auth.uid,
+    actorEmail,
+    actorRole,
+    action: isPaid ? 'SEND_DESIGN_TO_PRINT' : 'SEND_COMPLIMENTARY_PRINT',
+    targetCollection: 'orders',
+    targetId: resolvedOrderId,
+    details: isPaid
+      ? `Sent paid design ${designId} (${resolvedOrderNumber}) to print [${printerId}] status=${initialOrderStatus}, payment=${effectivePaymentStatus}, total=${total}`
+      : `Sent complimentary unpaid design ${designId} (${resolvedOrderNumber}) to print [${printerId}] status=${initialOrderStatus}, payment=Pending, reason="${complimentaryReason}"`,
+  });
+
+  return txResult;
 });
 
 // 14. sendTransactionalEmail
@@ -2023,7 +3194,7 @@ export const sendTransactionalEmail = onCall(async (req) => {
 // 15. createShippingRecord
 export const createShippingRecord = onCall(async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
-  await assertRole(req.auth.uid, ['PRINTER', 'ADMIN', 'SUPERADMIN']);
+  await assertRole(req.auth, ['PRINTER', 'ADMIN', 'SUPERADMIN']);
   const { orderId, courierName, trackingNumber, trackingUrl, dispatchDate } = req.data as {
     orderId: string;
     courierName: string;
@@ -2058,7 +3229,7 @@ export const createShippingRecord = onCall(async (req) => {
 // 16. exportAdminReport
 export const exportAdminReport = onCall(async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
-  await assertRole(req.auth.uid, ['ADMIN', 'SUPERADMIN']);
+  await assertRole(req.auth, ['ADMIN', 'SUPERADMIN']);
   const ordersSnap = await db.collection('orders').get();
   return { totalOrders: ordersSnap.size, generatedAt: new Date().toISOString() };
 });
@@ -2066,7 +3237,7 @@ export const exportAdminReport = onCall(async (req) => {
 // 17. deleteUserSafely
 export const deleteUserSafely = onCall(async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
-  const actorRole = await assertRole(req.auth.uid, ['ADMIN', 'SUPERADMIN']);
+  const actorRole = await assertRole(req.auth, ['ADMIN', 'SUPERADMIN']);
   const { targetUid } = req.data as { targetUid: string };
   if (targetUid === req.auth.uid) throw new HttpsError('failed-precondition', 'Cannot delete own active account.');
   await db.collection('users').doc(targetUid).update({ status: 'Disabled', updatedAt: FieldValue.serverTimestamp() });
@@ -2084,7 +3255,7 @@ export const deleteUserSafely = onCall(async (req) => {
 // 18. recordAuditLog
 export const recordAuditLog = onCall(async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
-  const actorRole = await assertRole(req.auth.uid, ['USER', 'PRINTER', 'ADMIN', 'SUPERADMIN']);
+  const actorRole = await assertRole(req.auth, ['USER', 'PRINTER', 'ADMIN', 'SUPERADMIN']);
   await writeAuditLog({
     actorUid: req.auth.uid,
     actorEmail: req.auth.token.email,
@@ -2100,7 +3271,7 @@ export const recordAuditLog = onCall(async (req) => {
 // 19. validatePrinterAccess
 export const validatePrinterAccess = onCall(async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
-  await assertRole(req.auth.uid, ['PRINTER', 'ADMIN', 'SUPERADMIN']);
+  await assertRole(req.auth, ['PRINTER', 'ADMIN', 'SUPERADMIN']);
   const { orderId } = req.data as { orderId: string };
   const orderSnap = await db.collection('orders').doc(orderId).get();
   const allowed = orderSnap.exists && orderSnap.data()?.printerId === req.auth.uid;

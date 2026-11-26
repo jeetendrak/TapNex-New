@@ -29,7 +29,6 @@ import {
   isOrderPaymentConfirmed,
   maskEmail,
   maskPhone,
-  reconcileDeliveredOrdersToProfiles,
 } from '../../lib/firestoreService';
 import { downloadVCard } from '../../lib/vcard';
 import { sanitizeRichBioHtml } from '../../lib/richText';
@@ -104,15 +103,6 @@ export const PublicProfilePage: React.FC = () => {
         if (!active) return;
         const confirmed = isOrderPaymentConfirmed(orders, profile.profileId, profile.slug);
         if (isOwner) setOwnerPaidConfirmed(confirmed);
-        if (confirmed && !profile.adminDisabled) {
-          const matching = orders.filter(
-            (o) => o.profileId === profile.profileId || o.profileSlug === profile.slug
-          );
-          const changed = await reconcileDeliveredOrdersToProfiles(matching, userRecord.role).catch(() => false);
-          if (changed && active) {
-            setProfile((prev) => (prev ? { ...prev, paymentConfirmed: true, isPublic: true } : prev));
-          }
-        }
       } catch {
         // ignore if unable to read orders
       }

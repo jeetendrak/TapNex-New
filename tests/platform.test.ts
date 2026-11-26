@@ -21,6 +21,7 @@ import {
   maskEmail,
   maskPhone,
   mergePaymentGateways,
+  RETAINED_FACTORY_RESET_COLLECTIONS,
   RESETTABLE_OPERATIONAL_COLLECTIONS,
   resetApplicationToFreshBlank,
   sanitizeSlug,
@@ -285,12 +286,17 @@ describe('Razorpay HMAC-SHA256 Verification & Firestore Security Guardrails', ()
     expect(crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(tamperedExpected))).toBe(false);
   });
 
-  it('verifies deployed firestore.rules enforces email verification and anti-tamper payment checks', () => {
+  it('verifies deployed firestore.rules enforces email verification, server-only payment confirmation, and anti-tamper guards', () => {
     const rules = fs.readFileSync(path.resolve(process.cwd(), 'firestore.rules'), 'utf8');
     expect(rules).toContain('request.auth.token.email_verified == true');
     expect(rules).toContain("incoming().paymentStatus == 'Pending'");
     expect(rules).toContain("incoming().orderStatus == 'Awaiting Payment'");
-    expect(rules).toContain('existsAfter(/databases/$(database)/documents/payments/$(orderId))');
+    expect(rules).not.toContain('existsAfter(/databases/$(database)/documents/payments/$(orderId))');
+    expect(rules).toContain('allow create, update, delete: if false;');
+    expect(rules).toContain("incoming().orderStatus != 'Payment Successful'");
+    expect(rules).toContain("incoming().get('paymentConfirmed', false) == false");
+    expect(rules).toContain("incoming().get('paymentConfirmed', false) == existing().get('paymentConfirmed', false)");
+    expect(rules).toContain('razorpayOrderId');
     expect(rules).toContain('allow get: if isValidId(slug);');
     expect(rules).toContain('paymentConfirmed');
   });
@@ -545,11 +551,9 @@ describe('Direct URL QR Generator & Auto Print Auth ID', () => {
 });
 
 describe('Workspace Factory Reset & SuperAdmin Wipe Safeguards', () => {
-  it('covers all operational collections and enforces SuperAdmin role guard', async () => {
+  it('covers resettable operational collections, excludes server-only retained collections, and enforces SuperAdmin role guard', async () => {
     expect(RESETTABLE_OPERATIONAL_COLLECTIONS).toEqual([
       'orders',
-      'payments',
-      'qrCodes',
       'shippingRecords',
       'cardDesigns',
       'supportTickets',
@@ -557,8 +561,23 @@ describe('Workspace Factory Reset & SuperAdmin Wipe Safeguards', () => {
       'printers',
       'profiles',
       'publicProfiles',
-      'auditLogs',
     ]);
+    expect(RESETTABLE_OPERATIONAL_COLLECTIONS).not.toContain('payments');
+    expect(RESETTABLE_OPERATIONAL_COLLECTIONS).not.toContain('qrCodes');
+    expect(RESETTABLE_OPERATIONAL_COLLECTIONS).not.toContain('auditLogs');
+    expect(RETAINED_FACTORY_RESET_COLLECTIONS.map((r) => r.collection)).toEqual([
+      'payments',
+      'qrCodes',
+      'auditLogs',
+      'authUsersAndStorage',
+    ]);
+
+    const superAdminSrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/pages/superadmin/SuperAdminPages.tsx'),
+      'utf8'
+    );
+    expect(superAdminSrc).not.toContain('includeAuditLogs');
+    expect(superAdminSrc).toContain('retainedCollections');
 
     await expect(
       resetApplicationToFreshBlank({ uid: 'u_admin', email: 'admin@tapnex.in', role: 'ADMIN' })
@@ -944,20 +963,55 @@ describe('Design Studio Layout Engine, Rich Bio Sanitizer & Link Controls', () =
       'utf8'
     );
     expect(publicProfileSrc).toContain('<ScreenProtectionShield active={!isPaidLive}');
-    expect(publicProfileSrc).toContain('reconcileDeliveredOrdersToProfiles');
+    expect(publicProfileSrc).not.toContain('reconcileDeliveredOrdersToProfiles');
+
+    const printerSrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/pages/printer/PrinterPortalPages.tsx'),
+      'utf8'
+    );
+    expect(printerSrc).not.toContain('reconcileDeliveredOrdersToProfiles');
 
     const customerProfileSrc = fs.readFileSync(
       path.resolve(process.cwd(), 'src/pages/customer/CustomerProfilePages.tsx'),
       'utf8'
     );
     expect(customerProfileSrc).toContain('active={!effectiveLive}');
+    expect(customerProfileSrc).not.toContain('markProfilePaymentCompleted');
+    expect(customerProfileSrc).not.toContain('reconcileDeliveredOrdersToProfiles');
+
+    const adminSrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/pages/admin/AdminPortalPages.tsx'),
+      'utf8'
+    );
+    expect(adminSrc).not.toContain('markProfilePaymentCompleted');
+    expect(adminSrc).not.toContain('reconcileDeliveredOrdersToProfiles');
+    expect(adminSrc).not.toContain('markPaymentCompleted');
 
     const appSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/App.tsx'), 'utf8');
     expect(appSrc).toContain('<Route path="/p/:slug" element={<PublicProfilePage />} />');
 
     const rulesSrc = fs.readFileSync(path.resolve(process.cwd(), 'firestore.rules'), 'utf8');
-    expect(rulesSrc).toContain("orderStatus == 'Delivered'");
     expect(rulesSrc).toContain('match /publicProfiles/{slug}');
+    expect(rulesSrc).toContain('match /qrCodes/{qrCodeId}');
+    expect(rulesSrc).toContain('allow create, update, delete: if false;');
+    expect(rulesSrc).toContain("incoming().paymentStatus == existing().paymentStatus");
+    expect(rulesSrc).toContain("incoming().get('paymentConfirmed', false) == existing().get('paymentConfirmed', false)");
+
+    const storageRulesSrc = fs.readFileSync(path.resolve(process.cwd(), 'storage.rules'), 'utf8');
+    expect(storageRulesSrc).toContain('match /qrCodes/{orderId}/{fileName}');
+    expect(storageRulesSrc).toContain('allow write: if false;');
+
+    const firebaseJson = JSON.parse(
+      fs.readFileSync(path.resolve(process.cwd(), 'firebase.json'), 'utf8')
+    ) as { firestore?: Array<{ database?: string; rules?: string; indexes?: string }> };
+    expect(Array.isArray(firebaseJson.firestore)).toBe(true);
+    expect(firebaseJson.firestore).toEqual([
+      {
+        database: 'ai-studio-fd49cfa5-0ced-4799-9f48-6494d06b1b0d',
+        rules: 'firestore.rules',
+        indexes: 'firestore.indexes.json',
+      },
+    ]);
   });
 });
 
@@ -1275,18 +1329,40 @@ describe('Smart Safety Tags Shop, Multi-Profile Types, Auto-Slugs & Family Reuse
     ).toMatchObject({ ok: false, verdict: 'FAIL' });
 
     const serverSrc = fs.readFileSync(path.resolve(process.cwd(), 'server.ts'), 'utf8');
-    expect(serverSrc).toContain('/api/payments/test-gateway');
-    expect(serverSrc).toContain('validateGatewayCredentials');
+    expect(serverSrc).toContain("app.all('/api/payments/*'");
+    expect(serverSrc).toContain('res.status(410)');
+    expect(serverSrc).not.toContain('/api/payments/create-order');
+    expect(serverSrc).not.toContain('/api/payments/verify');
+    expect(serverSrc).not.toContain('/api/payments/sandbox-authorize');
+    expect(serverSrc).not.toContain('/api/payments/test-gateway');
 
     const panelSrc = fs.readFileSync(
       path.resolve(process.cwd(), 'src/components/PaymentGatewaySettingsPanel.tsx'),
       'utf8'
     );
-    expect(panelSrc).toContain('Test Connection');
-    expect(panelSrc).toContain('labels.idLabel');
-    expect(panelSrc).toContain('labels.keyLabel');
-    expect(panelSrc).toContain('<span>PASS</span>');
-    expect(panelSrc).toContain('<span>FAIL</span>');
+    expect(panelSrc).not.toContain('/api/payments/test-gateway');
+    expect(panelSrc).toContain('Firebase Secret Manager');
+    expect(panelSrc).toContain('Temporarily Unavailable');
+    expect(panelSrc).toContain('RAZORPAY_KEY_ID');
+
+    for (const relCheckout of [
+      'src/pages/customer/CustomerStudioCheckoutPages.tsx',
+      'src/pages/public/ShopPage.tsx',
+    ]) {
+      const src = fs.readFileSync(path.resolve(process.cwd(), relCheckout), 'utf8');
+      expect(src).toContain('createPaymentOrder');
+      expect(src).toContain('verifyPayment');
+      expect(src).toContain('generatePurchasedQr');
+      expect(src).not.toContain('/api/payments/');
+      expect(src).not.toContain('finalizeVerifiedOrderPayment');
+      expect(src).not.toContain('handleConfirmUpiLive');
+    }
+
+    const fsServiceSrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/lib/firestoreService.ts'),
+      'utf8'
+    );
+    expect(fsServiceSrc).not.toContain('finalizeVerifiedOrderPayment');
   });
 
   it('resolves exact Minimal/Designer QR & Smart Card tiers plus Dog Tag (2-pack) and Helmet Sticker (2-pack) pricing', () => {

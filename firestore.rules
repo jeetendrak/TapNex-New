@@ -195,7 +195,7 @@ service cloud.firestore {
 
     function isValidOrder(data) {
       return data.keys().hasAll(['orderId', 'orderNumber', 'uid', 'profileId', 'designId', 'quantity', 'total', 'currency', 'paymentStatus', 'orderStatus', 'shippingAddress', 'createdAt', 'updatedAt']) &&
-        data.keys().hasOnly(['orderId', 'orderNumber', 'uid', 'profileId', 'profileSlug', 'designId', 'orderSource', 'shopItems', 'printerId', 'quantity', 'cardType', 'subtotal', 'tax', 'shipping', 'total', 'currency', 'paymentStatus', 'orderStatus', 'shippingAddress', 'qrCodeId', 'printFileReady', 'courierName', 'trackingNumber', 'trackingUrl', 'dispatchDate', 'internalNotes', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['orderId', 'orderNumber', 'uid', 'profileId', 'profileSlug', 'designId', 'orderSource', 'shopItems', 'printerId', 'quantity', 'cardType', 'subtotal', 'tax', 'shipping', 'total', 'currency', 'paymentStatus', 'orderStatus', 'shippingAddress', 'qrCodeId', 'printFileReady', 'courierName', 'trackingNumber', 'trackingUrl', 'dispatchDate', 'internalNotes', 'razorpayOrderId', 'razorpayPaymentId', 'razorpayAmountPaise', 'razorpayCurrency', 'razorpayOrderLock', 'createdAt', 'updatedAt']) &&
         isValidId(data.orderId) &&
         data.orderNumber is string && data.orderNumber.size() >= 3 && data.orderNumber.size() <= 40 &&
         isValidId(data.uid) &&
@@ -215,12 +215,17 @@ service cloud.firestore {
         (!('trackingNumber' in data) || (data.trackingNumber is string && data.trackingNumber.size() <= 120)) &&
         (!('trackingUrl' in data) || (data.trackingUrl is string && data.trackingUrl.size() <= 500)) &&
         (!('dispatchDate' in data) || (data.dispatchDate is string && data.dispatchDate.size() <= 40)) &&
-        (!('internalNotes' in data) || (data.internalNotes is string && data.internalNotes.size() <= 2000));
+        (!('internalNotes' in data) || (data.internalNotes is string && data.internalNotes.size() <= 2000)) &&
+        (!('razorpayOrderId' in data) || (data.razorpayOrderId is string && data.razorpayOrderId.size() <= 128)) &&
+        (!('razorpayPaymentId' in data) || (data.razorpayPaymentId is string && data.razorpayPaymentId.size() <= 128)) &&
+        (!('razorpayAmountPaise' in data) || (data.razorpayAmountPaise is number && data.razorpayAmountPaise >= 0)) &&
+        (!('razorpayCurrency' in data) || data.razorpayCurrency == 'INR') &&
+        (!('razorpayOrderLock' in data) || data.razorpayOrderLock == null || data.razorpayOrderLock is map);
     }
 
     function isValidPayment(data) {
       return data.keys().hasAll(['paymentId', 'orderId', 'uid', 'gateway', 'gatewayOrderId', 'signatureVerified', 'amount', 'currency', 'status', 'createdAt']) &&
-        data.keys().hasOnly(['paymentId', 'orderId', 'uid', 'gateway', 'gatewayOrderId', 'gatewayPaymentId', 'signatureVerified', 'amount', 'currency', 'status', 'verifiedAt', 'createdAt']) &&
+        data.keys().hasOnly(['paymentId', 'orderId', 'uid', 'gateway', 'gatewayOrderId', 'gatewayPaymentId', 'signatureVerified', 'amount', 'amountPaise', 'currency', 'status', 'verifiedVia', 'reconciledByUid', 'reconciledByEmail', 'reconciliationReason', 'lastWebhookEventId', 'verifiedAt', 'updatedAt', 'createdAt']) &&
         isValidId(data.paymentId) &&
         isValidId(data.orderId) &&
         isValidId(data.uid) &&
@@ -401,12 +406,15 @@ service cloud.firestore {
       allow delete: if isValidId(printerId) && isSuperAdmin();
     }
 
-    // 4. Profiles (Owner Private + Full Data)
+    // 4. Profiles (Owner Private + Full Data; payment confirmation is strictly server-controlled)
     match /profiles/{profileId} {
       allow get: if isValidId(profileId) && ((isSignedIn() && existing().uid == request.auth.uid) || isAdmin());
       allow list: if (isSignedIn() && resource.data.uid == request.auth.uid) || isAdmin();
       allow create: if isValidId(profileId) && isActiveUser() && isValidProfile(incoming()) &&
         incoming().uid == request.auth.uid &&
+        incoming().get('paymentConfirmed', false) == false &&
+        !('paymentCompletedAt' in incoming()) &&
+        !('paymentReference' in incoming()) &&
         incoming().get('adminApproved', false) == false &&
         incoming().get('adminDisabled', false) == false &&
         incoming().createdAt == request.time &&
@@ -415,49 +423,48 @@ service cloud.firestore {
         incoming().profileId == existing().profileId &&
         incoming().uid == existing().uid &&
         incoming().createdAt == existing().createdAt &&
-        incoming().updatedAt == request.time && (
-          isAdmin() ||
+        incoming().updatedAt == request.time &&
+        incoming().get('paymentConfirmed', false) == existing().get('paymentConfirmed', false) &&
+        incoming().get('paymentCompletedAt', '') == existing().get('paymentCompletedAt', '') &&
+        incoming().get('paymentReference', '') == existing().get('paymentReference', '') && (
+          (isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['isPublic', 'adminApproved', 'adminApprovedAt', 'adminApprovedBy', 'adminDisabled', 'updatedAt'])) ||
           (isActiveUser() && existing().uid == request.auth.uid &&
             incoming().get('adminApproved', false) == existing().get('adminApproved', false) &&
             incoming().get('adminDisabled', false) == existing().get('adminDisabled', false) &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['profileType', 'profileLabel', 'slug', 'personalInformation', 'socialLinks', 'customFields', 'visibilitySettings', 'selectedTemplate', 'isPublic', 'paymentConfirmed', 'paymentCompletedAt', 'paymentReference', 'updatedAt']))
+            incoming().diff(existing()).affectedKeys().hasOnly(['profileType', 'profileLabel', 'slug', 'personalInformation', 'socialLinks', 'customFields', 'visibilitySettings', 'selectedTemplate', 'isPublic', 'updatedAt']))
         );
       allow delete: if isValidId(profileId) && (isAdmin() || (isActiveUser() && existing().uid == request.auth.uid));
     }
 
-    // 5. Public Profiles (Sanitized Public View, Readable Without Login)
+    // 5. Public Profiles (Sanitized Public View, Readable Without Login; payment fields immutable to all browser clients)
     match /publicProfiles/{slug} {
       allow get: if isValidId(slug);
       allow list: if isAdmin();
       allow create: if isValidId(slug) && isValidPublicProfile(incoming()) &&
-        incoming().updatedAt == request.time && (
+        incoming().updatedAt == request.time &&
+        incoming().get('paymentConfirmed', false) == false &&
+        !('paymentCompletedAt' in incoming()) &&
+        !('lastPaidOrderId' in incoming()) && (
           isAdmin() ||
           (isActiveUser() && incoming().uid == request.auth.uid &&
             (!('adminApproved' in incoming()) || incoming().adminApproved == false) &&
             incoming().get('adminDisabled', false) == false)
         );
       allow update: if isValidId(slug) && isValidPublicProfile(incoming()) &&
-        incoming().updatedAt == request.time && (
-          isAdmin() ||
-          (isActiveUser() && incoming().uid == request.auth.uid &&
-            existing().uid == request.auth.uid &&
-            (!('adminApproved' in incoming()) || incoming().adminApproved == false ||
-              existing().get('adminApproved', false) == true) &&
-            incoming().get('adminDisabled', false) == existing().get('adminDisabled', false)) ||
-          (isPrinter() &&
-            incoming().uid == existing().uid &&
-            incoming().profileId == existing().profileId &&
-            incoming().slug == existing().slug &&
-            incoming().paymentConfirmed == true &&
-            incoming().isPublic == true &&
+        incoming().updatedAt == request.time &&
+        incoming().profileId == existing().profileId &&
+        incoming().slug == existing().slug &&
+        incoming().uid == existing().uid &&
+        incoming().get('paymentConfirmed', false) == existing().get('paymentConfirmed', false) &&
+        incoming().get('paymentCompletedAt', '') == existing().get('paymentCompletedAt', '') &&
+        incoming().get('lastPaidOrderId', '') == existing().get('lastPaidOrderId', '') && (
+          (isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['profileType', 'isPublic', 'unavailableMessage', 'personalInformation', 'socialLinks', 'customFields', 'themeColor', 'adminApproved', 'adminApprovedAt', 'adminApprovedBy', 'adminDisabled', 'updatedAt'])) ||
+          (isActiveUser() && existing().uid == request.auth.uid &&
+            incoming().get('adminApproved', false) == existing().get('adminApproved', false) &&
             incoming().get('adminDisabled', false) == existing().get('adminDisabled', false) &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['paymentConfirmed', 'isPublic', 'lastPaidOrderId', 'updatedAt']) &&
-            'lastPaidOrderId' in incoming() &&
-            isValidId(incoming().lastPaidOrderId) &&
-            exists(/databases/$(database)/documents/orders/$(incoming().lastPaidOrderId)) &&
-            get(/databases/$(database)/documents/orders/$(incoming().lastPaidOrderId)).data.printerId == request.auth.uid &&
-            get(/databases/$(database)/documents/orders/$(incoming().lastPaidOrderId)).data.orderStatus == 'Delivered' &&
-            get(/databases/$(database)/documents/orders/$(incoming().lastPaidOrderId)).data.profileId == existing().profileId)
+            incoming().diff(existing()).affectedKeys().hasOnly(['profileType', 'isPublic', 'unavailableMessage', 'personalInformation', 'socialLinks', 'customFields', 'themeColor', 'updatedAt']))
         );
       allow delete: if isValidId(slug) && (isAdmin() || (isActiveUser() && existing().uid == request.auth.uid));
     }
@@ -490,7 +497,7 @@ service cloud.firestore {
       allow delete: if isValidId(designId) && isAdmin();
     }
 
-    // 8. Orders
+    // 8. Orders (Payment status, pricing totals, Razorpay fields, and QR linkage are strictly server-controlled)
     match /orders/{orderId} {
       allow get: if isValidId(orderId) && (
         (isSignedIn() && existing().uid == request.auth.uid) ||
@@ -503,49 +510,45 @@ service cloud.firestore {
       allow create: if isValidId(orderId) && isValidOrder(incoming()) &&
         (incoming().get('orderSource', 'studio') == 'shop' || exists(/databases/$(database)/documents/cardDesigns/$(incoming().designId))) &&
         incoming().createdAt == request.time &&
-        incoming().updatedAt == request.time && (
+        incoming().updatedAt == request.time &&
+        incoming().paymentStatus == 'Pending' &&
+        incoming().orderStatus == 'Awaiting Payment' &&
+        (!('printerId' in incoming()) || incoming().printerId == '') &&
+        (!('qrCodeId' in incoming()) || incoming().qrCodeId == '') &&
+        incoming().get('printFileReady', false) == false &&
+        !('razorpayOrderId' in incoming()) &&
+        !('razorpayPaymentId' in incoming()) &&
+        !('razorpayAmountPaise' in incoming()) &&
+        !('razorpayCurrency' in incoming()) &&
+        !('razorpayOrderLock' in incoming()) && (
           isAdmin() ||
-          (isActiveUser() &&
-            incoming().uid == request.auth.uid &&
-            incoming().paymentStatus == 'Pending' &&
-            incoming().orderStatus == 'Awaiting Payment' &&
-            (!('printerId' in incoming()) || incoming().printerId == '') &&
-            (!('qrCodeId' in incoming()) || incoming().qrCodeId == ''))
+          (isActiveUser() && incoming().uid == request.auth.uid)
         );
       allow update: if isValidId(orderId) && isValidOrder(incoming()) &&
         incoming().orderId == existing().orderId &&
         incoming().uid == existing().uid &&
         incoming().createdAt == existing().createdAt &&
-        incoming().updatedAt == request.time && (
-          isAdmin() ||
+        incoming().updatedAt == request.time &&
+        incoming().paymentStatus == existing().paymentStatus &&
+        incoming().orderStatus != 'Payment Successful' &&
+        incoming().orderStatus != 'Refunded' &&
+        incoming().total == existing().total && (
+          (isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['printerId', 'orderStatus', 'printFileReady', 'courierName', 'trackingNumber', 'trackingUrl', 'dispatchDate', 'internalNotes', 'shippingAddress', 'updatedAt'])) ||
           (isPrinter() && existing().printerId == request.auth.uid &&
-            incoming().paymentStatus == existing().paymentStatus &&
-            incoming().total == existing().total &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['orderStatus', 'courierName', 'trackingNumber', 'trackingUrl', 'dispatchDate', 'updatedAt'])) ||
-          (isActiveUser() && existing().uid == request.auth.uid &&
-            existing().paymentStatus == 'Pending' &&
-            existing().orderStatus == 'Awaiting Payment' &&
-            incoming().paymentStatus == 'Verified' &&
-            incoming().orderStatus == 'Payment Successful' &&
-            incoming().total == existing().total &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['paymentStatus', 'orderStatus', 'qrCodeId', 'printFileReady', 'updatedAt']) &&
-            existsAfter(/databases/$(database)/documents/payments/$(orderId)))
+            incoming().diff(existing()).affectedKeys().hasOnly(['orderStatus', 'courierName', 'trackingNumber', 'trackingUrl', 'dispatchDate', 'updatedAt']))
         );
       allow delete: if isValidId(orderId) && isSuperAdmin();
     }
 
-    // 9. Payments (Server-verified records; immutable by non-admins)
+    // 9. Payments (Server-verified records only; browser clients cannot create, update, or delete)
     match /payments/{paymentId} {
       allow get: if isValidId(paymentId) && ((isSignedIn() && existing().uid == request.auth.uid) || isAdmin());
       allow list: if (isSignedIn() && resource.data.uid == request.auth.uid) || isAdmin();
-      allow create: if isValidId(paymentId) && isValidPayment(incoming()) &&
-        incoming().createdAt == request.time &&
-        existsAfter(/databases/$(database)/documents/orders/$(incoming().orderId)) &&
-        (isAdmin() || (isActiveUser() && incoming().uid == request.auth.uid));
-      allow update, delete: if isValidId(paymentId) && isAdmin();
+      allow create, update, delete: if false;
     }
 
-    // 10. QR Codes (Hidden from customers pre-purchase; readable by Admin/Printer or conditionally permitted owner)
+    // 10. QR Codes (Strictly server-generated via Cloud Functions Admin SDK; browser writes forbidden)
     match /qrCodes/{qrCodeId} {
       allow get: if isValidId(qrCodeId) && (
         isAdmin() ||
@@ -555,13 +558,7 @@ service cloud.firestore {
           get(/databases/$(database)/documents/appSettings/global).data.allowCustomerQrView == true)
       );
       allow list: if isAdmin() || (isSignedIn() && resource.data.printerId == request.auth.uid);
-      allow create: if isValidId(qrCodeId) && isValidQrCode(incoming()) &&
-        incoming().createdAt == request.time && (
-          isAdmin() ||
-          (isActiveUser() && incoming().uid == request.auth.uid && incoming().qrType == 'CUSTOMER_ORDER' &&
-            existsAfter(/databases/$(database)/documents/payments/$(incoming().orderId)))
-        );
-      allow update, delete: if isValidId(qrCodeId) && isAdmin();
+      allow create, update, delete: if false;
     }
 
     // 11. Shipping Records

@@ -271,7 +271,15 @@ interface WrappedRequest {
 
 interface FunctionsExports {
   createUserProfile: WrappedCallable;
+  generatePurchasedQr: WrappedCallable;
   generateAdminQr: WrappedCallable;
+  generatePrintReadyPdf: WrappedCallable;
+  assignPrinter: WrappedCallable;
+  updateOrderStatus: WrappedCallable;
+  adminReconcileOrderPayment: WrappedCallable;
+  adminReconcileProfilePayment: WrappedCallable;
+  adminEnsureOrderQr: WrappedCallable;
+  adminSendDesignToPrint: WrappedCallable;
   exportAdminReport: WrappedCallable;
   createPaymentOrder: WrappedCallable;
   verifyPayment: WrappedCallable;
@@ -1614,6 +1622,725 @@ describe('Phase 2A Razorpay Backend Security & Pricing', () => {
       expect(mockDbState.readDoc('razorpayWebhookEvents', 'evt_pending_fail_1')?.status).toBe(
         'processed_failed'
       );
+    });
+  });
+
+  describe('Phase 2B: generatePurchasedQr hardening', () => {
+    it('rejects unauthenticated callers, non-owners, and unverified orders', async () => {
+      mockDbState.seedDoc('orders', 'ord_qr_unverified', {
+        orderId: 'ord_qr_unverified',
+        uid: 'user_owner',
+        profileId: 'prof_qr_1',
+        profileSlug: 'owner-slug',
+        paymentStatus: 'Pending',
+        orderStatus: 'Awaiting Payment',
+      });
+
+      await expect(
+        mod.generatePurchasedQr({ auth: null, data: { orderId: 'ord_qr_unverified' } })
+      ).rejects.toMatchObject({ code: 'unauthenticated' });
+
+      await expect(
+        mod.generatePurchasedQr({
+          auth: { uid: 'attacker_uid' },
+          data: { orderId: 'ord_qr_unverified' },
+        })
+      ).rejects.toMatchObject({ code: 'permission-denied' });
+
+      await expect(
+        mod.generatePurchasedQr({
+          auth: { uid: 'user_owner' },
+          data: { orderId: 'ord_qr_unverified' },
+        })
+      ).rejects.toMatchObject({ code: 'failed-precondition' });
+    });
+
+    it('rejects shop orders without a valid linked profileSlug and never generates /p/undefined', async () => {
+      mockDbState.seedDoc('orders', 'ord_shop_nolink', {
+        orderId: 'ord_shop_nolink',
+        uid: 'user_1',
+        profileId: 'shop_cart',
+        profileSlug: '',
+        designId: 'shop_direct',
+        orderSource: 'shop',
+        paymentStatus: 'Verified',
+        orderStatus: 'Payment Successful',
+      });
+
+      await expect(
+        mod.generatePurchasedQr({
+          auth: { uid: 'user_1' },
+          data: { orderId: 'ord_shop_nolink' },
+        })
+      ).rejects.toMatchObject({ code: 'failed-precondition' });
+
+      expect(mockDbState.readDoc('qrCodes', 'ord_shop_nolink')).toBeUndefined();
+    });
+
+    it('generates QR atomically for verified orders with valid slug and supports idempotent retries', async () => {
+      mockDbState.seedDoc('profiles', 'prof_studio_1', {
+        profileId: 'prof_studio_1',
+        uid: 'user_1',
+        slug: 'rohan-kapoor',
+      });
+      mockDbState.seedDoc('orders', 'ord_qr_ok', {
+        orderId: 'ord_qr_ok',
+        uid: 'user_1',
+        profileId: 'prof_studio_1',
+        profileSlug: 'rohan-kapoor',
+        printerId: 'printer_1',
+        paymentStatus: 'Verified',
+        orderStatus: 'Payment Successful',
+        qrCodeId: '',
+      });
+
+      const first = await mod.generatePurchasedQr({
+        auth: { uid: 'user_1' },
+        data: { orderId: 'ord_qr_ok' },
+      });
+
+      expect(first).toMatchObject({
+        qrCodeId: 'ord_qr_ok',
+        alreadyExists: false,
+      });
+      expect(String(first.targetUrl)).toMatch(/\/p\/rohan-kapoor$/);
+
+      const savedQr = mockDbState.readDoc('qrCodes', 'ord_qr_ok');
+      expect(savedQr?.orderId).toBe('ord_qr_ok');
+      expect(savedQr?.qrType).toBe('CUSTOMER_ORDER');
+      expect(String(savedQr?.pngDataUrl || '')).toMatch(/^data:image\/png;base64,/);
+
+      const savedOrder = mockDbState.readDoc('orders', 'ord_qr_ok');
+      expect(savedOrder?.qrCodeId).toBe('ord_qr_ok');
+      expect(savedOrder?.printFileReady).toBe(true);
+
+      const second = await mod.generatePurchasedQr({
+        auth: { uid: 'user_1' },
+        data: { orderId: 'ord_qr_ok' },
+      });
+      expect(second).toMatchObject({
+        qrCodeId: 'ord_qr_ok',
+        targetUrl: first.targetUrl,
+        alreadyExists: true,
+      });
+    });
+  });
+
+  describe('Phase 2B Security Repair: server-only admin payment reconciliation, QR & print dispatch', () => {
+    beforeEach(() => {
+      seedBaselineCatalog(mockDbState);
+      mockDbState.seedDoc('users', 'admin_1', {
+        uid: 'admin_1',
+        email: 'admin@tapnex.in',
+        role: 'ADMIN',
+        status: 'Active',
+      });
+      mockDbState.seedDoc('admins', 'admin_1', {
+        uid: 'admin_1',
+        role: 'ADMIN',
+        active: true,
+      });
+      mockDbState.seedDoc('users', 'super_1', {
+        uid: 'super_1',
+        email: 'super@tapnex.in',
+        role: 'SUPERADMIN',
+        status: 'Active',
+      });
+      mockDbState.seedDoc('admins', 'super_1', {
+        uid: 'super_1',
+        role: 'SUPERADMIN',
+        active: true,
+      });
+      mockDbState.seedDoc('users', 'printer_1', {
+        uid: 'printer_1',
+        email: 'printer@tapnex.in',
+        role: 'PRINTER',
+        status: 'Active',
+      });
+      mockDbState.seedDoc('printers', 'printer_1', {
+        printerId: 'printer_1',
+        uid: 'printer_1',
+        companyName: 'TapNex Press',
+        status: 'Active',
+      });
+    });
+
+    it('adminReconcileOrderPayment enforces admin role + explicit reason and atomically syncs order, payment, profile, publicProfile, and audit log', async () => {
+      mockDbState.seedDoc('profiles', 'prof_rec_1', {
+        profileId: 'prof_rec_1',
+        uid: 'user_1',
+        slug: 'reconcile-slug',
+        isPublic: false,
+        paymentConfirmed: false,
+      });
+      mockDbState.seedDoc('publicProfiles', 'reconcile-slug', {
+        profileId: 'prof_rec_1',
+        uid: 'user_1',
+        slug: 'reconcile-slug',
+        isPublic: false,
+        paymentConfirmed: false,
+      });
+      mockDbState.seedDoc('orders', 'ord_rec_1', {
+        orderId: 'ord_rec_1',
+        orderNumber: 'TNX-2026-REC1',
+        uid: 'user_1',
+        profileId: 'prof_rec_1',
+        profileSlug: 'reconcile-slug',
+        total: 1277.82,
+        currency: 'INR',
+        paymentStatus: 'Pending',
+        orderStatus: 'Awaiting Payment',
+      });
+
+      await expect(
+        mod.adminReconcileOrderPayment({
+          auth: null,
+          data: { orderId: 'ord_rec_1', paymentStatus: 'Verified', reason: 'Bank UTR settled' },
+        })
+      ).rejects.toMatchObject({ code: 'unauthenticated' });
+
+      await expect(
+        mod.adminReconcileOrderPayment({
+          auth: { uid: 'user_1' },
+          data: { orderId: 'ord_rec_1', paymentStatus: 'Verified', reason: 'Self mark paid' },
+        })
+      ).rejects.toMatchObject({ code: 'permission-denied' });
+
+      await expect(
+        mod.adminReconcileOrderPayment({
+          auth: { uid: 'printer_1' },
+          data: { orderId: 'ord_rec_1', paymentStatus: 'Verified', reason: 'Printer override' },
+        })
+      ).rejects.toMatchObject({ code: 'permission-denied' });
+
+      await expect(
+        mod.adminReconcileOrderPayment({
+          auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+          data: { orderId: 'ord_rec_1', paymentStatus: 'Verified', reason: 'no' },
+        })
+      ).rejects.toMatchObject({ code: 'invalid-argument' });
+
+      const result = await mod.adminReconcileOrderPayment({
+        auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+        data: {
+          orderId: 'ord_rec_1',
+          paymentStatus: 'Verified',
+          reason: 'NEFT settlement verified against Razorpay dashboard',
+          gatewayReference: 'pay_manual_ref_123',
+        },
+      });
+
+      expect(result).toEqual({
+        orderId: 'ord_rec_1',
+        paymentStatus: 'Verified',
+        orderStatus: 'Payment Successful',
+      });
+      expect(mockDbState.readDoc('orders', 'ord_rec_1')).toMatchObject({
+        paymentStatus: 'Verified',
+        orderStatus: 'Payment Successful',
+      });
+      expect(mockDbState.readDoc('payments', 'ord_rec_1')).toMatchObject({
+        status: 'Verified',
+        verifiedVia: 'adminReconciliation',
+        reconciledByUid: 'admin_1',
+        reconciledByEmail: 'admin@tapnex.in',
+        gatewayOrderId: 'pay_manual_ref_123',
+      });
+      expect(mockDbState.readDoc('profiles', 'prof_rec_1')).toMatchObject({
+        paymentConfirmed: true,
+        isPublic: true,
+      });
+      expect(mockDbState.readDoc('publicProfiles', 'reconcile-slug')).toMatchObject({
+        paymentConfirmed: true,
+        isPublic: true,
+        lastPaidOrderId: 'ord_rec_1',
+      });
+
+      const logs = Array.from(mockDbState.store.get('auditLogs')?.values() || []);
+      expect(logs.some((l) => l.action === 'ADMIN_RECONCILE_ORDER_PAYMENT' && l.targetId === 'ord_rec_1')).toBe(
+        true
+      );
+    });
+
+    it('adminReconcileProfilePayment enforces admin role and syncs profile + publicProfile + audit log', async () => {
+      mockDbState.seedDoc('profiles', 'prof_unlock_1', {
+        profileId: 'prof_unlock_1',
+        uid: 'user_1',
+        slug: 'unlock-slug',
+        isPublic: false,
+        paymentConfirmed: false,
+      });
+      mockDbState.seedDoc('publicProfiles', 'unlock-slug', {
+        profileId: 'prof_unlock_1',
+        uid: 'user_1',
+        slug: 'unlock-slug',
+        isPublic: false,
+        paymentConfirmed: false,
+      });
+
+      await expect(
+        mod.adminReconcileProfilePayment({
+          auth: { uid: 'user_1' },
+          data: { profileId: 'prof_unlock_1', completed: true },
+        })
+      ).rejects.toMatchObject({ code: 'permission-denied' });
+
+      const res = await mod.adminReconcileProfilePayment({
+        auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+        data: {
+          profileId: 'prof_unlock_1',
+          completed: true,
+          reference: 'INV-8821',
+          reason: 'Offline invoice settled',
+        },
+      });
+
+      expect(res).toMatchObject({
+        profileId: 'prof_unlock_1',
+        slug: 'unlock-slug',
+        paymentConfirmed: true,
+        paymentReference: 'INV-8821',
+        isPublic: true,
+      });
+      expect(mockDbState.readDoc('profiles', 'prof_unlock_1')?.paymentConfirmed).toBe(true);
+      expect(mockDbState.readDoc('publicProfiles', 'unlock-slug')?.paymentConfirmed).toBe(true);
+    });
+
+    it('adminEnsureOrderQr rejects unpaid orders and idempotently prepares CUSTOMER_ORDER QR for paid orders', async () => {
+      mockDbState.seedDoc('orders', 'ord_admin_qr_unpaid', {
+        orderId: 'ord_admin_qr_unpaid',
+        uid: 'user_1',
+        profileId: 'prof_1',
+        profileSlug: 'rohan-kapoor',
+        paymentStatus: 'Pending',
+        orderStatus: 'Awaiting Payment',
+      });
+
+      await expect(
+        mod.adminEnsureOrderQr({
+          auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+          data: { orderId: 'ord_admin_qr_unpaid' },
+        })
+      ).rejects.toMatchObject({ code: 'failed-precondition' });
+
+      mockDbState.seedDoc('orders', 'ord_admin_qr_paid', {
+        orderId: 'ord_admin_qr_paid',
+        orderNumber: 'TNX-2026-QR99',
+        uid: 'user_1',
+        profileId: 'prof_1',
+        profileSlug: 'rohan-kapoor',
+        printerId: 'printer_1',
+        paymentStatus: 'Verified',
+        orderStatus: 'Payment Successful',
+      });
+
+      const first = await mod.adminEnsureOrderQr({
+        auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+        data: { orderId: 'ord_admin_qr_paid' },
+      });
+      expect(first).toMatchObject({
+        qrCodeId: 'ord_admin_qr_paid',
+        qrType: 'CUSTOMER_ORDER',
+        alreadyExists: false,
+      });
+      expect(mockDbState.readDoc('orders', 'ord_admin_qr_paid')).toMatchObject({
+        qrCodeId: 'ord_admin_qr_paid',
+        printFileReady: true,
+      });
+      expect(mockDbState.readDoc('qrCodes', 'ord_admin_qr_paid')?.qrType).toBe('CUSTOMER_ORDER');
+
+      const second = await mod.adminEnsureOrderQr({
+        auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+        data: { orderId: 'ord_admin_qr_paid' },
+      });
+      expect(second.alreadyExists).toBe(true);
+    });
+
+    it('adminSendDesignToPrint rejects markPaymentCompleted and unpaid non-complimentary runs, supports verified paid orders and audited complimentary runs', async () => {
+      mockDbState.seedDoc('profiles', 'prof_print_1', {
+        profileId: 'prof_print_1',
+        uid: 'user_1',
+        slug: 'print-user-slug',
+        isPublic: false,
+        paymentConfirmed: false,
+      });
+      mockDbState.seedDoc('publicProfiles', 'print-user-slug', {
+        profileId: 'prof_print_1',
+        uid: 'user_1',
+        slug: 'print-user-slug',
+        isPublic: false,
+        paymentConfirmed: false,
+      });
+      mockDbState.seedDoc('cardDesigns', 'des_unapproved', {
+        designId: 'des_unapproved',
+        uid: 'user_1',
+        profileId: 'prof_print_1',
+        templateId: 'minimal-white',
+        cardTechnology: 'qr_smart',
+        approved: false,
+      });
+      mockDbState.seedDoc('cardDesigns', 'des_approved', {
+        designId: 'des_approved',
+        uid: 'user_1',
+        profileId: 'prof_print_1',
+        templateId: 'minimal-white',
+        cardTechnology: 'qr_smart',
+        approved: true,
+      });
+
+      const baseShipping = {
+        fullName: 'Rohan',
+        mobile: '9876543210',
+        email: 'r@tapnex.in',
+        addressLine1: 'MG Road',
+        city: 'Pune',
+        pinCode: '411001',
+      };
+
+      // 1. Customer denied
+      await expect(
+        mod.adminSendDesignToPrint({
+          auth: { uid: 'user_1' },
+          data: {
+            designId: 'des_approved',
+            printerId: 'printer_1',
+            quantity: 2,
+            complimentary: true,
+            complimentaryReason: 'VIP sample',
+            shippingAddress: baseShipping,
+          },
+        })
+      ).rejects.toMatchObject({ code: 'permission-denied' });
+
+      // 2. Unapproved design denied
+      await expect(
+        mod.adminSendDesignToPrint({
+          auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+          data: {
+            designId: 'des_unapproved',
+            printerId: 'printer_1',
+            quantity: 2,
+            complimentary: true,
+            complimentaryReason: 'VIP sample',
+            shippingAddress: baseShipping,
+          },
+        })
+      ).rejects.toMatchObject({ code: 'failed-precondition' });
+
+      // 3. Legacy markPaymentCompleted cannot mark an unpaid order paid
+      await expect(
+        mod.adminSendDesignToPrint({
+          auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+          data: {
+            designId: 'des_approved',
+            printerId: 'printer_1',
+            quantity: 2,
+            markPaymentCompleted: true,
+            shippingAddress: baseShipping,
+          },
+        })
+      ).rejects.toMatchObject({ code: 'invalid-argument' });
+
+      // 4. Unpaid print job without explicit complimentary flag fails
+      await expect(
+        mod.adminSendDesignToPrint({
+          auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+          data: {
+            designId: 'des_approved',
+            printerId: 'printer_1',
+            quantity: 2,
+            shippingAddress: baseShipping,
+          },
+        })
+      ).rejects.toMatchObject({ code: 'failed-precondition' });
+
+      // 5. Complimentary job without valid reason fails
+      await expect(
+        mod.adminSendDesignToPrint({
+          auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+          data: {
+            designId: 'des_approved',
+            printerId: 'printer_1',
+            quantity: 2,
+            complimentary: true,
+            complimentaryReason: 'no',
+            shippingAddress: baseShipping,
+          },
+        })
+      ).rejects.toMatchObject({ code: 'invalid-argument' });
+
+      // 6. Valid complimentary print job stays Pending, uses ADMIN_CUSTOM QR, writes no /payments doc, leaves profile unpaid, and logs audit
+      const compRes = await mod.adminSendDesignToPrint({
+        auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+        data: {
+          designId: 'des_approved',
+          printerId: 'printer_1',
+          initialOrderStatus: 'Assigned to Printer',
+          quantity: 2,
+          complimentary: true,
+          complimentaryReason: 'Founder approved VIP event sample',
+          shippingAddress: baseShipping,
+        },
+      });
+
+      const compOrderId = String(compRes.orderId);
+      const savedCompOrder = mockDbState.readDoc('orders', compOrderId);
+      // Authoritative pricing: minimal qr_smart (999) * 2 = 1998 subtotal, 18% GST = 360, shipping = 99 => total 2457
+      expect(savedCompOrder).toMatchObject({
+        uid: 'user_1',
+        designId: 'des_approved',
+        printerId: 'printer_1',
+        quantity: 2,
+        subtotal: 1998,
+        tax: 360,
+        shipping: 99,
+        total: 2457,
+        paymentStatus: 'Pending',
+        complimentary: true,
+        complimentaryReason: 'Founder approved VIP event sample',
+        orderStatus: 'Assigned to Printer',
+        printFileReady: true,
+      });
+      expect(String(savedCompOrder?.internalNotes || '')).toContain('Founder approved VIP event sample');
+      expect(mockDbState.readDoc('cardDesigns', 'des_approved')).toMatchObject({
+        locked: true,
+        orderId: compOrderId,
+      });
+      expect(mockDbState.readDoc('qrCodes', compOrderId)).toMatchObject({
+        qrType: 'ADMIN_CUSTOM',
+        printerId: 'printer_1',
+      });
+      expect(mockDbState.readDoc('payments', compOrderId)).toBeUndefined();
+      expect(mockDbState.readDoc('profiles', 'prof_print_1')?.paymentConfirmed).toBe(false);
+      expect(mockDbState.readDoc('publicProfiles', 'print-user-slug')?.paymentConfirmed).toBe(false);
+
+      const compAuditLogs = Array.from(mockDbState.store.get('auditLogs')?.values() || []);
+      expect(
+        compAuditLogs.some(
+          (l) =>
+            l.action === 'SEND_COMPLIMENTARY_PRINT' &&
+            l.targetId === compOrderId &&
+            String(l.details || '').includes('Founder approved VIP event sample')
+        )
+      ).toBe(true);
+
+      // 7. Printing an already verified paid order preserves verified payment and creates CUSTOMER_ORDER QR
+      mockDbState.seedDoc('cardDesigns', 'des_paid_1', {
+        designId: 'des_paid_1',
+        uid: 'user_1',
+        profileId: 'prof_print_1',
+        templateId: 'minimal-white',
+        cardTechnology: 'qr_smart',
+        approved: true,
+        locked: true,
+        orderId: 'ord_paid_print_1',
+      });
+      mockDbState.seedDoc('orders', 'ord_paid_print_1', {
+        orderId: 'ord_paid_print_1',
+        orderNumber: 'TNX-2026-PAID1',
+        uid: 'user_1',
+        profileId: 'prof_print_1',
+        profileSlug: 'print-user-slug',
+        designId: 'des_paid_1',
+        quantity: 1,
+        subtotal: 999,
+        tax: 180,
+        shipping: 99,
+        total: 1278,
+        currency: 'INR',
+        paymentStatus: 'Verified',
+        orderStatus: 'Payment Successful',
+      });
+
+      await expect(
+        mod.adminSendDesignToPrint({
+          auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+          data: {
+            designId: 'des_paid_1',
+            orderId: 'ord_paid_print_1',
+            printerId: 'printer_1',
+            quantity: 1,
+            complimentary: true,
+            complimentaryReason: 'Should reject on paid order',
+            shippingAddress: baseShipping,
+          },
+        })
+      ).rejects.toMatchObject({ code: 'invalid-argument' });
+
+      const paidRes = await mod.adminSendDesignToPrint({
+        auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+        data: {
+          designId: 'des_paid_1',
+          orderId: 'ord_paid_print_1',
+          printerId: 'printer_1',
+          initialOrderStatus: 'Assigned to Printer',
+          quantity: 1,
+          shippingAddress: baseShipping,
+        },
+      });
+      expect(paidRes).toMatchObject({
+        orderId: 'ord_paid_print_1',
+        complimentary: false,
+        paymentStatus: 'Verified',
+      });
+      expect(mockDbState.readDoc('qrCodes', 'ord_paid_print_1')?.qrType).toBe('CUSTOMER_ORDER');
+      expect(mockDbState.readDoc('orders', 'ord_paid_print_1')?.paymentStatus).toBe('Verified');
+    });
+
+    it('assertRole blocks inactive admin, invalid admin role, unverified admin, and Pending Verification while preserving missing-admin legacy fallback', async () => {
+      mockDbState.seedDoc('profiles', 'prof_role_test', {
+        profileId: 'prof_role_test',
+        uid: 'user_1',
+        slug: 'role-test-slug',
+        isPublic: false,
+        paymentConfirmed: false,
+      });
+
+      // 1. Inactive admins/{uid} must be rejected WITHOUT falling back to users/{uid}.role
+      mockDbState.seedDoc('users', 'admin_inactive', {
+        uid: 'admin_inactive',
+        email: 'inactive@tapnex.in',
+        role: 'SUPERADMIN',
+        status: 'Active',
+      });
+      mockDbState.seedDoc('admins', 'admin_inactive', {
+        uid: 'admin_inactive',
+        role: 'SUPERADMIN',
+        active: false,
+      });
+      await expect(
+        mod.adminReconcileProfilePayment({
+          auth: { uid: 'admin_inactive', token: { email: 'inactive@tapnex.in', email_verified: true } },
+          data: { profileId: 'prof_role_test', completed: true, reason: 'Inactive admin test' },
+        })
+      ).rejects.toMatchObject({ code: 'permission-denied' });
+
+      // 2. Invalid admins/{uid}.role must be rejected WITHOUT falling back to users/{uid}.role
+      mockDbState.seedDoc('users', 'admin_invalid_role', {
+        uid: 'admin_invalid_role',
+        email: 'invalid@tapnex.in',
+        role: 'ADMIN',
+        status: 'Active',
+      });
+      mockDbState.seedDoc('admins', 'admin_invalid_role', {
+        uid: 'admin_invalid_role',
+        role: 'USER',
+        active: true,
+      });
+      await expect(
+        mod.adminReconcileProfilePayment({
+          auth: { uid: 'admin_invalid_role', token: { email: 'invalid@tapnex.in', email_verified: true } },
+          data: { profileId: 'prof_role_test', completed: true, reason: 'Invalid admin role test' },
+        })
+      ).rejects.toMatchObject({ code: 'permission-denied' });
+
+      // 3. Unverified administrator email must be rejected
+      await expect(
+        mod.adminReconcileProfilePayment({
+          auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: false } },
+          data: { profileId: 'prof_role_test', completed: true, reason: 'Unverified email check' },
+        })
+      ).rejects.toMatchObject({ code: 'permission-denied' });
+
+      // 4. Pending Verification account must be rejected on privileged operations
+      mockDbState.seedDoc('users', 'admin_pending', {
+        uid: 'admin_pending',
+        email: 'pending@tapnex.in',
+        role: 'ADMIN',
+        status: 'Pending Verification',
+      });
+      mockDbState.seedDoc('admins', 'admin_pending', {
+        uid: 'admin_pending',
+        role: 'ADMIN',
+        active: true,
+      });
+      await expect(
+        mod.adminReconcileProfilePayment({
+          auth: { uid: 'admin_pending', token: { email: 'pending@tapnex.in', email_verified: true } },
+          data: { profileId: 'prof_role_test', completed: true, reason: 'Pending user status check' },
+        })
+      ).rejects.toMatchObject({ code: 'permission-denied' });
+
+      // 5. Missing admins/{uid} genuinely preserves legacy users.role fallback (when Active and email_verified)
+      mockDbState.seedDoc('users', 'legacy_admin', {
+        uid: 'legacy_admin',
+        email: 'legacy@tapnex.in',
+        role: 'ADMIN',
+        status: 'Active',
+      });
+      const legacyRes = await mod.adminReconcileProfilePayment({
+        auth: { uid: 'legacy_admin', token: { email: 'legacy@tapnex.in', email_verified: true } },
+        data: { profileId: 'prof_role_test', completed: true, reason: 'Legacy admin fallback verified' },
+      });
+      expect(legacyRes.paymentConfirmed).toBe(true);
+    });
+
+    it('generateAdminQr validates URLs, assignPrinter syncs QR + validates active printers, and updateOrderStatus blocks payment statuses', async () => {
+      await expect(
+        mod.generateAdminQr({
+          auth: { uid: 'super_1', token: { email: 'super@tapnex.in', email_verified: true } },
+          data: { targetUrl: 'javascript:alert(1)' },
+        })
+      ).rejects.toMatchObject({ code: 'invalid-argument' });
+
+      const adminQr = await mod.generateAdminQr({
+        auth: { uid: 'super_1', token: { email: 'super@tapnex.in', email_verified: true } },
+        data: { targetUrl: 'https://tapnex.in/p/custom-vip', customerName: 'VIP Guest' },
+      });
+      expect(adminQr).toMatchObject({
+        qrType: 'ADMIN_CUSTOM',
+        targetUrl: 'https://tapnex.in/p/custom-vip',
+        customerName: 'VIP Guest',
+      });
+
+      mockDbState.seedDoc('orders', 'ord_assign_1', {
+        orderId: 'ord_assign_1',
+        uid: 'user_1',
+        printerId: '',
+        orderStatus: 'Payment Successful',
+      });
+      mockDbState.seedDoc('qrCodes', 'ord_assign_1', {
+        qrCodeId: 'ord_assign_1',
+        orderId: 'ord_assign_1',
+        printerId: '',
+      });
+
+      await expect(
+        mod.assignPrinter({
+          auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+          data: { orderId: 'ord_assign_1', printerId: 'nonexistent_printer' },
+        })
+      ).rejects.toMatchObject({ code: 'failed-precondition' });
+
+      await mod.assignPrinter({
+        auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+        data: { orderId: 'ord_assign_1', printerId: 'printer_1' },
+      });
+      expect(mockDbState.readDoc('orders', 'ord_assign_1')).toMatchObject({
+        printerId: 'printer_1',
+        orderStatus: 'Assigned to Printer',
+      });
+      expect(mockDbState.readDoc('qrCodes', 'ord_assign_1')?.printerId).toBe('printer_1');
+
+      await expect(
+        mod.updateOrderStatus({
+          auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+          data: { orderId: 'ord_assign_1', orderStatus: 'Payment Successful' },
+        })
+      ).rejects.toMatchObject({ code: 'failed-precondition' });
+
+      await expect(
+        mod.updateOrderStatus({
+          auth: { uid: 'printer_1', token: { email: 'printer@tapnex.in' } },
+          data: { orderId: 'ord_assign_1', orderStatus: 'Cancelled' },
+        })
+      ).rejects.toMatchObject({ code: 'permission-denied' });
+
+      await mod.updateOrderStatus({
+        auth: { uid: 'printer_1', token: { email: 'printer@tapnex.in' } },
+        data: { orderId: 'ord_assign_1', orderStatus: 'Printing in Progress' },
+      });
+      expect(mockDbState.readDoc('orders', 'ord_assign_1')?.orderStatus).toBe('Printing in Progress');
     });
   });
 });

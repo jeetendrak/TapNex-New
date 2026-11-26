@@ -21,12 +21,17 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import {
   createPendingShopOrder,
-  finalizeVerifiedOrderPayment,
   getShopCategories,
   getShopProducts,
   getUserProfiles,
+  sanitizeSlug,
   sendAndLogTransactionalEmail,
 } from '../../lib/firestoreService';
+import {
+  createPaymentOrder,
+  generatePurchasedQr,
+  verifyPayment,
+} from '../../lib/paymentApi';
 import {
   DEFAULT_PAYMENT_GATEWAYS,
   DEFAULT_SHOP_CATEGORIES,
@@ -37,8 +42,6 @@ import {
 import type {
   OrderShopItem,
   PaymentGatewayConfig,
-  PaymentGatewayId,
-  PaymentRecord,
   ProfileRecord,
   ShopCartItem,
   ShopCategoryRecord,
@@ -89,20 +92,11 @@ export const ShopPage: React.FC = () => {
 
   const [userProfiles, setUserProfiles] = useState<ProfileRecord[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string>('');
-  const [selectedGatewayId, setSelectedGatewayId] = useState<PaymentGatewayId>('razorpay');
   const [processing, setProcessing] = useState(false);
-
-  const [upiModal, setUpiModal] = useState<{
+  const [pendingShopOrder, setPendingShopOrder] = useState<{
     orderId: string;
     orderNumber: string;
-    gateway: PaymentGatewayId;
-    mode: PaymentRecord['gateway'];
-    gatewayOrderId: string;
-    upiUri: string;
-    upiQrPngDataUrl: string;
-    utrInput: string;
-    total: number;
-    linkedProfileSlug?: string;
+    signatureKey: string;
   } | null>(null);
 
   const [shipping, setShipping] = useState({
@@ -176,18 +170,12 @@ export const ShopPage: React.FC = () => {
     });
   }, [userRecord]);
 
-  const configuredGateways: PaymentGatewayConfig[] = PAYMENT_GATEWAY_ORDER.map(
+  const allGatewayConfigs: PaymentGatewayConfig[] = PAYMENT_GATEWAY_ORDER.map(
     (id) => appSettings.paymentGateways?.[id] || DEFAULT_PAYMENT_GATEWAYS[id]
-  ).filter((g) => g.enabled);
-
-  useEffect(() => {
-    if (configuredGateways.length > 0 && !configuredGateways.some((g) => g.id === selectedGatewayId)) {
-      setSelectedGatewayId(configuredGateways[0].id);
-    }
-  }, [appSettings.paymentGateways, configuredGateways.length, selectedGatewayId]);
-
-  const activeGatewayConfig =
-    configuredGateways.find((g) => g.id === selectedGatewayId) || configuredGateways[0] || null;
+  );
+  const razorpayGatewayConfig =
+    allGatewayConfigs.find((g) => g.id === 'razorpay' && g.enabled) || null;
+  const activeGatewayConfig = razorpayGatewayConfig;
 
   const activeCategoryIds = useMemo(
     () => new Set(categories.map((c) => c.categoryId)),
@@ -270,86 +258,6 @@ export const ShopPage: React.FC = () => {
     setCart((prev) => prev.filter((item) => item.product.productId !== productId));
   };
 
-  const completeVerificationAndShopOrder = async ({
-    orderId,
-    orderNumber,
-    gateway,
-    mode,
-    gatewayOrderId,
-    gatewayPaymentId,
-    signature,
-    orderTotal,
-    linkedProfileSlug,
-  }: {
-    orderId: string;
-    orderNumber: string;
-    gateway: PaymentGatewayId;
-    mode: PaymentRecord['gateway'];
-    gatewayOrderId: string;
-    gatewayPaymentId: string;
-    signature: string;
-    orderTotal: number;
-    linkedProfileSlug?: string;
-  }) => {
-    if (!userRecord) return;
-    const verifyRes = await fetch('/api/payments/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        orderId,
-        gateway,
-        gatewayOrderId,
-        gatewayPaymentId,
-        signature,
-        mode,
-        profileSlug: linkedProfileSlug || `shop-order-${orderNumber.toLowerCase()}`,
-        appOrigin: window.location.origin,
-      }),
-    });
-    const verifiedData = (await verifyRes.json()) as {
-      verified: boolean;
-      gateway?: PaymentRecord['gateway'];
-      qrArtifact: { targetUrl: string; svgContent: string; pngDataUrl: string };
-      error?: string;
-    };
-    if (!verifyRes.ok || !verifiedData.verified) {
-      throw new Error(verifiedData.error || 'Cryptographic payment verification failed.');
-    }
-
-    await finalizeVerifiedOrderPayment({
-      orderId,
-      uid: userRecord.uid,
-      ...(linkedProfileSlug ? { profileSlug: linkedProfileSlug } : {}),
-      gateway: verifiedData.gateway || mode,
-      gatewayOrderId,
-      gatewayPaymentId,
-      amount: orderTotal,
-      qrArtifact: verifiedData.qrArtifact,
-    });
-
-    await sendAndLogTransactionalEmail({
-      uid: userRecord.uid,
-      to: shipping.email,
-      templateId: 'order_confirmation',
-      variables: {
-        ORDER_NUMBER: orderNumber,
-        AMOUNT: String(orderTotal),
-        CUSTOMER_NAME: shipping.fullName,
-      },
-    });
-
-    setCart([]);
-    localStorage.removeItem(CART_STORAGE_KEY);
-    setBagOpen(false);
-    setCheckoutStep('bag');
-    notify(
-      'Smart Tag Order Confirmed!',
-      `Order ${orderNumber} verified via ${activeGatewayConfig?.label || gateway}. Track delivery in your portal.`,
-      'success'
-    );
-    navigate(`/dashboard/orders/${orderId}`);
-  };
-
   const handleCheckoutSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (cart.length === 0) return;
@@ -364,8 +272,8 @@ export const ShopPage: React.FC = () => {
     }
     if (!activeGatewayConfig) {
       notify(
-        'No payment gateway enabled',
-        'Ask an administrator to enable a payment method in Settings.',
+        'Razorpay Checkout Disabled',
+        'Razorpay checkout is currently disabled by an administrator.',
         'error'
       );
       return;
@@ -383,236 +291,177 @@ export const ShopPage: React.FC = () => {
 
     setProcessing(true);
     try {
-      const orderId = `ord_${Date.now()}`;
-      const orderNumber = `TNX-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`;
       const linkedProfile = userProfiles.find((p) => p.profileId === selectedProfileId);
-      const shopItems: OrderShopItem[] = cart.map((item) => ({
-        productId: item.product.productId,
-        name: item.product.name,
-        categoryName: item.product.categoryName || 'Smart Tag',
-        cardType: item.product.cardType || 'Smart Safety Tag',
-        quantity: item.quantity,
-        priceInr: item.product.priceInr,
-        lineTotal: item.product.priceInr * item.quantity,
-      }));
-      const summaryLabel =
-        cart.length === 1
-          ? cart[0].product.cardType || cart[0].product.name
-          : `Smart Tags Bundle (${cart.length} items)`;
-
-      await createPendingShopOrder({
-        orderId,
-        orderNumber,
+      const linkedProfileSlug = linkedProfile?.slug ? sanitizeSlug(linkedProfile.slug) : '';
+      const checkoutSignatureKey = JSON.stringify({
         uid: userRecord.uid,
         profileId: linkedProfile?.profileId || 'shop_cart',
-        profileSlug: linkedProfile?.slug || '',
-        shopItems,
-        quantity: cartItemCount,
-        cardType: summaryLabel,
-        subtotal,
-        tax,
-        shipping: shippingFee,
+        items: cart.map((c) => `${c.product.productId}:${c.quantity}:${c.product.priceInr}`),
         total,
-        shippingAddress: shipping,
-        notes: shopItems.map((i) => `${i.quantity}x ${i.name} (₹${i.priceInr})`).join(', '),
+        shipping,
       });
 
-      const createRes = await fetch('/api/payments/create-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId,
-          amountInr: total,
-          receipt: orderNumber,
-          customerEmail: shipping.email,
-          gateway: activeGatewayConfig.id,
-          requestedMode: activeGatewayConfig.mode,
-          upiId: activeGatewayConfig.upiId,
-          upiPayeeName: activeGatewayConfig.upiPayeeName,
-        }),
-      });
-      const gwOrder = (await createRes.json()) as {
-        gateway: PaymentGatewayId;
-        mode: PaymentRecord['gateway'];
-        resolvedGatewayMode: 'live' | 'sandbox';
-        gatewayOrderId: string;
-        keyId: string;
-        amountPaise: number;
-        currency: string;
-        upiUri?: string;
-        upiQrPngDataUrl?: string;
-        error?: string;
-      };
-      if (!createRes.ok) throw new Error(gwOrder.error || 'Payment gateway initialization failed');
-
-      if (gwOrder.gateway === 'razorpay' && gwOrder.resolvedGatewayMode === 'live') {
-        await new Promise<void>((resolve, reject) => {
-          const existingScript = document.querySelector(
-            'script[src="https://checkout.razorpay.com/v1/checkout.js"]'
-          );
-          if (existingScript) {
-            resolve();
-            return;
-          }
-          const script = document.createElement('script');
-          script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-          script.async = true;
-          script.onload = () => resolve();
-          script.onerror = () => reject(new Error('Failed to load Razorpay Checkout SDK.'));
-          document.body.appendChild(script);
-        });
-
-        const RazorpayCtor = (
-          window as unknown as {
-            Razorpay?: new (opts: Record<string, unknown>) => {
-              open: () => void;
-              on: (ev: string, cb: (r: { error?: { description?: string } }) => void) => void;
-            };
-          }
-        ).Razorpay;
-
-        if (!RazorpayCtor) {
-          throw new Error('Razorpay Checkout SDK failed to initialize.');
-        }
-
-        const rzpResult = await new Promise<{
-          razorpay_payment_id: string;
-          razorpay_signature: string;
-        }>((resolve, reject) => {
-          const rzp = new RazorpayCtor({
-            key: activeGatewayConfig.publicKeyId || gwOrder.keyId,
-            amount: gwOrder.amountPaise,
-            currency: gwOrder.currency || 'INR',
-            name: 'TapNex Shop',
-            description: `TapNex Smart Tags Order ${orderNumber}`,
-            order_id: gwOrder.gatewayOrderId,
-            prefill: {
-              name: shipping.fullName,
-              email: shipping.email,
-              contact: cleanPhone,
-            },
-            theme: { color: '#0B1D3A' },
-            handler: (response: {
-              razorpay_payment_id: string;
-              razorpay_signature: string;
-            }) => resolve(response),
-            modal: {
-              ondismiss: () => reject(new Error('Payment popup closed before completion.')),
-            },
-          });
-          rzp.on('payment.failed', (resp) =>
-            reject(new Error(resp?.error?.description || 'Razorpay payment failed.'))
-          );
-          rzp.open();
-        });
-
-        await completeVerificationAndShopOrder({
-          orderId,
-          orderNumber,
-          gateway: gwOrder.gateway,
-          mode: gwOrder.mode,
-          gatewayOrderId: gwOrder.gatewayOrderId,
-          gatewayPaymentId: rzpResult.razorpay_payment_id,
-          signature: rzpResult.razorpay_signature,
-          orderTotal: total,
-          linkedProfileSlug: linkedProfile?.slug,
-        });
-      } else if (
-        (gwOrder.gateway === 'gpay' || gwOrder.gateway === 'upi') &&
-        gwOrder.upiQrPngDataUrl &&
-        gwOrder.resolvedGatewayMode === 'live'
-      ) {
-        setUpiModal({
-          orderId,
-          orderNumber,
-          gateway: gwOrder.gateway,
-          mode: gwOrder.mode,
-          gatewayOrderId: gwOrder.gatewayOrderId,
-          upiUri: gwOrder.upiUri || '',
-          upiQrPngDataUrl: gwOrder.upiQrPngDataUrl,
-          utrInput: '',
-          total,
-          linkedProfileSlug: linkedProfile?.slug,
-        });
-        setProcessing(false);
+      let orderId = '';
+      let orderNumber = '';
+      if (pendingShopOrder && pendingShopOrder.signatureKey === checkoutSignatureKey) {
+        orderId = pendingShopOrder.orderId;
+        orderNumber = pendingShopOrder.orderNumber;
       } else {
-        const sbxRes = await fetch('/api/payments/sandbox-authorize', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gatewayOrderId: gwOrder.gatewayOrderId,
-            gateway: gwOrder.gateway,
-            simulateOutcome: 'success',
-          }),
-        });
-        const sbx = (await sbxRes.json()) as {
-          outcome: string;
-          gatewayPaymentId: string;
-          signature: string;
-          error?: string;
-        };
-        if (sbx.outcome !== 'success') {
-          throw new Error(sbx.error || 'Gateway authorization failed');
-        }
+        orderId = `ord_${Date.now()}`;
+        orderNumber = `TNX-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`;
+        const shopItems: OrderShopItem[] = cart.map((item) => ({
+          productId: item.product.productId,
+          name: item.product.name,
+          categoryName: item.product.categoryName || 'Smart Tag',
+          cardType: item.product.cardType || 'Smart Safety Tag',
+          quantity: item.quantity,
+          priceInr: item.product.priceInr,
+          lineTotal: item.product.priceInr * item.quantity,
+        }));
+        const summaryLabel =
+          cart.length === 1
+            ? cart[0].product.cardType || cart[0].product.name
+            : `Smart Tags Bundle (${cart.length} items)`;
 
-        await completeVerificationAndShopOrder({
+        await createPendingShopOrder({
           orderId,
           orderNumber,
-          gateway: gwOrder.gateway,
-          mode: gwOrder.mode,
-          gatewayOrderId: gwOrder.gatewayOrderId,
-          gatewayPaymentId: sbx.gatewayPaymentId,
-          signature: sbx.signature,
-          orderTotal: total,
-          linkedProfileSlug: linkedProfile?.slug,
+          uid: userRecord.uid,
+          profileId: linkedProfile?.profileId || 'shop_cart',
+          profileSlug: linkedProfileSlug,
+          shopItems,
+          quantity: cartItemCount,
+          cardType: summaryLabel,
+          subtotal,
+          tax,
+          shipping: shippingFee,
+          total,
+          shippingAddress: shipping,
+          notes: shopItems.map((i) => `${i.quantity}x ${i.name} (₹${i.priceInr})`).join(', '),
         });
+        setPendingShopOrder({ orderId, orderNumber, signatureKey: checkoutSignatureKey });
       }
+
+      const gwOrder = await createPaymentOrder(orderId);
+
+      await new Promise<void>((resolve, reject) => {
+        const existingScript = document.querySelector(
+          'script[src="https://checkout.razorpay.com/v1/checkout.js"]'
+        );
+        if (existingScript) {
+          resolve();
+          return;
+        }
+        const script = document.createElement('script');
+        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+        script.async = true;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('Failed to load Razorpay Checkout SDK.'));
+        document.body.appendChild(script);
+      });
+
+      const RazorpayCtor = (
+        window as unknown as {
+          Razorpay?: new (opts: Record<string, unknown>) => {
+            open: () => void;
+            on: (ev: string, cb: (r: { error?: { description?: string } }) => void) => void;
+          };
+        }
+      ).Razorpay;
+
+      if (!RazorpayCtor) {
+        throw new Error('Razorpay Checkout SDK failed to initialize.');
+      }
+
+      const rzpResult = await new Promise<{
+        razorpay_order_id?: string;
+        razorpay_payment_id: string;
+        razorpay_signature: string;
+      }>((resolve, reject) => {
+        const rzp = new RazorpayCtor({
+          key: gwOrder.keyId,
+          amount: gwOrder.amountPaise,
+          currency: gwOrder.currency || 'INR',
+          name: 'TapNex Shop',
+          description: `TapNex Smart Tags Order ${orderNumber}`,
+          order_id: gwOrder.gatewayOrderId,
+          prefill: {
+            name: shipping.fullName,
+            email: shipping.email,
+            contact: cleanPhone,
+          },
+          theme: { color: '#0B1D3A' },
+          handler: (response: {
+            razorpay_order_id?: string;
+            razorpay_payment_id: string;
+            razorpay_signature: string;
+          }) => resolve(response),
+          modal: {
+            ondismiss: () => reject(new Error('Payment popup closed before completion.')),
+          },
+        });
+        rzp.on('payment.failed', (resp) =>
+          reject(new Error(resp?.error?.description || 'Razorpay payment failed.'))
+        );
+        rzp.open();
+      });
+
+      const verification = await verifyPayment({
+        orderId,
+        gatewayOrderId: rzpResult.razorpay_order_id || gwOrder.gatewayOrderId,
+        gatewayPaymentId: rzpResult.razorpay_payment_id,
+        signature: rzpResult.razorpay_signature,
+      });
+
+      if (!verification.verified) {
+        throw new Error('Server payment verification failed.');
+      }
+
+      if (linkedProfileSlug.length >= 3 && linkedProfileSlug !== 'undefined') {
+        try {
+          await generatePurchasedQr(orderId);
+        } catch (qrErr) {
+          notify(
+            'Payment verified — QR generation pending',
+            qrErr instanceof Error
+              ? `Payment succeeded, but QR artwork generation could not finish yet: ${qrErr.message}`
+              : 'Payment succeeded, and your QR code will be prepared shortly.',
+            'info'
+          );
+        }
+      }
+
+      const verifiedAmountInr = Math.round((verification.amountPaise || gwOrder.amountPaise) / 100);
+      try {
+        await sendAndLogTransactionalEmail({
+          uid: userRecord.uid,
+          to: shipping.email,
+          templateId: 'order_confirmation',
+          variables: {
+            ORDER_NUMBER: orderNumber,
+            AMOUNT: String(verifiedAmountInr),
+            CUSTOMER_NAME: shipping.fullName,
+          },
+        });
+      } catch (emailErr) {
+        console.error('Order confirmation email failed after verified payment:', emailErr);
+      }
+
+      setCart([]);
+      localStorage.removeItem(CART_STORAGE_KEY);
+      setPendingShopOrder(null);
+      setBagOpen(false);
+      setCheckoutStep('bag');
+      notify(
+        'Smart Tag Order Confirmed!',
+        `Order ${orderNumber} verified via Razorpay. Track delivery in your portal.`,
+        'success'
+      );
+      navigate(`/dashboard/orders/${orderId}`);
     } catch (err) {
       notify(
         'Checkout Error',
         err instanceof Error ? err.message : 'Unable to complete order.',
-        'error'
-      );
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const handleConfirmUpiLive = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!upiModal) return;
-    if (upiModal.utrInput.trim().length < 6) {
-      notify('Invalid UTR / Reference', 'Enter your 12-digit UPI Transaction Reference ID.', 'error');
-      return;
-    }
-    setProcessing(true);
-    try {
-      const sbxRes = await fetch('/api/payments/sandbox-authorize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          gatewayOrderId: upiModal.gatewayOrderId,
-          gateway: upiModal.gateway,
-          simulateOutcome: 'success',
-        }),
-      });
-      const sbx = (await sbxRes.json()) as { signature: string };
-      await completeVerificationAndShopOrder({
-        orderId: upiModal.orderId,
-        orderNumber: upiModal.orderNumber,
-        gateway: upiModal.gateway,
-        mode: upiModal.mode,
-        gatewayOrderId: upiModal.gatewayOrderId,
-        gatewayPaymentId: `UPI_${upiModal.utrInput.trim()}`,
-        signature: sbx.signature,
-        orderTotal: upiModal.total,
-        linkedProfileSlug: upiModal.linkedProfileSlug,
-      });
-      setUpiModal(null);
-    } catch (err) {
-      notify(
-        'UPI Verification Failed',
-        err instanceof Error ? err.message : 'Unable to verify UPI payment.',
         'error'
       );
     } finally {
@@ -1231,37 +1080,44 @@ export const ShopPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Payment Method */}
+                  {/* Payment Method (Razorpay Only) */}
                   <div className="pt-3 border-t border-slate-200 space-y-2.5">
                     <div className="flex items-center justify-between text-xs font-semibold text-[#0B1D3A]">
-                      <span>Select Payment Method</span>
+                      <span>Payment Method</span>
                       <span className="inline-flex items-center gap-1 text-emerald-700">
                         <ShieldCheck className="h-3.5 w-3.5" />
-                        <span>Secured</span>
+                        <span>Server Verified</span>
                       </span>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      {configuredGateways.map((gw) => {
-                        const selected = activeGatewayConfig?.id === gw.id;
-                        return (
-                          <button
-                            key={gw.id}
-                            type="button"
-                            onClick={() => setSelectedGatewayId(gw.id)}
-                            className={`p-2.5 rounded-xl border text-left text-xs transition-colors ${
-                              selected
-                                ? 'border-[#1D4ED8] bg-blue-50/70 ring-1 ring-[#1D4ED8]'
-                                : 'border-slate-200 bg-white hover:bg-slate-50'
-                            }`}
-                          >
-                            <div className="font-bold text-[#0B1D3A]">{gw.label}</div>
-                            <div className="text-[10px] font-mono uppercase text-slate-500 mt-0.5">
-                              {gw.mode}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
+                    {!activeGatewayConfig ? (
+                      <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
+                        Razorpay checkout is currently disabled by an administrator.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2">
+                        {allGatewayConfigs.map((gw) => {
+                          const isRazorpay = gw.id === 'razorpay';
+                          return (
+                            <button
+                              key={gw.id}
+                              type="button"
+                              disabled={!isRazorpay}
+                              aria-disabled={!isRazorpay}
+                              className={`p-2.5 rounded-xl border text-left text-xs transition-colors ${
+                                isRazorpay
+                                  ? 'border-[#1D4ED8] bg-blue-50/70 ring-1 ring-[#1D4ED8]'
+                                  : 'border-slate-200 bg-slate-50 opacity-55 cursor-not-allowed'
+                              }`}
+                            >
+                              <div className="font-bold text-[#0B1D3A]">{gw.label}</div>
+                              <div className="text-[10px] font-mono uppercase text-slate-500 mt-0.5">
+                                {isRazorpay ? 'Razorpay Live' : 'Temporarily Unavailable'}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </form>
               )}
@@ -1301,11 +1157,17 @@ export const ShopPage: React.FC = () => {
                     <button
                       type="submit"
                       form="shop-checkout-form"
-                      disabled={processing || configuredGateways.length === 0}
+                      disabled={processing || !activeGatewayConfig}
                       className="flex-1 py-3 rounded-xl bg-[#1D4ED8] hover:bg-blue-700 text-white text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
                     >
                       <CreditCard className="h-4 w-4" />
-                      <span>{processing ? 'Processing...' : `Pay ₹${total}`}</span>
+                      <span>
+                        {processing
+                          ? 'Processing...'
+                          : activeGatewayConfig
+                            ? `Pay ₹${total} via Razorpay`
+                            : 'Payment Unavailable'}
+                      </span>
                     </button>
                   </div>
                 )}
@@ -1319,55 +1181,6 @@ export const ShopPage: React.FC = () => {
         </div>
       )}
 
-      {/* UPI Live Verification Modal */}
-      {upiModal && (
-        <div
-          className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4"
-          role="dialog"
-          aria-modal="true"
-        >
-          <form
-            onSubmit={handleConfirmUpiLive}
-            className="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden"
-          >
-            <div className="px-6 py-4 bg-[#0B1D3A] text-white flex items-center justify-between">
-              <h3 className="font-display font-bold text-base">Complete UPI Payment · ₹{upiModal.total}</h3>
-              <button
-                type="button"
-                onClick={() => setUpiModal(null)}
-                className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4 text-center">
-              <img
-                src={upiModal.upiQrPngDataUrl}
-                alt="UPI Payment QR"
-                className="w-44 h-44 mx-auto border border-slate-200 rounded-xl p-2"
-              />
-              <p className="text-xs text-slate-600">
-                Scan with Google Pay, PhonePe, or any UPI app and enter your 12-digit UTR / reference number below.
-              </p>
-              <input
-                type="text"
-                required
-                value={upiModal.utrInput}
-                onChange={(e) => setUpiModal({ ...upiModal, utrInput: e.target.value })}
-                placeholder="Enter UPI Transaction Reference / UTR"
-                className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm font-mono"
-              />
-              <button
-                type="submit"
-                disabled={processing}
-                className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-50"
-              >
-                {processing ? 'Verifying...' : 'Confirm UPI Payment'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
     </PublicLayout>
   );
 };

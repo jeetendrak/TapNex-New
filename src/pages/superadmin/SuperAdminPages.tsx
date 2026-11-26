@@ -9,14 +9,13 @@ import {
   getAllQrCodes,
   getAllUsers,
   resetApplicationToFreshBlank,
-  saveAdminQrCode,
   saveAppSettings,
   updateUserRoleAndStatus,
   type ApplicationResetResult,
 } from '../../lib/firestoreService';
+import { generateAdminQr } from '../../lib/paymentApi';
 import { ALL_ADMIN_PERMISSIONS, PAYMENT_GATEWAY_ORDER } from '../../lib/constants';
 import { downloadBlob } from '../../lib/printPdf';
-import { generateHighResQrArtwork } from '../../lib/qrArtwork';
 import type { AdminPermission, QrCodeRecord, UserRecord, UserRole } from '../../types';
 
 const SuperAdminRolesHubTabs: React.FC = () => {
@@ -297,20 +296,16 @@ export const SuperAdminQrGeneratorPage: React.FC = () => {
     if (!userRecord) return;
     setGenerating(true);
     try {
-      const artwork = await generateHighResQrArtwork(targetUrl, 1024);
-      const saved = await saveAdminQrCode({
-        targetUrl: artwork.targetUrl,
-        svgContent: artwork.svgContent,
-        pngDataUrl: artwork.pngDataUrl,
+      const saved = await generateAdminQr({
+        targetUrl,
         customerName,
         orderId,
         description,
-        actor: { uid: userRecord.uid, email: userRecord.email, role: 'SUPERADMIN' },
       });
-      setTargetUrl(artwork.targetUrl);
+      setTargetUrl(saved.targetUrl);
       setLatestQr(saved);
       loadHistory();
-      notify('QR Code generated', `High-resolution PNG & SVG ready for ${artwork.targetUrl}`, 'success');
+      notify('QR Code generated', `High-resolution PNG & SVG ready for ${saved.targetUrl}`, 'success');
     } catch (err) {
       notify('Generation failed', err instanceof Error ? err.message : 'Invalid URL', 'error');
     } finally {
@@ -458,7 +453,6 @@ export const SuperAdminSystemSettingsPage: React.FC = () => {
   })();
   const [activeTab, setActiveTab] = useState<'pricing' | 'gateways' | 'reset'>(initialTab);
 
-  const [includeAuditLogs, setIncludeAuditLogs] = useState(true);
   const [restoreDefaultCatalog, setRestoreDefaultCatalog] = useState(true);
   const [confirmText, setConfirmText] = useState('');
   const [resetting, setResetting] = useState(false);
@@ -496,7 +490,7 @@ export const SuperAdminSystemSettingsPage: React.FC = () => {
     try {
       const result = await resetApplicationToFreshBlank(
         { uid: userRecord.uid, email: userRecord.email, role: 'SUPERADMIN' },
-        { includeAuditLogs, restoreDefaultCatalog }
+        { restoreDefaultCatalog }
       );
       setResetResult(result);
       setConfirmText('');
@@ -679,28 +673,15 @@ export const SuperAdminSystemSettingsPage: React.FC = () => {
             </div>
             <div>
               <h2 className="font-display text-lg font-bold text-rose-900">
-                Danger Zone: Clear All Data &amp; Reset App to Fresh Blank
+                Danger Zone: Clear Operational Data &amp; Reset Workspace
               </h2>
               <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                Permanently deletes all customer orders, Razorpay payment records, QR codes, shipping records, customized card designs, digital profiles, public <code className="font-mono text-[11px]">/p/:slug</code> pages, print partners, support tickets, notifications, secondary user/admin records, and local browser drafts. Your active SuperAdmin account remains signed in with a clean blank workspace.
+                Clears customer orders, shipping records, customized card designs, digital profiles, public <code className="font-mono text-[11px]">/p/:slug</code> pages, print partners, support tickets, notifications, secondary user/admin records, and local browser drafts. Your active SuperAdmin account remains signed in.
               </p>
             </div>
           </div>
 
           <div className="space-y-2.5 pt-2 border-t border-rose-100">
-            <label className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 cursor-pointer">
-              <div>
-                <div className="text-sm font-semibold text-[#0B1D3A]">Clear All Audit Logs</div>
-                <div className="text-xs text-slate-500">Removes all historical audit trail entries so the audit log starts at 0.</div>
-              </div>
-              <input
-                type="checkbox"
-                checked={includeAuditLogs}
-                onChange={(e) => setIncludeAuditLogs(e.target.checked)}
-                className="h-4 w-4 accent-rose-600"
-              />
-            </label>
-
             <label className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 cursor-pointer">
               <div>
                 <div className="text-sm font-semibold text-[#0B1D3A]">Restore Default Card Templates, Email Templates &amp; Pricing</div>
@@ -715,14 +696,19 @@ export const SuperAdminSystemSettingsPage: React.FC = () => {
             </label>
           </div>
 
-          <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 leading-relaxed">
-            <strong>Firebase Auth note:</strong> This action wipes all Firestore application data and local studio drafts while preserving your active SuperAdmin session. If you also created separate test email/password logins in Firebase Authentication, delete those accounts from <strong>Firebase Console → Authentication → Users</strong>.
+          <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 leading-relaxed space-y-1">
+            <div>
+              <strong>Retained immutable records:</strong> Payment ledger (<code className="font-mono text-[11px]">payments</code>), server-generated QR records (<code className="font-mono text-[11px]">qrCodes</code>), and security audit logs (<code className="font-mono text-[11px]">auditLogs</code>) are protected from browser deletion and preserved automatically.
+            </div>
+            <div>
+              <strong>Firebase Auth &amp; Storage note:</strong> Separate test email/password logins in Firebase Authentication and QR image assets in Storage are also preserved; manage them in Firebase Console if needed.
+            </div>
           </div>
 
           <form onSubmit={handleFactoryReset} className="space-y-3 pt-1">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Type <span className="font-mono text-rose-700">RESET</span> to confirm permanent deletion of all application data
+                Type <span className="font-mono text-rose-700">RESET</span> to confirm permanent deletion of operational workspace data
               </label>
               <input
                 type="text"
@@ -739,22 +725,40 @@ export const SuperAdminSystemSettingsPage: React.FC = () => {
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold rounded-xl disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Trash2 className="h-4 w-4" />
-              <span>{resetting ? 'Clearing All Application Data...' : 'Clear All Data & Reset App'}</span>
+              <span>{resetting ? 'Clearing Operational Data...' : 'Clear Operational Data & Reset Workspace'}</span>
             </button>
           </form>
 
           {resetResult && (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-2">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
               <div className="text-xs font-bold text-[#0B1D3A]">
-                Reset Summary: {resetResult.totalDeleted} Firestore document(s) deleted · {resetResult.localDraftsCleared} browser draft(s) cleared
+                Reset Summary: {resetResult.totalDeleted} Firestore document(s) cleared · {resetResult.localDraftsCleared} browser draft(s) cleared
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] font-mono text-slate-600">
-                {Object.entries(resetResult.deletedCounts).map(([col, count]) => (
-                  <div key={col} className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 flex items-center justify-between">
-                    <span>{col}</span>
-                    <span className="font-bold text-[#0B1D3A]">{count}</span>
-                  </div>
-                ))}
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                  Cleared Collections
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] font-mono text-slate-600">
+                  {Object.entries(resetResult.deletedCounts).map(([col, count]) => (
+                    <div key={col} className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 flex items-center justify-between">
+                      <span>{col}</span>
+                      <span className="font-bold text-[#0B1D3A]">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-amber-700 mb-1.5">
+                  Retained / Protected Data
+                </div>
+                <div className="space-y-1.5">
+                  {resetResult.retainedCollections.map((item) => (
+                    <div key={item.collection} className="bg-white border border-amber-200 rounded-lg px-2.5 py-1.5 text-[11px] text-slate-700">
+                      <span className="font-mono font-bold text-amber-900">{item.collection}</span>
+                      <span className="text-slate-500"> — {item.reason}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
               {resetResult.errors.length > 0 && (
                 <div className="text-xs text-rose-700 space-y-1 pt-1">
