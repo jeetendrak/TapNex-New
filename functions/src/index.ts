@@ -150,6 +150,9 @@ async function assertRole(authInfo: CallableAuthContext, allowed: Role[]): Promi
     ) {
       throw new HttpsError('permission-denied', 'Printer account is blocked, disabled, or pending verification.');
     }
+    if (requiresPrivilegedAccount && (!printerSnap.exists || printerStatus !== 'Active')) {
+      throw new HttpsError('permission-denied', 'Active printer account is required.');
+    }
   }
 
   return resolvedRole;
@@ -3276,4 +3279,420 @@ export const validatePrinterAccess = onCall(async (req) => {
   const orderSnap = await db.collection('orders').doc(orderId).get();
   const allowed = orderSnap.exists && orderSnap.data()?.printerId === req.auth.uid;
   return { allowed };
+});
+
+// --- Phase 2C: Secure Dispatch Document Helpers, Callables & Authenticated HTTP Stream ---
+const DISPATCH_DOC_MAX_BYTES = 5 * 1024 * 1024;
+const DISPATCH_DOC_MAX_BASE64_LENGTH = 7_200_000;
+const DISPATCH_DOC_MIME_BY_EXTENSION: Record<string, string> = {
+  '.pdf': 'application/pdf',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+};
+
+function assertValidDispatchFileName(raw: unknown): string {
+  const trimmed = typeof raw === 'string' ? raw.trim() : '';
+  if (
+    !trimmed ||
+    trimmed.length > 128 ||
+    trimmed.includes('/') ||
+    trimmed.includes('\\') ||
+    trimmed.includes('..') ||
+    !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(trimmed)
+  ) {
+    throw new HttpsError('invalid-argument', 'Valid dispatch document fileName is required.');
+  }
+  const dotIdx = trimmed.lastIndexOf('.');
+  if (dotIdx <= 0 || dotIdx === trimmed.length - 1) {
+    throw new HttpsError('invalid-argument', 'Dispatch document fileName must include a valid extension.');
+  }
+  const ext = trimmed.slice(dotIdx).toLowerCase();
+  if (!DISPATCH_DOC_MIME_BY_EXTENSION[ext]) {
+    throw new HttpsError(
+      'invalid-argument',
+      'Unsupported file extension. Allowed dispatch document types: PDF, JPEG, PNG.'
+    );
+  }
+  return trimmed;
+}
+
+function assertValidDispatchContentType(raw: unknown, fileName: string): string {
+  const normalized = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+  const ext = fileName.slice(fileName.lastIndexOf('.')).toLowerCase();
+  const expectedMime = DISPATCH_DOC_MIME_BY_EXTENSION[ext];
+  if (!expectedMime || !normalized || normalized !== expectedMime) {
+    throw new HttpsError(
+      'invalid-argument',
+      `Invalid contentType "${normalized || '(empty)'}" for "${fileName}". Expected "${expectedMime}".`
+    );
+  }
+  return normalized;
+}
+
+function decodeDispatchFileBase64(raw: unknown, expectedContentType: string): Buffer {
+  if (typeof raw !== 'string' || raw.trim().length === 0) {
+    throw new HttpsError('invalid-argument', 'Dispatch document file data is required.');
+  }
+  let base64Part = raw.trim();
+  if (base64Part.toLowerCase().startsWith('data:')) {
+    const commaIdx = base64Part.indexOf(',');
+    if (commaIdx <= 5) {
+      throw new HttpsError('invalid-argument', 'Invalid data URL encoding for dispatch document.');
+    }
+    const header = base64Part.slice(0, commaIdx);
+    const headerMatch = /^data:([a-z0-9/+.-]+);base64$/i.exec(header);
+    if (!headerMatch) {
+      throw new HttpsError('invalid-argument', 'Invalid data URL encoding for dispatch document.');
+    }
+    if (headerMatch[1].trim().toLowerCase() !== expectedContentType) {
+      throw new HttpsError(
+        'invalid-argument',
+        `Data URL MIME type "${headerMatch[1]}" does not match "${expectedContentType}".`
+      );
+    }
+    base64Part = base64Part.slice(commaIdx + 1);
+  }
+  const cleanBase64 = base64Part.replace(/\s+/g, '');
+  if (!cleanBase64) {
+    throw new HttpsError('invalid-argument', 'Dispatch document cannot be empty.');
+  }
+  if (cleanBase64.length > DISPATCH_DOC_MAX_BASE64_LENGTH) {
+    throw new HttpsError('invalid-argument', 'Dispatch document exceeds maximum allowed size of 5 MB.');
+  }
+  if (cleanBase64.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(cleanBase64)) {
+    throw new HttpsError('invalid-argument', 'Dispatch document file data must be valid base64.');
+  }
+  const decoded = Buffer.from(cleanBase64, 'base64');
+  if (decoded.byteLength === 0) {
+    throw new HttpsError('invalid-argument', 'Dispatch document cannot be empty.');
+  }
+  if (decoded.byteLength > DISPATCH_DOC_MAX_BYTES) {
+    throw new HttpsError('invalid-argument', 'Dispatch document exceeds maximum allowed size of 5 MB.');
+  }
+  return decoded;
+}
+
+async function assertDispatchDocOrderAccess(
+  authInfo: CallableAuthContext,
+  orderIdRaw: unknown
+): Promise<{ actorRole: Role; orderId: string; orderData: Record<string, unknown> }> {
+  const actorRole = await assertRole(authInfo, ['PRINTER', 'ADMIN', 'SUPERADMIN']);
+  if (actorRole === 'ADMIN' || actorRole === 'SUPERADMIN') {
+    const adminSnap = await db.collection('admins').doc(authInfo.uid).get();
+    const adminData = adminSnap.data() || {};
+    if (!adminSnap.exists || adminData.active !== true || adminData.role !== actorRole) {
+      throw new HttpsError(
+        'permission-denied',
+        'Active Admin/SuperAdmin registry entry is required.'
+      );
+    }
+  }
+  const orderId = assertValidDocId(orderIdRaw, 'orderId');
+  const orderSnap = await db.collection('orders').doc(orderId).get();
+  if (!orderSnap.exists) {
+    throw new HttpsError('not-found', `Order ${orderId} not found.`);
+  }
+  const orderData = (orderSnap.data() || {}) as Record<string, unknown>;
+  if (actorRole === 'PRINTER') {
+    const assignedPrinterId = typeof orderData.printerId === 'string' ? orderData.printerId.trim() : '';
+    if (!assignedPrinterId || assignedPrinterId !== authInfo.uid) {
+      throw new HttpsError(
+        'permission-denied',
+        'Printer can only access dispatch documents for orders currently assigned to their account.'
+      );
+    }
+  }
+  return { actorRole, orderId, orderData };
+}
+
+function parseConfiguredDispatchOrigins(raw: string | undefined): string[] {
+  return (raw || '')
+    .split(',')
+    .map((entry) => entry.trim().replace(/\/+$/, ''))
+    .filter((entry) => Boolean(entry) && entry !== '*');
+}
+
+function isAllowedDispatchCorsOrigin(origin: string): boolean {
+  const clean = origin.trim();
+  if (!clean) return false;
+  const exactAllowed = new Set([
+    ...parseConfiguredDispatchOrigins(process.env.APP_URL),
+    ...parseConfiguredDispatchOrigins(process.env.VITE_APP_URL),
+    'https://tapnex.in',
+    'https://www.tapnex.in',
+    `https://${firebaseProjectId}.web.app`,
+    `https://${firebaseProjectId}.firebaseapp.com`,
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+  ]);
+  return exactAllowed.has(clean);
+}
+
+function applyDispatchCorsHeaders(
+  req: { headers: Record<string, unknown> },
+  res: { setHeader?: (name: string, value: string) => void }
+): void {
+  const rawOrigin = req.headers.origin;
+  const origin = Array.isArray(rawOrigin)
+    ? String(rawOrigin[0] || '')
+    : typeof rawOrigin === 'string'
+      ? rawOrigin
+      : '';
+  if (origin && isAllowedDispatchCorsOrigin(origin)) {
+    res.setHeader?.('Access-Control-Allow-Origin', origin);
+    res.setHeader?.('Vary', 'Origin');
+    res.setHeader?.('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader?.('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    res.setHeader?.('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type');
+  }
+}
+
+function mapHttpsErrorToStatus(err: unknown): { statusCode: number; message: string } {
+  if (err instanceof HttpsError) {
+    switch (err.code) {
+      case 'unauthenticated':
+        return { statusCode: 401, message: err.message };
+      case 'permission-denied':
+        return { statusCode: 403, message: err.message };
+      case 'not-found':
+        return { statusCode: 404, message: err.message };
+      case 'invalid-argument':
+        return { statusCode: 400, message: err.message };
+      case 'failed-precondition':
+        return { statusCode: 412, message: err.message };
+      default:
+        return { statusCode: 500, message: err.message };
+    }
+  }
+  return {
+    statusCode: 500,
+    message: err instanceof Error ? err.message : 'Internal server error.',
+  };
+}
+
+// 24. uploadDispatchDoc
+export const uploadDispatchDoc = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
+  const data = (req.data || {}) as {
+    orderId?: unknown;
+    fileName?: unknown;
+    contentType?: unknown;
+    fileData?: unknown;
+    dataBase64?: unknown;
+    fileDataBase64?: unknown;
+  };
+
+  const { actorRole, orderId, orderData } = await assertDispatchDocOrderAccess(req.auth, data.orderId);
+  const fileName = assertValidDispatchFileName(data.fileName);
+  const contentType = assertValidDispatchContentType(data.contentType, fileName);
+  const rawPayload = data.fileData ?? data.dataBase64 ?? data.fileDataBase64;
+  const fileBuffer = decodeDispatchFileBase64(rawPayload, contentType);
+
+  const storagePath = `dispatchDocs/${orderId}/${fileName}`;
+  const createdAt = new Date().toISOString();
+  const serverMetadata = {
+    orderId,
+    ownerUid: typeof orderData.uid === 'string' ? orderData.uid : '',
+    assignedPrinterUid: typeof orderData.printerId === 'string' ? orderData.printerId : '',
+    uploadedByUid: req.auth.uid,
+    uploadedByRole: actorRole,
+    contentType,
+    createdAt,
+  };
+
+  await storage.bucket().file(storagePath).save(fileBuffer, {
+    contentType,
+    resumable: false,
+    metadata: {
+      contentType,
+      metadata: serverMetadata,
+    },
+  });
+
+  const actorEmail = typeof req.auth.token?.email === 'string' ? req.auth.token.email : '';
+  await writeAuditLog({
+    actorUid: req.auth.uid,
+    actorEmail,
+    actorRole,
+    action: 'UPLOAD_DISPATCH_DOC',
+    targetCollection: 'dispatchDocs',
+    targetId: storagePath,
+    details: `Uploaded dispatch document ${fileName} (${contentType}, ${fileBuffer.byteLength} bytes) for order ${orderId}`,
+  });
+
+  return {
+    orderId,
+    fileName,
+    storagePath,
+    contentType,
+    sizeBytes: fileBuffer.byteLength,
+    metadata: serverMetadata,
+  };
+});
+
+// 25. downloadDispatchDoc (Authenticated HTTP streaming endpoint; no signed URLs or download tokens)
+export const downloadDispatchDoc = onRequest(async (req, res) => {
+  applyDispatchCorsHeaders(req as unknown as { headers: Record<string, unknown> }, res);
+
+  if (req.method === 'OPTIONS') {
+    res.status(204).send('');
+    return;
+  }
+
+  if (req.method !== 'GET') {
+    res.status(405).json({ error: 'Method not allowed.' });
+    return;
+  }
+
+  try {
+    const rawAuthHeader = req.headers.authorization;
+    const authHeader = (
+      Array.isArray(rawAuthHeader) ? String(rawAuthHeader[0] || '') : String(rawAuthHeader || '')
+    ).trim();
+    const bearerMatch = /^Bearer\s+(.+)$/i.exec(authHeader);
+    const idToken = bearerMatch?.[1]?.trim() || '';
+    if (!idToken) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+
+    let decodedToken: Record<string, unknown> & { uid: string };
+    try {
+      decodedToken = (await auth.verifyIdToken(idToken, true)) as unknown as Record<string, unknown> & {
+        uid: string;
+      };
+    } catch {
+      res.status(401).json({ error: 'Invalid or expired authentication token.' });
+      return;
+    }
+    if (!decodedToken || typeof decodedToken.uid !== 'string' || !decodedToken.uid.trim()) {
+      res.status(401).json({ error: 'Invalid authentication token.' });
+      return;
+    }
+
+    const reqQuery = (req.query || {}) as Record<string, unknown>;
+    const rawOrderId = reqQuery.orderId;
+    const rawFileName = reqQuery.fileName;
+
+    const { orderId } = await assertDispatchDocOrderAccess(
+      { uid: decodedToken.uid, token: decodedToken },
+      rawOrderId
+    );
+    const fileName = assertValidDispatchFileName(rawFileName);
+
+    const storagePath = `dispatchDocs/${orderId}/${fileName}`;
+    const fileRef = storage.bucket().file(storagePath);
+    const [exists] = await fileRef.exists();
+    if (!exists) {
+      res.status(404).json({ error: `Dispatch document ${storagePath} not found.` });
+      return;
+    }
+
+    const [rawFileMeta] = await fileRef.getMetadata();
+    const fileMeta = (rawFileMeta || {}) as {
+      contentType?: unknown;
+      metadata?: Record<string, unknown>;
+    };
+    const customMeta = fileMeta.metadata || {};
+    if (customMeta.orderId !== orderId) {
+      res.status(403).json({ error: 'Dispatch document order metadata mismatch.' });
+      return;
+    }
+
+    const ext = fileName.slice(fileName.lastIndexOf('.')).toLowerCase();
+    const expectedMime = DISPATCH_DOC_MIME_BY_EXTENSION[ext];
+    const metaContentType =
+      typeof fileMeta.contentType === 'string'
+        ? fileMeta.contentType.trim().toLowerCase()
+        : typeof customMeta.contentType === 'string'
+          ? customMeta.contentType.trim().toLowerCase()
+          : '';
+    const resolvedContentType =
+      metaContentType === 'application/pdf' ||
+      metaContentType === 'image/jpeg' ||
+      metaContentType === 'image/png'
+        ? metaContentType
+        : expectedMime;
+
+    res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Type', resolvedContentType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`
+    );
+    res.status(200);
+
+    await new Promise<void>((resolve, reject) => {
+      const readStream = fileRef.createReadStream();
+      let settled = false;
+      const finish = (err?: Error) => {
+        if (settled) return;
+        settled = true;
+        if (err) reject(err);
+        else resolve();
+      };
+      readStream.on('error', (streamErr: Error) => finish(streamErr));
+      res.on('finish', () => finish());
+      res.on('close', () => finish());
+      readStream.pipe(res as unknown as NodeJS.WritableStream);
+    });
+  } catch (err) {
+    if (res.headersSent) {
+      res.destroy?.();
+      return;
+    }
+    const { statusCode, message } = mapHttpsErrorToStatus(err);
+    res.status(statusCode).json({ error: message });
+  }
+});
+
+// 26. deleteDispatchDoc
+export const deleteDispatchDoc = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
+  const data = (req.data || {}) as {
+    orderId?: unknown;
+    fileName?: unknown;
+  };
+
+  const { actorRole, orderId } = await assertDispatchDocOrderAccess(req.auth, data.orderId);
+  const fileName = assertValidDispatchFileName(data.fileName);
+
+  const storagePath = `dispatchDocs/${orderId}/${fileName}`;
+  const fileRef = storage.bucket().file(storagePath);
+  const [exists] = await fileRef.exists();
+  if (!exists) {
+    throw new HttpsError('not-found', `Dispatch document ${storagePath} not found.`);
+  }
+
+  const [rawFileMeta] = await fileRef.getMetadata();
+  const fileMeta = (rawFileMeta || {}) as { metadata?: Record<string, unknown> };
+  const customMeta = fileMeta.metadata || {};
+  if (customMeta.orderId !== orderId) {
+    throw new HttpsError('permission-denied', 'Dispatch document order metadata mismatch.');
+  }
+
+  await fileRef.delete();
+
+  const actorEmail = typeof req.auth.token?.email === 'string' ? req.auth.token.email : '';
+  await writeAuditLog({
+    actorUid: req.auth.uid,
+    actorEmail,
+    actorRole,
+    action: 'DELETE_DISPATCH_DOC',
+    targetCollection: 'dispatchDocs',
+    targetId: storagePath,
+    details: `Deleted dispatch document ${fileName} for order ${orderId}`,
+  });
+
+  return {
+    orderId,
+    fileName,
+    storagePath,
+    deleted: true,
+  };
 });

@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { Readable, Writable } from 'stream';
 import * as esbuild from 'esbuild';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -220,8 +221,19 @@ function createInMemoryFirestore() {
     }
   }
 
+  const storageFiles = new Map<
+    string,
+    {
+      buffer: Buffer;
+      contentType: string;
+      metadata: Record<string, unknown>;
+      mockStreamBehavior?: 'error-before-data' | 'error-after-chunk';
+    }
+  >();
+
   return {
     store,
+    storageFiles,
     MockFirestore,
     seedDoc: (col: string, id: string, data: DocData) => {
       getColMap(col).set(id, structuredClone(data));
@@ -234,6 +246,7 @@ function createInMemoryFirestore() {
     clearAll: () => {
       store.clear();
       versions.clear();
+      storageFiles.clear();
     },
   };
 }
@@ -269,6 +282,19 @@ interface WrappedRequest {
   __cfOptions?: { secrets?: Array<{ name: string }> };
 }
 
+interface WrappedDispatchHttpRequest {
+  (
+    req: {
+      method: string;
+      headers: Record<string, string | undefined>;
+      query?: Record<string, unknown>;
+      body?: Record<string, unknown>;
+    },
+    res: ReturnType<typeof createStreamingMockRes>
+  ): Promise<void>;
+  __cfOptions?: { secrets?: Array<{ name: string }> };
+}
+
 interface FunctionsExports {
   createUserProfile: WrappedCallable;
   generatePurchasedQr: WrappedCallable;
@@ -281,6 +307,9 @@ interface FunctionsExports {
   adminEnsureOrderQr: WrappedCallable;
   adminSendDesignToPrint: WrappedCallable;
   exportAdminReport: WrappedCallable;
+  uploadDispatchDoc: WrappedCallable;
+  downloadDispatchDoc: WrappedDispatchHttpRequest;
+  deleteDispatchDoc: WrappedCallable;
   createPaymentOrder: WrappedCallable;
   verifyPayment: WrappedCallable;
   razorpayWebhook: WrappedRequest;
@@ -288,6 +317,16 @@ interface FunctionsExports {
 
 const FUNCTIONS_SOURCE_PATH = path.resolve(__dirname, '../functions/src/index.ts');
 let cachedCjsCode: string | null = null;
+
+function makeTestIdToken(payload: {
+  uid?: string;
+  email?: string;
+  email_verified?: boolean;
+  revoked?: boolean;
+  simulateMissingUid?: boolean;
+}): string {
+  return `token:${Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url')}`;
+}
 
 function loadFunctionsWithMocks(mockDbState: ReturnType<typeof createInMemoryFirestore>): FunctionsExports {
   if (!cachedCjsCode) {
@@ -306,11 +345,88 @@ function loadFunctionsWithMocks(mockDbState: ReturnType<typeof createInMemoryFir
       initializeApp: (opts: { projectId?: string }) => ({ options: opts }),
     },
     'firebase-admin/auth': {
-      getAuth: () => ({}),
+      getAuth: () => ({
+        verifyIdToken: async (token: string, _checkRevoked?: boolean) => {
+          if (!token || !token.startsWith('token:')) {
+            const err = new Error('Invalid Firebase ID token');
+            (err as Error & { code?: string }).code = 'auth/invalid-id-token';
+            throw err;
+          }
+          const rawJson = Buffer.from(token.slice('token:'.length), 'base64url').toString('utf8');
+          const decoded = JSON.parse(rawJson) as Record<string, unknown>;
+          if (decoded?.simulateMissingUid === true) {
+            return { email: decoded.email || 'nouid@tapnex.in', email_verified: true };
+          }
+          if (!decoded || typeof decoded.uid !== 'string' || !decoded.uid || decoded.revoked === true) {
+            const err = new Error('Revoked or malformed Firebase ID token');
+            (err as Error & { code?: string }).code = 'auth/id-token-revoked';
+            throw err;
+          }
+          return decoded;
+        },
+      }),
     },
     'firebase-admin/storage': {
       getStorage: () => ({
-        bucket: () => ({ file: () => ({ save: async () => {} }) }),
+        bucket: () => ({
+          file: (filePath: string) => ({
+            save: async (buf: Buffer, opts?: { contentType?: string; metadata?: Record<string, unknown> }) => {
+              mockDbState.storageFiles.set(filePath, {
+                buffer: Buffer.from(buf),
+                contentType: String(opts?.contentType || opts?.metadata?.contentType || ''),
+                metadata: structuredClone((opts?.metadata || {}) as Record<string, unknown>),
+              });
+            },
+            exists: async (): Promise<[boolean]> => [mockDbState.storageFiles.has(filePath)],
+            getMetadata: async (): Promise<[Record<string, unknown>]> => {
+              const entry = mockDbState.storageFiles.get(filePath);
+              return [entry ? structuredClone(entry.metadata) : {}];
+            },
+            getSignedUrl: async (): Promise<[string]> => {
+              throw new Error('getSignedUrl must never be called for dispatchDocs');
+            },
+            createReadStream: () => {
+              const entry = mockDbState.storageFiles.get(filePath);
+              if (!entry) {
+                return new Readable({
+                  read() {
+                    this.destroy(new Error(`No such object: ${filePath}`));
+                  },
+                });
+              }
+              if (entry.mockStreamBehavior === 'error-before-data') {
+                return new Readable({
+                  read() {
+                    this.destroy(new Error('Simulated storage read error before headers'));
+                  },
+                });
+              }
+              if (entry.mockStreamBehavior === 'error-after-chunk') {
+                let step = 0;
+                return new Readable({
+                  read() {
+                    if (step === 0) {
+                      step += 1;
+                      this.push(entry.buffer.subarray(0, Math.min(8, entry.buffer.length)));
+                      return;
+                    }
+                    if (step === 1) {
+                      step += 1;
+                      process.nextTick(() => {
+                        this.destroy(new Error('Simulated storage disconnect after headers'));
+                      });
+                    }
+                  },
+                });
+              }
+              return Readable.from([entry.buffer]);
+            },
+            delete: async () => {
+              mockDbState.storageFiles.delete(filePath);
+              return [{}];
+            },
+          }),
+        }),
       }),
     },
     '@google-cloud/firestore': {
@@ -394,6 +510,65 @@ function createMockRes() {
     getStatus: () => statusCode,
     getBody: () => body,
   };
+  return res;
+}
+
+function createStreamingMockRes() {
+  let statusCode = 200;
+  let jsonBody: unknown = undefined;
+  const chunks: Buffer[] = [];
+  const headers = new Map<string, string>();
+  let headersSent = false;
+
+  const stream = new Writable({
+    write(chunk, _encoding, callback) {
+      headersSent = true;
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      callback();
+    },
+  });
+
+  const res = Object.assign(stream, {
+    headersSent: false,
+    setHeader(name: string, value: string) {
+      headers.set(name.toLowerCase(), String(value));
+    },
+    getHeader(name: string) {
+      return headers.get(name.toLowerCase());
+    },
+    getHeaders() {
+      return Object.fromEntries(headers.entries());
+    },
+    status(code: number) {
+      statusCode = code;
+      return res;
+    },
+    json(payload: unknown) {
+      headersSent = true;
+      headers.set('content-type', 'application/json');
+      jsonBody = payload;
+      stream.end();
+    },
+    send(payload: unknown) {
+      headersSent = true;
+      jsonBody = payload;
+      if (typeof payload === 'string' && payload.length > 0) {
+        chunks.push(Buffer.from(payload, 'utf8'));
+      } else if (Buffer.isBuffer(payload)) {
+        chunks.push(payload);
+      }
+      stream.end();
+    },
+    getStatus: () => statusCode,
+    getBody: () => jsonBody,
+    getBuffer: () => Buffer.concat(chunks),
+  });
+
+  Object.defineProperty(res, 'headersSent', {
+    get: () => headersSent,
+    enumerable: true,
+  });
+
   return res;
 }
 
@@ -2341,6 +2516,912 @@ describe('Phase 2A Razorpay Backend Security & Pricing', () => {
         data: { orderId: 'ord_assign_1', orderStatus: 'Printing in Progress' },
       });
       expect(mockDbState.readDoc('orders', 'ord_assign_1')?.orderStatus).toBe('Printing in Progress');
+    });
+  });
+
+  describe('Phase 2C: Secure dispatchDocs upload, authenticated HTTP streaming download, and delete', () => {
+    const samplePdfBytes = Buffer.from('%PDF-1.4\nTapNex Dispatch Manifest\n');
+    const samplePdfB64 = samplePdfBytes.toString('base64');
+    const samplePngBytes = Buffer.from('fakepngbytes1234');
+    const samplePngB64 = samplePngBytes.toString('base64');
+
+    const adminToken = makeTestIdToken({
+      uid: 'admin_1',
+      email: 'admin@tapnex.in',
+      email_verified: true,
+    });
+    const superAdminToken = makeTestIdToken({
+      uid: 'superadmin_1',
+      email: 'super@tapnex.in',
+      email_verified: true,
+    });
+    const unverifiedAdminToken = makeTestIdToken({
+      uid: 'admin_1',
+      email: 'admin@tapnex.in',
+      email_verified: false,
+    });
+    const printer1Token = makeTestIdToken({
+      uid: 'printer_1',
+      email: 'printer@tapnex.in',
+      email_verified: true,
+    });
+    const printer2Token = makeTestIdToken({
+      uid: 'printer_2',
+      email: 'printer2@tapnex.in',
+      email_verified: true,
+    });
+    const inactivePrinterToken = makeTestIdToken({
+      uid: 'printer_inactive',
+      email: 'inactive-printer@tapnex.in',
+      email_verified: true,
+    });
+    const customerToken = makeTestIdToken({
+      uid: 'user_1',
+      email: 'user1@tapnex.in',
+      email_verified: true,
+    });
+
+    beforeEach(() => {
+      seedBaselineCatalog(mockDbState);
+      mockDbState.seedDoc('users', 'admin_1', {
+        uid: 'admin_1',
+        email: 'admin@tapnex.in',
+        role: 'ADMIN',
+        status: 'Active',
+      });
+      mockDbState.seedDoc('admins', 'admin_1', {
+        uid: 'admin_1',
+        role: 'ADMIN',
+        active: true,
+      });
+      mockDbState.seedDoc('users', 'superadmin_1', {
+        uid: 'superadmin_1',
+        email: 'super@tapnex.in',
+        role: 'SUPERADMIN',
+        status: 'Active',
+      });
+      mockDbState.seedDoc('admins', 'superadmin_1', {
+        uid: 'superadmin_1',
+        role: 'SUPERADMIN',
+        active: true,
+      });
+      mockDbState.seedDoc('users', 'printer_1', {
+        uid: 'printer_1',
+        email: 'printer@tapnex.in',
+        role: 'PRINTER',
+        status: 'Active',
+      });
+      mockDbState.seedDoc('printers', 'printer_1', {
+        printerId: 'printer_1',
+        uid: 'printer_1',
+        companyName: 'TapNex Press 1',
+        status: 'Active',
+      });
+      mockDbState.seedDoc('users', 'printer_2', {
+        uid: 'printer_2',
+        email: 'printer2@tapnex.in',
+        role: 'PRINTER',
+        status: 'Active',
+      });
+      mockDbState.seedDoc('printers', 'printer_2', {
+        printerId: 'printer_2',
+        uid: 'printer_2',
+        companyName: 'TapNex Press 2',
+        status: 'Active',
+      });
+      mockDbState.seedDoc('users', 'printer_inactive', {
+        uid: 'printer_inactive',
+        email: 'inactive-printer@tapnex.in',
+        role: 'PRINTER',
+        status: 'Active',
+      });
+      mockDbState.seedDoc('printers', 'printer_inactive', {
+        printerId: 'printer_inactive',
+        uid: 'printer_inactive',
+        companyName: 'Paused Press',
+        status: 'Inactive',
+      });
+      mockDbState.seedDoc('orders', 'ord_disp_1', {
+        orderId: 'ord_disp_1',
+        orderNumber: 'TNX-2026-DISP1',
+        uid: 'user_1',
+        printerId: 'printer_1',
+        orderStatus: 'Assigned to Printer',
+      });
+    });
+
+    it('1. rejects unauthenticated, invalid-token, and revoked-token upload/download/delete requests', async () => {
+      await expect(
+        mod.uploadDispatchDoc({
+          auth: null,
+          data: {
+            orderId: 'ord_disp_1',
+            fileName: 'manifest.pdf',
+            contentType: 'application/pdf',
+            fileData: samplePdfB64,
+          },
+        })
+      ).rejects.toMatchObject({ code: 'unauthenticated' });
+
+      const missingHeaderRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: {},
+          query: { orderId: 'ord_disp_1', fileName: 'manifest.pdf' },
+        },
+        missingHeaderRes
+      );
+      expect(missingHeaderRes.getStatus()).toBe(401);
+
+      const invalidTokenRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: { authorization: 'Bearer invalid-token' },
+          query: { orderId: 'ord_disp_1', fileName: 'manifest.pdf' },
+        },
+        invalidTokenRes
+      );
+      expect(invalidTokenRes.getStatus()).toBe(401);
+
+      const revokedTokenRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: {
+            authorization: `Bearer ${makeTestIdToken({ uid: 'printer_1', revoked: true })}`,
+          },
+          query: { orderId: 'ord_disp_1', fileName: 'manifest.pdf' },
+        },
+        revokedTokenRes
+      );
+      expect(revokedTokenRes.getStatus()).toBe(401);
+
+      await expect(
+        mod.deleteDispatchDoc({
+          auth: null,
+          data: { orderId: 'ord_disp_1', fileName: 'manifest.pdf' },
+        })
+      ).rejects.toMatchObject({ code: 'unauthenticated' });
+    });
+
+    it('2. rejects normal customer (USER) on upload, download, and delete', async () => {
+      await expect(
+        mod.uploadDispatchDoc({
+          auth: { uid: 'user_1', token: { email: 'user1@tapnex.in', email_verified: true } },
+          data: {
+            orderId: 'ord_disp_1',
+            fileName: 'manifest.pdf',
+            contentType: 'application/pdf',
+            fileData: samplePdfB64,
+          },
+        })
+      ).rejects.toMatchObject({ code: 'permission-denied' });
+
+      const dlRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: { authorization: `Bearer ${customerToken}` },
+          query: { orderId: 'ord_disp_1', fileName: 'manifest.pdf' },
+        },
+        dlRes
+      );
+      expect(dlRes.getStatus()).toBe(403);
+
+      await expect(
+        mod.deleteDispatchDoc({
+          auth: { uid: 'user_1', token: { email: 'user1@tapnex.in', email_verified: true } },
+          data: { orderId: 'ord_disp_1', fileName: 'manifest.pdf' },
+        })
+      ).rejects.toMatchObject({ code: 'permission-denied' });
+    });
+
+    it('3. rejects unassigned printer on upload, download, and delete', async () => {
+      await expect(
+        mod.uploadDispatchDoc({
+          auth: { uid: 'printer_2', token: { email: 'printer2@tapnex.in' } },
+          data: {
+            orderId: 'ord_disp_1',
+            fileName: 'manifest.pdf',
+            contentType: 'application/pdf',
+            fileData: samplePdfB64,
+          },
+        })
+      ).rejects.toMatchObject({ code: 'permission-denied' });
+
+      const dlRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: { authorization: `Bearer ${printer2Token}` },
+          query: { orderId: 'ord_disp_1', fileName: 'manifest.pdf' },
+        },
+        dlRes
+      );
+      expect(dlRes.getStatus()).toBe(403);
+
+      await expect(
+        mod.deleteDispatchDoc({
+          auth: { uid: 'printer_2', token: { email: 'printer2@tapnex.in' } },
+          data: { orderId: 'ord_disp_1', fileName: 'manifest.pdf' },
+        })
+      ).rejects.toMatchObject({ code: 'permission-denied' });
+    });
+
+    it('4 & 5. streams bytes directly to assigned printer with private no-store headers, never returns signed URL/token, and revokes access immediately on reassignment', async () => {
+      const uploadRes = await mod.uploadDispatchDoc({
+        auth: { uid: 'printer_1', token: { email: 'printer@tapnex.in' } },
+        data: {
+          orderId: 'ord_disp_1',
+          fileName: 'waybill.pdf',
+          contentType: 'application/pdf',
+          fileData: samplePdfB64,
+          // Attempted spoofed client fields (must be ignored by server)
+          role: 'SUPERADMIN',
+          assignedPrinterUid: 'spoofed_printer',
+          ownerUid: 'spoofed_owner',
+        },
+      });
+
+      expect(uploadRes).toMatchObject({
+        orderId: 'ord_disp_1',
+        fileName: 'waybill.pdf',
+        storagePath: 'dispatchDocs/ord_disp_1/waybill.pdf',
+        contentType: 'application/pdf',
+      });
+      const stored = mockDbState.storageFiles.get('dispatchDocs/ord_disp_1/waybill.pdf');
+      expect(stored?.contentType).toBe('application/pdf');
+      expect((stored?.metadata?.metadata as Record<string, unknown>) || {}).toMatchObject({
+        orderId: 'ord_disp_1',
+        ownerUid: 'user_1',
+        assignedPrinterUid: 'printer_1',
+        uploadedByUid: 'printer_1',
+        uploadedByRole: 'PRINTER',
+        contentType: 'application/pdf',
+      });
+
+      const dlRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: {
+            authorization: `Bearer ${printer1Token}`,
+            origin: 'http://localhost:3000',
+          },
+          query: { orderId: 'ord_disp_1', fileName: 'waybill.pdf' },
+        },
+        dlRes
+      );
+
+      expect(dlRes.getStatus()).toBe(200);
+      expect(dlRes.getBuffer().equals(samplePdfBytes)).toBe(true);
+      expect(dlRes.getHeader('cache-control')).toBe('private, no-store, no-cache, must-revalidate');
+      expect(dlRes.getHeader('pragma')).toBe('no-cache');
+      expect(dlRes.getHeader('x-content-type-options')).toBe('nosniff');
+      expect(dlRes.getHeader('content-type')).toBe('application/pdf');
+      expect(dlRes.getHeader('content-disposition')).toBe(
+        'attachment; filename="waybill.pdf"; filename*=UTF-8\'\'waybill.pdf'
+      );
+      expect(dlRes.getHeader('access-control-allow-origin')).toBe('http://localhost:3000');
+      const streamedText = dlRes.getBuffer().toString('utf8');
+      expect(streamedText).not.toContain('storage.googleapis.com');
+      expect(streamedText).not.toContain('firebaseStorageDownloadTokens');
+      expect(streamedText).not.toContain('X-Goog-Signature');
+
+      // Reassign order to printer_2 -> printer_1 loses access immediately on next request
+      await mod.assignPrinter({
+        auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+        data: { orderId: 'ord_disp_1', printerId: 'printer_2' },
+      });
+
+      const revokedPrinterRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: { authorization: `Bearer ${printer1Token}` },
+          query: { orderId: 'ord_disp_1', fileName: 'waybill.pdf' },
+        },
+        revokedPrinterRes
+      );
+      expect(revokedPrinterRes.getStatus()).toBe(403);
+
+      // Newly assigned printer_2 can now download
+      const newPrinterRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: { authorization: `Bearer ${printer2Token}` },
+          query: { orderId: 'ord_disp_1', fileName: 'waybill.pdf' },
+        },
+        newPrinterRes
+      );
+      expect(newPrinterRes.getStatus()).toBe(200);
+      expect(newPrinterRes.getBuffer().equals(samplePdfBytes)).toBe(true);
+
+      await expect(
+        mod.uploadDispatchDoc({
+          auth: { uid: 'printer_1', token: { email: 'printer@tapnex.in' } },
+          data: {
+            orderId: 'ord_disp_1',
+            fileName: 'new-waybill.pdf',
+            contentType: 'application/pdf',
+            fileData: samplePdfB64,
+          },
+        })
+      ).rejects.toMatchObject({ code: 'permission-denied' });
+
+      await expect(
+        mod.deleteDispatchDoc({
+          auth: { uid: 'printer_1', token: { email: 'printer@tapnex.in' } },
+          data: { orderId: 'ord_disp_1', fileName: 'waybill.pdf' },
+        })
+      ).rejects.toMatchObject({ code: 'permission-denied' });
+    });
+
+    it('6 & 10. allows active verified Admin/SuperAdmin for any order, denies unverified/inactive/missing admin registry, and records audit log on deletion', async () => {
+      const uploadRes = await mod.uploadDispatchDoc({
+        auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+        data: {
+          orderId: 'ord_disp_1',
+          fileName: 'dispatch-photo.png',
+          contentType: 'image/png',
+          fileData: samplePngB64,
+        },
+      });
+      expect(uploadRes.storagePath).toBe('dispatchDocs/ord_disp_1/dispatch-photo.png');
+
+      // Active verified ADMIN succeeds
+      const adminDlRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: { authorization: `Bearer ${adminToken}` },
+          query: { orderId: 'ord_disp_1', fileName: 'dispatch-photo.png' },
+        },
+        adminDlRes
+      );
+      expect(adminDlRes.getStatus()).toBe(200);
+      expect(adminDlRes.getBuffer().equals(samplePngBytes)).toBe(true);
+      expect(adminDlRes.getHeader('content-type')).toBe('image/png');
+
+      // Active verified SUPERADMIN succeeds via GET
+      const superDlRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: { authorization: `Bearer ${superAdminToken}` },
+          query: { orderId: 'ord_disp_1', fileName: 'dispatch-photo.png' },
+        },
+        superDlRes
+      );
+      expect(superDlRes.getStatus()).toBe(200);
+      expect(superDlRes.getBuffer().equals(samplePngBytes)).toBe(true);
+
+      // Unverified email Admin is denied
+      const unverifiedRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: { authorization: `Bearer ${unverifiedAdminToken}` },
+          query: { orderId: 'ord_disp_1', fileName: 'dispatch-photo.png' },
+        },
+        unverifiedRes
+      );
+      expect(unverifiedRes.getStatus()).toBe(403);
+
+      // Admin with missing or inactive admins/{uid} doc is denied (no legacy fallback)
+      mockDbState.seedDoc('users', 'legacy_admin', {
+        uid: 'legacy_admin',
+        email: 'legacy@tapnex.in',
+        role: 'ADMIN',
+        status: 'Active',
+      });
+      const legacyAdminRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: {
+            authorization: `Bearer ${makeTestIdToken({ uid: 'legacy_admin', email: 'legacy@tapnex.in', email_verified: true })}`,
+          },
+          query: { orderId: 'ord_disp_1', fileName: 'dispatch-photo.png' },
+        },
+        legacyAdminRes
+      );
+      expect(legacyAdminRes.getStatus()).toBe(403);
+
+      mockDbState.seedDoc('admins', 'admin_1', {
+        uid: 'admin_1',
+        role: 'ADMIN',
+        active: false,
+      });
+      const inactiveAdminRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: { authorization: `Bearer ${adminToken}` },
+          query: { orderId: 'ord_disp_1', fileName: 'dispatch-photo.png' },
+        },
+        inactiveAdminRes
+      );
+      expect(inactiveAdminRes.getStatus()).toBe(403);
+
+      // Restore admin_1 active to verify deletion + audit log
+      mockDbState.seedDoc('admins', 'admin_1', {
+        uid: 'admin_1',
+        role: 'ADMIN',
+        active: true,
+      });
+
+      const delRes = await mod.deleteDispatchDoc({
+        auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+        data: { orderId: 'ord_disp_1', fileName: 'dispatch-photo.png' },
+      });
+      expect(delRes).toMatchObject({
+        orderId: 'ord_disp_1',
+        fileName: 'dispatch-photo.png',
+        storagePath: 'dispatchDocs/ord_disp_1/dispatch-photo.png',
+        deleted: true,
+      });
+      expect(mockDbState.storageFiles.has('dispatchDocs/ord_disp_1/dispatch-photo.png')).toBe(false);
+
+      const logs = Array.from(mockDbState.store.get('auditLogs')?.values() || []);
+      expect(
+        logs.some(
+          (l) =>
+            l.action === 'UPLOAD_DISPATCH_DOC' &&
+            l.targetCollection === 'dispatchDocs' &&
+            l.targetId === 'dispatchDocs/ord_disp_1/dispatch-photo.png' &&
+            l.actorUid === 'admin_1'
+        )
+      ).toBe(true);
+      expect(
+        logs.some(
+          (l) =>
+            l.action === 'DELETE_DISPATCH_DOC' &&
+            l.targetCollection === 'dispatchDocs' &&
+            l.targetId === 'dispatchDocs/ord_disp_1/dispatch-photo.png' &&
+            l.actorUid === 'admin_1'
+        )
+      ).toBe(true);
+    });
+
+    it('7. rejects inactive or missing printer records even if assigned to order', async () => {
+      mockDbState.seedDoc('orders', 'ord_disp_inactive', {
+        orderId: 'ord_disp_inactive',
+        uid: 'user_1',
+        printerId: 'printer_inactive',
+      });
+
+      await expect(
+        mod.uploadDispatchDoc({
+          auth: { uid: 'printer_inactive', token: { email: 'inactive-printer@tapnex.in' } },
+          data: {
+            orderId: 'ord_disp_inactive',
+            fileName: 'label.pdf',
+            contentType: 'application/pdf',
+            fileData: samplePdfB64,
+          },
+        })
+      ).rejects.toMatchObject({ code: 'permission-denied' });
+
+      const dlRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: { authorization: `Bearer ${inactivePrinterToken}` },
+          query: { orderId: 'ord_disp_inactive', fileName: 'label.pdf' },
+        },
+        dlRes
+      );
+      expect(dlRes.getStatus()).toBe(403);
+    });
+
+    it('8. rejects invalid orderId/fileName, missing order/file, and mismatched metadata.orderId on download', async () => {
+      const badOrderRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: { authorization: `Bearer ${adminToken}` },
+          query: { orderId: '../bad', fileName: 'waybill.pdf' },
+        },
+        badOrderRes
+      );
+      expect(badOrderRes.getStatus()).toBe(400);
+
+      const badFileRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: { authorization: `Bearer ${adminToken}` },
+          query: { orderId: 'ord_disp_1', fileName: '../secret.pdf' },
+        },
+        badFileRes
+      );
+      expect(badFileRes.getStatus()).toBe(400);
+
+      const missingOrderRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: { authorization: `Bearer ${adminToken}` },
+          query: { orderId: 'ord_missing', fileName: 'waybill.pdf' },
+        },
+        missingOrderRes
+      );
+      expect(missingOrderRes.getStatus()).toBe(404);
+
+      const missingFileRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: { authorization: `Bearer ${adminToken}` },
+          query: { orderId: 'ord_disp_1', fileName: 'missing.pdf' },
+        },
+        missingFileRes
+      );
+      expect(missingFileRes.getStatus()).toBe(404);
+
+      // Seed a storage object with mismatched metadata.orderId -> rejected 403
+      mockDbState.storageFiles.set('dispatchDocs/ord_disp_1/tampered.pdf', {
+        buffer: samplePdfBytes,
+        contentType: 'application/pdf',
+        metadata: {
+          contentType: 'application/pdf',
+          metadata: { orderId: 'other_order' },
+        },
+      });
+      const mismatchRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: { authorization: `Bearer ${adminToken}` },
+          query: { orderId: 'ord_disp_1', fileName: 'tampered.pdf' },
+        },
+        mismatchRes
+      );
+      expect(mismatchRes.getStatus()).toBe(403);
+    });
+
+    it('9. rejects invalid upload filename/MIME types and files larger than 5 MB', async () => {
+      await expect(
+        mod.uploadDispatchDoc({
+          auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+          data: {
+            orderId: 'ord_disp_1',
+            fileName: '../secret.pdf',
+            contentType: 'application/pdf',
+            fileData: samplePdfB64,
+          },
+        })
+      ).rejects.toMatchObject({ code: 'invalid-argument' });
+
+      await expect(
+        mod.uploadDispatchDoc({
+          auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+          data: {
+            orderId: 'ord_disp_1',
+            fileName: 'payload.html',
+            contentType: 'text/html',
+            fileData: Buffer.from('<script>alert(1)</script>').toString('base64'),
+          },
+        })
+      ).rejects.toMatchObject({ code: 'invalid-argument' });
+
+      // Extension/MIME mismatch rejected
+      await expect(
+        mod.uploadDispatchDoc({
+          auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+          data: {
+            orderId: 'ord_disp_1',
+            fileName: 'label.pdf',
+            contentType: 'image/png',
+            fileData: samplePngB64,
+          },
+        })
+      ).rejects.toMatchObject({ code: 'invalid-argument' });
+
+      // Exactly 5 MB succeeds without stack/size error
+      const maxAllowedBase64 = Buffer.alloc(5 * 1024 * 1024, 0x41).toString('base64');
+      const maxRes = await mod.uploadDispatchDoc({
+        auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+        data: {
+          orderId: 'ord_disp_1',
+          fileName: 'exact-5mb.jpg',
+          contentType: 'image/jpeg',
+          fileData: maxAllowedBase64,
+        },
+      });
+      expect(maxRes.sizeBytes).toBe(5 * 1024 * 1024);
+
+      // > 5 MB rejected (5 * 1024 * 1024 + 1 bytes)
+      const oversizedBase64 = Buffer.alloc(5 * 1024 * 1024 + 1, 0x41).toString('base64');
+      await expect(
+        mod.uploadDispatchDoc({
+          auth: { uid: 'admin_1', token: { email: 'admin@tapnex.in', email_verified: true } },
+          data: {
+            orderId: 'ord_disp_1',
+            fileName: 'oversized.jpg',
+            contentType: 'image/jpeg',
+            fileData: oversizedBase64,
+          },
+        })
+      ).rejects.toMatchObject({ code: 'invalid-argument' });
+    });
+
+    it('11. handles CORS OPTIONS preflight without auth, rejects evil and generic *.run.app origins, and rejects unsupported methods with 405', async () => {
+      // Trusted production origin preflight returns 204 with exact CORS headers (no auth required)
+      const trustedPreflight = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'OPTIONS',
+          headers: { origin: 'https://tapnex.in' },
+        },
+        trustedPreflight
+      );
+      expect(trustedPreflight.getStatus()).toBe(204);
+      expect(trustedPreflight.getHeader('access-control-allow-origin')).toBe('https://tapnex.in');
+      expect(trustedPreflight.getHeader('vary')).toBe('Origin');
+      expect(trustedPreflight.getHeader('access-control-allow-methods')).toBe('GET, OPTIONS');
+      expect(trustedPreflight.getHeader('access-control-allow-headers')).toBe('Authorization, Content-Type');
+      expect(trustedPreflight.getHeader('access-control-expose-headers')).toBe('Content-Disposition, Content-Type');
+
+      // Configured APP_URL / VITE_APP_URL is allowed when set
+      const prevAppUrl = process.env.APP_URL;
+      process.env.APP_URL = 'https://portal.tapnex.in/';
+      try {
+        const configuredPreflight = createStreamingMockRes();
+        await mod.downloadDispatchDoc(
+          {
+            method: 'OPTIONS',
+            headers: { origin: 'https://portal.tapnex.in' },
+          },
+          configuredPreflight
+        );
+        expect(configuredPreflight.getStatus()).toBe(204);
+        expect(configuredPreflight.getHeader('access-control-allow-origin')).toBe('https://portal.tapnex.in');
+      } finally {
+        if (prevAppUrl === undefined) delete process.env.APP_URL;
+        else process.env.APP_URL = prevAppUrl;
+      }
+
+      // Evil origin & arbitrary *.run.app origin must receive NO Access-Control-Allow-Origin
+      for (const untrustedOrigin of ['https://evil.example', 'https://attacker-123.us-central1.run.app']) {
+        const evilPreflight = createStreamingMockRes();
+        await mod.downloadDispatchDoc(
+          {
+            method: 'OPTIONS',
+            headers: { origin: untrustedOrigin },
+          },
+          evilPreflight
+        );
+        expect(evilPreflight.getStatus()).toBe(204);
+        expect(evilPreflight.getHeader('access-control-allow-origin')).toBeUndefined();
+
+        const evilGet = createStreamingMockRes();
+        await mod.downloadDispatchDoc(
+          {
+            method: 'GET',
+            headers: {
+              origin: untrustedOrigin,
+              authorization: `Bearer ${adminToken}`,
+            },
+            query: { orderId: 'ord_disp_1', fileName: 'waybill.pdf' },
+          },
+          evilGet
+        );
+        expect(evilGet.getHeader('access-control-allow-origin')).toBeUndefined();
+      }
+
+      // Unsupported HTTP methods (POST, PUT, DELETE) return 405
+      for (const badMethod of ['POST', 'PUT', 'DELETE']) {
+        const methodRes = createStreamingMockRes();
+        await mod.downloadDispatchDoc(
+          {
+            method: badMethod,
+            headers: { authorization: `Bearer ${adminToken}` },
+            query: { orderId: 'ord_disp_1', fileName: 'waybill.pdf' },
+          },
+          methodRes
+        );
+        expect(methodRes.getStatus()).toBe(405);
+      }
+    });
+
+    it('12. rejects Blocked, Disabled, and Pending Verification users and missing/disabled/blocked printers on downloadDispatchDoc', async () => {
+      mockDbState.storageFiles.set('dispatchDocs/ord_disp_1/waybill.pdf', {
+        buffer: samplePdfBytes,
+        contentType: 'application/pdf',
+        metadata: {
+          contentType: 'application/pdf',
+          metadata: { orderId: 'ord_disp_1' },
+        },
+      });
+
+      // Blocked, Disabled, Pending Verification on users/{uid}.status for assigned printer & active admin
+      for (const status of ['Blocked', 'Disabled', 'Pending Verification'] as const) {
+        mockDbState.seedDoc('users', 'printer_1', {
+          uid: 'printer_1',
+          email: 'printer@tapnex.in',
+          role: 'PRINTER',
+          status,
+        });
+        const printerStatusRes = createStreamingMockRes();
+        await mod.downloadDispatchDoc(
+          {
+            method: 'GET',
+            headers: { authorization: `Bearer ${printer1Token}` },
+            query: { orderId: 'ord_disp_1', fileName: 'waybill.pdf' },
+          },
+          printerStatusRes
+        );
+        expect(printerStatusRes.getStatus()).toBe(403);
+
+        mockDbState.seedDoc('users', 'admin_1', {
+          uid: 'admin_1',
+          email: 'admin@tapnex.in',
+          role: 'ADMIN',
+          status,
+        });
+        const adminStatusRes = createStreamingMockRes();
+        await mod.downloadDispatchDoc(
+          {
+            method: 'GET',
+            headers: { authorization: `Bearer ${adminToken}` },
+            query: { orderId: 'ord_disp_1', fileName: 'waybill.pdf' },
+          },
+          adminStatusRes
+        );
+        expect(adminStatusRes.getStatus()).toBe(403);
+      }
+
+      // Restore users/{uid} active
+      mockDbState.seedDoc('users', 'printer_1', {
+        uid: 'printer_1',
+        email: 'printer@tapnex.in',
+        role: 'PRINTER',
+        status: 'Active',
+      });
+      mockDbState.seedDoc('users', 'admin_1', {
+        uid: 'admin_1',
+        email: 'admin@tapnex.in',
+        role: 'ADMIN',
+        status: 'Active',
+      });
+
+      // Disabled / Blocked / Pending Verification on printers/{uid}.status
+      for (const printerStatus of ['Disabled', 'Blocked', 'Pending Verification'] as const) {
+        mockDbState.seedDoc('printers', 'printer_1', {
+          printerId: 'printer_1',
+          uid: 'printer_1',
+          companyName: 'TapNex Press 1',
+          status: printerStatus,
+        });
+        const res = createStreamingMockRes();
+        await mod.downloadDispatchDoc(
+          {
+            method: 'GET',
+            headers: { authorization: `Bearer ${printer1Token}` },
+            query: { orderId: 'ord_disp_1', fileName: 'waybill.pdf' },
+          },
+          res
+        );
+        expect(res.getStatus()).toBe(403);
+      }
+
+      // Missing printers/{uid} record even if users/{uid}.role === 'PRINTER' and order assigned
+      mockDbState.seedDoc('users', 'printer_missing', {
+        uid: 'printer_missing',
+        email: 'missing@tapnex.in',
+        role: 'PRINTER',
+        status: 'Active',
+      });
+      mockDbState.seedDoc('orders', 'ord_missing_printer', {
+        orderId: 'ord_missing_printer',
+        uid: 'user_1',
+        printerId: 'printer_missing',
+      });
+      const missingPrinterRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: {
+            authorization: `Bearer ${makeTestIdToken({ uid: 'printer_missing', email: 'missing@tapnex.in', email_verified: true })}`,
+          },
+          query: { orderId: 'ord_missing_printer', fileName: 'waybill.pdf' },
+        },
+        missingPrinterRes
+      );
+      expect(missingPrinterRes.getStatus()).toBe(403);
+    });
+
+    it('13. rejects non-Bearer, empty Bearer token, and token without uid with 401', async () => {
+      const nonBearerRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: { authorization: `Token ${adminToken}` },
+          query: { orderId: 'ord_disp_1', fileName: 'waybill.pdf' },
+        },
+        nonBearerRes
+      );
+      expect(nonBearerRes.getStatus()).toBe(401);
+
+      const emptyBearerRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: { authorization: 'Bearer    ' },
+          query: { orderId: 'ord_disp_1', fileName: 'waybill.pdf' },
+        },
+        emptyBearerRes
+      );
+      expect(emptyBearerRes.getStatus()).toBe(401);
+
+      const noUidRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: {
+            authorization: `Bearer ${makeTestIdToken({ simulateMissingUid: true, email: 'nouid@tapnex.in' })}`,
+          },
+          query: { orderId: 'ord_disp_1', fileName: 'waybill.pdf' },
+        },
+        noUidRes
+      );
+      expect(noUidRes.getStatus()).toBe(401);
+    });
+
+    it('14 & 15. handles storage stream errors safely before and after response headers are sent', async () => {
+      // Stream error BEFORE headers are written -> safe 500 JSON response, no binary bytes leaked
+      mockDbState.storageFiles.set('dispatchDocs/ord_disp_1/err-before.pdf', {
+        buffer: samplePdfBytes,
+        contentType: 'application/pdf',
+        metadata: {
+          contentType: 'application/pdf',
+          metadata: { orderId: 'ord_disp_1' },
+        },
+        mockStreamBehavior: 'error-before-data',
+      });
+
+      const beforeRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: { authorization: `Bearer ${adminToken}` },
+          query: { orderId: 'ord_disp_1', fileName: 'err-before.pdf' },
+        },
+        beforeRes
+      );
+      expect(beforeRes.getStatus()).toBe(500);
+      expect(beforeRes.getBody()).toMatchObject({ error: 'Simulated storage read error before headers' });
+      expect(beforeRes.getBuffer().length).toBe(0);
+
+      // Stream error AFTER headers/first chunk are sent -> destroys response safely, never appends JSON error
+      mockDbState.storageFiles.set('dispatchDocs/ord_disp_1/err-after.pdf', {
+        buffer: samplePdfBytes,
+        contentType: 'application/pdf',
+        metadata: {
+          contentType: 'application/pdf',
+          metadata: { orderId: 'ord_disp_1' },
+        },
+        mockStreamBehavior: 'error-after-chunk',
+      });
+
+      const afterRes = createStreamingMockRes();
+      await mod.downloadDispatchDoc(
+        {
+          method: 'GET',
+          headers: { authorization: `Bearer ${adminToken}` },
+          query: { orderId: 'ord_disp_1', fileName: 'err-after.pdf' },
+        },
+        afterRes
+      );
+      expect(afterRes.headersSent).toBe(true);
+      expect(afterRes.destroyed).toBe(true);
+      expect(afterRes.getBody()).toBeUndefined();
+      expect(afterRes.getBuffer().toString('utf8')).toBe('%PDF-1.4');
     });
   });
 });

@@ -42,9 +42,9 @@ service firebase.storage {
       allow write: if isAdmin() || isPrinter();
     }
 
+    // Dispatch documents: server-mediated only via Cloud Functions against named Firestore DB
     match /dispatchDocs/{orderId}/{fileName} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin() || isPrinter();
+      allow read, write: if false;
     }
 
     match /{allPaths=**} {

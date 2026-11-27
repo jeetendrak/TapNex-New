@@ -1000,6 +1000,36 @@ describe('Design Studio Layout Engine, Rich Bio Sanitizer & Link Controls', () =
     const storageRulesSrc = fs.readFileSync(path.resolve(process.cwd(), 'storage.rules'), 'utf8');
     expect(storageRulesSrc).toContain('match /qrCodes/{orderId}/{fileName}');
     expect(storageRulesSrc).toContain('allow write: if false;');
+    expect(storageRulesSrc).toContain('match /dispatchDocs/{orderId}/{fileName}');
+    expect(storageRulesSrc).toMatch(/match \/dispatchDocs\/\{orderId\}\/\{fileName\}\s*\{\s*allow read, write: if false;\s*\}/);
+    expect(storageRulesSrc).not.toContain('firestore.get');
+    expect(storageRulesSrc).not.toContain('firestore.exists');
+
+    const dispatchApiSrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/lib/dispatchDocApi.ts'),
+      'utf8'
+    );
+    expect(dispatchApiSrc).toContain("'uploadDispatchDoc'");
+    expect(dispatchApiSrc).toContain("'deleteDispatchDoc'");
+    expect(dispatchApiSrc).toContain('downloadDispatchDoc');
+    expect(dispatchApiSrc).toContain('getIdToken');
+    expect(dispatchApiSrc).toContain('Authorization');
+    expect(dispatchApiSrc).toContain('.blob()');
+    expect(dispatchApiSrc).not.toContain('getDispatchDocDownloadUrl');
+    expect(dispatchApiSrc).not.toContain('getDownloadURL');
+    expect(dispatchApiSrc).not.toContain('firebase/storage');
+
+    const functionsSrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'functions/src/index.ts'),
+      'utf8'
+    );
+    expect(functionsSrc).toContain('export const downloadDispatchDoc = onRequest');
+    expect(functionsSrc).toContain('verifyIdToken');
+    expect(functionsSrc).toContain('createReadStream');
+    expect(functionsSrc).toContain("'GET, OPTIONS'");
+    expect(functionsSrc).not.toContain('run\\.app');
+    expect(functionsSrc).not.toContain('getDispatchDocDownloadUrl');
+    expect(functionsSrc).not.toContain('getSignedUrl');
 
     const firebaseJson = JSON.parse(
       fs.readFileSync(path.resolve(process.cwd(), 'firebase.json'), 'utf8')
