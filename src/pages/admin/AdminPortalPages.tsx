@@ -1439,7 +1439,26 @@ export const AdminOrdersPage: React.FC = () => {
                             orderStatus: suggestedOrderStatus,
                             reason: `Admin Orders ledger payment reconciliation (${o.paymentStatus} -> ${nextPay})`,
                           });
-                          notify('Payment reconciled', `${o.orderNumber} -> ${nextPay}`, 'success');
+                          if (nextPay === 'Verified' || nextPay === 'Completed') {
+                            try {
+                              await adminEnsureOrderQr(o.orderId);
+                              notify(
+                                'Payment reconciled & QR ready',
+                                `${o.orderNumber} -> ${nextPay}. QR artwork and print files are ready.`,
+                                'success'
+                              );
+                            } catch (qrErr) {
+                              notify(
+                                'Payment reconciled; QR pending',
+                                qrErr instanceof Error
+                                  ? qrErr.message
+                                  : 'Payment was reconciled, but QR generation failed. Use Generate Print QR & Prepare Files on the order details page.',
+                                'info'
+                              );
+                            }
+                          } else {
+                            notify('Payment reconciled', `${o.orderNumber} -> ${nextPay}`, 'success');
+                          }
                           load();
                         } catch (err) {
                           notify(
@@ -1923,7 +1942,26 @@ export const AdminOrderDetailPage: React.FC = () => {
                         paymentStatus: nextPay,
                         reason: `Admin order detail payment reconciliation (${order.paymentStatus} -> ${nextPay})`,
                       });
-                      notify('Payment reconciled', nextPay, 'success');
+                      if (nextPay === 'Verified' || nextPay === 'Completed') {
+                        try {
+                          await adminEnsureOrderQr(order.orderId);
+                          notify(
+                            'Payment reconciled & QR ready',
+                            `${order.orderNumber} -> ${nextPay}. QR artwork and print files are ready.`,
+                            'success'
+                          );
+                        } catch (qrErr) {
+                          notify(
+                            'Payment reconciled; QR pending',
+                            qrErr instanceof Error
+                              ? qrErr.message
+                              : 'Payment was reconciled, but QR generation failed. Use Generate Print QR & Prepare Files on this order page.',
+                            'info'
+                          );
+                        }
+                      } else {
+                        notify('Payment reconciled', nextPay, 'success');
+                      }
                       load();
                     } catch (err) {
                       notify(
