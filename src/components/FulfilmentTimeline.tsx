@@ -43,7 +43,7 @@ export const FulfilmentTimeline: React.FC<FulfilmentTimelineProps> = ({
         : null;
 
   const canSelectStep = (step: OrderStatus) => {
-    if (!interactive || !onSelectStatus || updating) return false;
+    if (!interactive || !onSelectStatus) return false;
     if (!allowedStatuses) return true;
     return allowedStatuses.includes(step);
   };
@@ -91,7 +91,7 @@ export const FulfilmentTimeline: React.FC<FulfilmentTimelineProps> = ({
               onClick={handleAdvanceClick}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#0B1D3A] hover:bg-[#132A52] text-white text-xs font-semibold disabled:opacity-50 transition-colors"
             >
-              <span>Advance: {nextStep}</span>
+              <span>{updating ? 'Updating...' : `Advance: ${nextStep}`}</span>
               <ArrowRight className="h-3.5 w-3.5" />
             </button>
           </div>
@@ -131,7 +131,7 @@ export const FulfilmentTimeline: React.FC<FulfilmentTimelineProps> = ({
                 : 'bg-slate-50 border-slate-200 text-slate-500'
           }`;
 
-          if (clickable) {
+          if (clickable && !isCurrent) {
             return (
               <button
                 key={step}
@@ -151,11 +151,6 @@ export const FulfilmentTimeline: React.FC<FulfilmentTimelineProps> = ({
                   <CheckCircle2 className={`h-4 w-4 shrink-0 ${done ? 'text-emerald-600' : 'text-slate-300'}`} />
                   <span className="truncate">{step}</span>
                 </span>
-                {isCurrent && (
-                  <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-emerald-600 text-white shrink-0">
-                    Current
-                  </span>
-                )}
               </button>
             );
           }

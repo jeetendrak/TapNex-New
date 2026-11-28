@@ -53,7 +53,6 @@ import {
   deleteCardDesign,
   deleteCardTemplate,
   deleteDigitalProfile,
-  dispatchOrderWithCourier,
   filterAuditLogs,
   formatTimestampDate,
   getAllCardDesigns,
@@ -92,8 +91,11 @@ import {
   adminReconcileProfilePayment,
   adminSendDesignToPrint,
   assignOrderPrinter,
+  createServerShippingRecord,
   linkPrinterAccount,
+  updateServerOrderStatus,
 } from '../../lib/paymentApi';
+import { formatFirestoreErrorMessage } from '../../lib/cardDesignSize';
 import { sanitizeRichBioHtml } from '../../lib/richText';
 import { exportRowsToCsv, exportRowsToExcel } from '../../lib/exportUtils';
 import { downloadBlob, generateCardSidePngBlob, generatePrintReadyPdfBlob } from '../../lib/printPdf';
@@ -1626,33 +1628,42 @@ export const AdminOrderDetailPage: React.FC = () => {
         : order.printerId || 'Unassigned';
 
   const handleTimelineStatusSelect = async (nextStatus: OrderStatus) => {
-    if (!userRecord || updatingWorkflow) return;
+    if (!userRecord || updatingWorkflow || nextStatus === order.orderStatus) return;
     setUpdatingWorkflow(true);
     try {
-      await updateOrderWorkflow({
-        orderId: order.orderId,
-        updates: { orderStatus: nextStatus },
-        actor: { uid: userRecord.uid, email: userRecord.email, role: userRecord.role },
-        auditAction: 'ADMIN_TIMELINE_STEP',
-        auditDetails: `Order ${order.orderNumber} progressed to ${nextStatus}`,
-      });
+      await updateServerOrderStatus(order.orderId, nextStatus);
+      setOrder((prev) => (prev ? { ...prev, orderStatus: nextStatus } : prev));
       if (nextStatus === 'Printing in Progress') {
-        await sendAndLogTransactionalEmail({
-          uid: order.uid,
-          to: order.shippingAddress.email,
-          templateId: 'printing_started',
-          variables: { ORDER_NUMBER: order.orderNumber },
-        });
+        try {
+          await sendAndLogTransactionalEmail({
+            uid: order.uid,
+            to: order.shippingAddress.email,
+            templateId: 'printing_started',
+            variables: { ORDER_NUMBER: order.orderNumber },
+          });
+        } catch {
+          // Email notification is non-blocking once order status updates
+        }
       } else if (nextStatus === 'Delivered') {
-        await sendAndLogTransactionalEmail({
-          uid: order.uid,
-          to: order.shippingAddress.email,
-          templateId: 'delivered',
-          variables: { ORDER_NUMBER: order.orderNumber },
-        });
+        try {
+          await sendAndLogTransactionalEmail({
+            uid: order.uid,
+            to: order.shippingAddress.email,
+            templateId: 'delivered',
+            variables: { ORDER_NUMBER: order.orderNumber },
+          });
+        } catch {
+          // Email notification is non-blocking once order status updates
+        }
       }
       notify('Fulfilment updated', `${order.orderNumber} → ${nextStatus}`, 'success');
       await load();
+    } catch (err) {
+      notify(
+        'Fulfilment update failed',
+        formatFirestoreErrorMessage(err, 'Unable to update order status.'),
+        'error'
+      );
     } finally {
       setUpdatingWorkflow(false);
     }
@@ -1735,31 +1746,51 @@ export const AdminOrderDetailPage: React.FC = () => {
 
   const handleAdminDispatch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userRecord) return;
+    if (!userRecord || updatingWorkflow) return;
     setUpdatingWorkflow(true);
     try {
-      await dispatchOrderWithCourier({
-        order,
-        printerUid: order.printerId || 'admin_inhouse',
-        actor: { uid: userRecord.uid, email: userRecord.email, role: userRecord.role },
+      await createServerShippingRecord({
+        orderId: order.orderId,
         courierName: courierName.trim(),
         trackingNumber: trackingNumber.trim(),
         trackingUrl: trackingUrl.trim(),
         dispatchDate,
       });
-      await sendAndLogTransactionalEmail({
-        uid: order.uid,
-        to: order.shippingAddress.email,
-        templateId: 'dispatched',
-        variables: {
-          ORDER_NUMBER: order.orderNumber,
-          COURIER_NAME: courierName.trim(),
-          TRACKING_NUMBER: trackingNumber.trim(),
-        },
-      });
+      setOrder((prev) =>
+        prev
+          ? {
+              ...prev,
+              orderStatus: 'Dispatched',
+              courierName: courierName.trim(),
+              trackingNumber: trackingNumber.trim(),
+              trackingUrl: trackingUrl.trim(),
+              dispatchDate,
+            }
+          : prev
+      );
+      try {
+        await sendAndLogTransactionalEmail({
+          uid: order.uid,
+          to: order.shippingAddress.email,
+          templateId: 'dispatched',
+          variables: {
+            ORDER_NUMBER: order.orderNumber,
+            COURIER_NAME: courierName.trim(),
+            TRACKING_NUMBER: trackingNumber.trim(),
+          },
+        });
+      } catch {
+        // Email notification is non-blocking once dispatch is recorded
+      }
       setShowDispatchForm(false);
-      notify('Order dispatched', `Courier ${courierName} (${trackingNumber}) recorded and customer notified.`, 'success');
+      notify('Order dispatched', `Courier ${courierName.trim()} (${trackingNumber.trim()}) recorded and customer notified.`, 'success');
       await load();
+    } catch (err) {
+      notify(
+        'Dispatch failed',
+        formatFirestoreErrorMessage(err, 'Unable to dispatch order.'),
+        'error'
+      );
     } finally {
       setUpdatingWorkflow(false);
     }
@@ -2058,14 +2089,22 @@ export const AdminOrderDetailPage: React.FC = () => {
                   type="button"
                   onClick={async () => {
                     if (!userRecord) return;
-                    await updateOrderWorkflow({
-                      orderId: order.orderId,
-                      updates: { internalNotes: notes },
-                      actor: { uid: userRecord.uid, email: userRecord.email, role: userRecord.role },
-                      auditAction: 'UPDATE_ORDER_NOTES',
-                      auditDetails: `Updated internal notes on ${order.orderNumber}`,
-                    });
-                    notify('Notes saved', 'Audit log recorded.', 'success');
+                    try {
+                      await updateOrderWorkflow({
+                        orderId: order.orderId,
+                        updates: { internalNotes: notes },
+                        actor: { uid: userRecord.uid, email: userRecord.email, role: userRecord.role },
+                        auditAction: 'UPDATE_ORDER_NOTES',
+                        auditDetails: `Updated internal notes on ${order.orderNumber}`,
+                      });
+                      notify('Notes saved', 'Audit log recorded.', 'success');
+                    } catch (err) {
+                      notify(
+                        'Save failed',
+                        formatFirestoreErrorMessage(err, 'Unable to save internal notes.'),
+                        'error'
+                      );
+                    }
                   }}
                   className="px-4 py-2 bg-[#0B1D3A] text-white text-xs font-semibold rounded-lg"
                 >

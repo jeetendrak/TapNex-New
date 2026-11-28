@@ -9,15 +9,15 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { db } from '../../lib/firebase';
 import {
-  dispatchOrderWithCourier,
   getCardDesignById,
   getOrderById,
   getPrinterOrders,
   getPublicProfileBySlug,
   getQrCodeById,
   sendAndLogTransactionalEmail,
-  updateOrderWorkflow,
 } from '../../lib/firestoreService';
+import { createServerShippingRecord, updateServerOrderStatus } from '../../lib/paymentApi';
+import { formatFirestoreErrorMessage } from '../../lib/cardDesignSize';
 import { downloadBlob, generateCardSidePngBlob, generatePrintReadyPdfBlob } from '../../lib/printPdf';
 import type {
   CardDesignRecord,
@@ -171,9 +171,9 @@ export const PrinterOrderDetailPage: React.FC = () => {
   const [trackingUrl, setTrackingUrl] = useState('');
   const [dispatchDate, setDispatchDate] = useState(new Date().toISOString().slice(0, 10));
 
-  const loadJob = async () => {
+  const loadJob = async (silent = false) => {
     if (!orderId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const ord = await getOrderById(orderId);
       setOrder(ord);
@@ -264,33 +264,42 @@ export const PrinterOrderDetailPage: React.FC = () => {
   };
 
   const handleStatusStep = async (nextStatus: OrderStatus) => {
-    if (!order || !userRecord || updatingStep) return;
+    if (!order || !userRecord || updatingStep || nextStatus === order.orderStatus) return;
     setUpdatingStep(true);
     try {
-      await updateOrderWorkflow({
-        orderId: order.orderId,
-        updates: { orderStatus: nextStatus },
-        actor: { uid: userRecord.uid, email: userRecord.email, role: 'PRINTER' },
-        auditAction: 'PRINTER_STATUS_UPDATE',
-        auditDetails: `Printer updated status to ${nextStatus}`,
-      });
+      await updateServerOrderStatus(order.orderId, nextStatus);
+      setOrder((prev) => (prev ? { ...prev, orderStatus: nextStatus } : prev));
       if (nextStatus === 'Printing in Progress') {
-        await sendAndLogTransactionalEmail({
-          uid: order.uid,
-          to: order.shippingAddress.email,
-          templateId: 'printing_started',
-          variables: { ORDER_NUMBER: order.orderNumber },
-        });
+        try {
+          await sendAndLogTransactionalEmail({
+            uid: order.uid,
+            to: order.shippingAddress.email,
+            templateId: 'printing_started',
+            variables: { ORDER_NUMBER: order.orderNumber },
+          });
+        } catch {
+          // Email notification is non-blocking once order status updates
+        }
       } else if (nextStatus === 'Delivered') {
-        await sendAndLogTransactionalEmail({
-          uid: order.uid,
-          to: order.shippingAddress.email,
-          templateId: 'delivered',
-          variables: { ORDER_NUMBER: order.orderNumber },
-        });
+        try {
+          await sendAndLogTransactionalEmail({
+            uid: order.uid,
+            to: order.shippingAddress.email,
+            templateId: 'delivered',
+            variables: { ORDER_NUMBER: order.orderNumber },
+          });
+        } catch {
+          // Email notification is non-blocking once order status updates
+        }
       }
       notify('Order status updated', nextStatus, 'success');
-      await loadJob();
+      await loadJob(true);
+    } catch (err) {
+      notify(
+        'Status update failed',
+        formatFirestoreErrorMessage(err, 'Unable to update order status.'),
+        'error'
+      );
     } finally {
       setUpdatingStep(false);
     }
@@ -298,28 +307,53 @@ export const PrinterOrderDetailPage: React.FC = () => {
 
   const handleDispatch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!order || !userRecord) return;
-    await dispatchOrderWithCourier({
-      order,
-      printerUid: userRecord.uid,
-      actor: { uid: userRecord.uid, email: userRecord.email, role: 'PRINTER' },
-      courierName,
-      trackingNumber,
-      trackingUrl,
-      dispatchDate,
-    });
-    await sendAndLogTransactionalEmail({
-      uid: order.uid,
-      to: order.shippingAddress.email,
-      templateId: 'dispatched',
-      variables: {
-        ORDER_NUMBER: order.orderNumber,
-        COURIER_NAME: courierName,
-        TRACKING_NUMBER: trackingNumber,
-      },
-    });
-    notify('Order dispatched', `Courier ${courierName} (${trackingNumber}) saved and customer notified.`, 'success');
-    loadJob();
+    if (!order || !userRecord || updatingStep) return;
+    setUpdatingStep(true);
+    try {
+      await createServerShippingRecord({
+        orderId: order.orderId,
+        courierName: courierName.trim(),
+        trackingNumber: trackingNumber.trim(),
+        trackingUrl: trackingUrl.trim(),
+        dispatchDate,
+      });
+      setOrder((prev) =>
+        prev
+          ? {
+              ...prev,
+              orderStatus: 'Dispatched',
+              courierName: courierName.trim(),
+              trackingNumber: trackingNumber.trim(),
+              trackingUrl: trackingUrl.trim(),
+              dispatchDate,
+            }
+          : prev
+      );
+      try {
+        await sendAndLogTransactionalEmail({
+          uid: order.uid,
+          to: order.shippingAddress.email,
+          templateId: 'dispatched',
+          variables: {
+            ORDER_NUMBER: order.orderNumber,
+            COURIER_NAME: courierName.trim(),
+            TRACKING_NUMBER: trackingNumber.trim(),
+          },
+        });
+      } catch {
+        // Email notification is non-blocking once dispatch is recorded
+      }
+      notify('Order dispatched', `Courier ${courierName.trim()} (${trackingNumber.trim()}) saved and customer notified.`, 'success');
+      await loadJob(true);
+    } catch (err) {
+      notify(
+        'Dispatch failed',
+        formatFirestoreErrorMessage(err, 'Unable to dispatch order.'),
+        'error'
+      );
+    } finally {
+      setUpdatingStep(false);
+    }
   };
 
   if (loading) {
@@ -554,14 +588,22 @@ export const PrinterProfilePage: React.FC = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userRecord || !printer) return;
-    await updateDoc(doc(db, 'printers', userRecord.uid), {
-      businessName,
-      contactPerson,
-      phone,
-      address,
-      updatedAt: serverTimestamp(),
-    });
-    notify('Facility profile saved', 'Printer details updated.', 'success');
+    try {
+      await updateDoc(doc(db, 'printers', userRecord.uid), {
+        businessName,
+        contactPerson,
+        phone,
+        address,
+        updatedAt: serverTimestamp(),
+      });
+      notify('Facility profile saved', 'Printer details updated.', 'success');
+    } catch (err) {
+      notify(
+        'Save failed',
+        formatFirestoreErrorMessage(err, 'Unable to update facility profile.'),
+        'error'
+      );
+    }
   };
 
   return (

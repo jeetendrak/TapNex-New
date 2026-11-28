@@ -205,7 +205,7 @@ service cloud.firestore {
 
     function isValidOrder(data) {
       return data.keys().hasAll(['orderId', 'orderNumber', 'uid', 'profileId', 'designId', 'quantity', 'total', 'currency', 'paymentStatus', 'orderStatus', 'shippingAddress', 'createdAt', 'updatedAt']) &&
-        data.keys().hasOnly(['orderId', 'orderNumber', 'uid', 'profileId', 'profileSlug', 'designId', 'orderSource', 'shopItems', 'printerId', 'quantity', 'cardType', 'subtotal', 'tax', 'shipping', 'total', 'currency', 'paymentStatus', 'orderStatus', 'shippingAddress', 'qrCodeId', 'printFileReady', 'courierName', 'trackingNumber', 'trackingUrl', 'dispatchDate', 'internalNotes', 'razorpayOrderId', 'razorpayPaymentId', 'razorpayAmountPaise', 'razorpayCurrency', 'razorpayOrderLock', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['orderId', 'orderNumber', 'uid', 'profileId', 'profileSlug', 'designId', 'orderSource', 'shopItems', 'printerId', 'quantity', 'cardType', 'subtotal', 'tax', 'shipping', 'total', 'currency', 'paymentStatus', 'orderStatus', 'shippingAddress', 'qrCodeId', 'printFileReady', 'complimentary', 'complimentaryReason', 'courierName', 'trackingNumber', 'trackingUrl', 'dispatchDate', 'internalNotes', 'razorpayOrderId', 'razorpayPaymentId', 'razorpayAmountPaise', 'razorpayCurrency', 'razorpayOrderLock', 'createdAt', 'updatedAt']) &&
         isValidId(data.orderId) &&
         data.orderNumber is string && data.orderNumber.size() >= 3 && data.orderNumber.size() <= 40 &&
         isValidId(data.uid) &&
@@ -221,6 +221,8 @@ service cloud.firestore {
         data.shippingAddress is map &&
         (!('printerId' in data) || (data.printerId is string && data.printerId.size() <= 128)) &&
         (!('qrCodeId' in data) || (data.qrCodeId is string && data.qrCodeId.size() <= 128)) &&
+        (!('complimentary' in data) || data.complimentary is bool) &&
+        (!('complimentaryReason' in data) || (data.complimentaryReason is string && data.complimentaryReason.size() <= 500)) &&
         (!('courierName' in data) || (data.courierName is string && data.courierName.size() <= 120)) &&
         (!('trackingNumber' in data) || (data.trackingNumber is string && data.trackingNumber.size() <= 120)) &&
         (!('trackingUrl' in data) || (data.trackingUrl is string && data.trackingUrl.size() <= 500)) &&

@@ -282,6 +282,32 @@ export async function updateServerOrderStatus(
   }
 }
 
+export async function createServerShippingRecord(params: {
+  orderId: string;
+  courierName: string;
+  trackingNumber: string;
+  trackingUrl?: string;
+  dispatchDate: string;
+}): Promise<{ shippingId: string }> {
+  await requireAuthenticatedSession();
+  const callable = httpsCallable<
+    {
+      orderId: string;
+      courierName: string;
+      trackingNumber: string;
+      trackingUrl?: string;
+      dispatchDate: string;
+    },
+    { shippingId: string }
+  >(functions, 'createShippingRecord');
+  try {
+    const res = await callable(params);
+    return res.data;
+  } catch (err) {
+    throw new Error(extractCallableErrorMessage(err, 'Unable to dispatch order.'));
+  }
+}
+
 export async function linkPrinterAccount(
   printerId: string,
   printerUid: string
