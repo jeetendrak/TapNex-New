@@ -14,7 +14,8 @@ import {
   writeBatch,
   type QueryConstraint,
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from './firebase';
+import { httpsCallable } from 'firebase/functions';
+import { auth, db, functions, handleFirestoreError, OperationType } from './firebase';
 import {
   DEFAULT_APP_SETTINGS,
   DEFAULT_CARD_TEMPLATES,
@@ -2003,10 +2004,84 @@ export async function updateSupportTicket(
 export async function getEmailTemplates(): Promise<EmailTemplateRecord[]> {
   try {
     const snap = await getDocs(collection(db, 'emailTemplates'));
-    if (snap.empty) return DEFAULT_EMAIL_TEMPLATES;
-    return snap.docs.map((d) => d.data() as EmailTemplateRecord);
+    const docs = snap.docs
+      .filter((d) => d.id !== 'sender_config')
+      .map((d) => d.data() as EmailTemplateRecord);
+    if (docs.length === 0) return DEFAULT_EMAIL_TEMPLATES;
+    return docs;
   } catch {
     return DEFAULT_EMAIL_TEMPLATES;
+  }
+}
+
+export interface ResendSenderConfig {
+  fromName: string;
+  fromEmail: string;
+}
+
+export async function getResendSenderConfig(): Promise<ResendSenderConfig> {
+  try {
+    const snap = await getDoc(doc(db, 'emailTemplates', 'sender_config'));
+    if (snap.exists()) {
+      const data = snap.data() as Partial<ResendSenderConfig>;
+      return {
+        fromName: typeof data.fromName === 'string' && data.fromName.trim() ? data.fromName.trim() : 'TapNex',
+        fromEmail: typeof data.fromEmail === 'string' && data.fromEmail.trim() ? data.fromEmail.trim() : 'orders@tapnex.in',
+      };
+    }
+  } catch {
+    // Non-admin callers or unseeded doc fall back to defaults
+  }
+  return { fromName: 'TapNex', fromEmail: 'orders@tapnex.in' };
+}
+
+export async function saveResendSenderConfig(
+  cfg: ResendSenderConfig,
+  actor: { uid: string; email?: string; role: UserRole }
+): Promise<void> {
+  try {
+    const fromName = cfg.fromName.trim() || 'TapNex';
+    const fromEmail = cfg.fromEmail.trim();
+    await setDoc(doc(db, 'emailTemplates', 'sender_config'), {
+      templateId: 'sender_config',
+      name: 'Sender Configuration',
+      fromName,
+      fromEmail,
+      updatedAt: serverTimestamp(),
+    });
+    await recordAuditLog({
+      actorUid: actor.uid,
+      actorEmail: actor.email,
+      actorRole: actor.role,
+      action: 'UPDATE_EMAIL_TEMPLATE',
+      targetCollection: 'emailTemplates',
+      targetId: 'sender_config',
+      details: `Updated Resend sender config to ${fromName} <${fromEmail}>`,
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, 'emailTemplates/sender_config');
+  }
+}
+
+export async function getEmailNotifications(max = 100): Promise<NotificationRecord[]> {
+  try {
+    const q = query(collection(db, 'notifications'), orderBy('createdAt', 'desc'), limit(max));
+    const snap = await getDocs(q);
+    return snap.docs
+      .map((d) => d.data() as NotificationRecord)
+      .filter((n) => n.channel === 'email')
+      .sort((a, b) => extractTimestampMs(b.createdAt) - extractTimestampMs(a.createdAt));
+  } catch {
+    try {
+      const snap = await getDocs(collection(db, 'notifications'));
+      return snap.docs
+        .map((d) => d.data() as NotificationRecord)
+        .filter((n) => n.channel === 'email')
+        .sort((a, b) => extractTimestampMs(b.createdAt) - extractTimestampMs(a.createdAt))
+        .slice(0, max);
+    } catch {
+      return [];
+    }
   }
 }
 
@@ -2116,54 +2191,106 @@ export async function getAuditLogs(max = 300): Promise<AuditLogRecord[]> {
   }
 }
 
+export interface TransactionalEmailResult {
+  delivered: boolean;
+  mode: string;
+  notificationId?: string;
+  resendMessageId?: string | null;
+  error?: string;
+}
+
 export async function sendAndLogTransactionalEmail(params: {
+  orderId?: string;
   uid: string;
   to: string;
   templateId: string;
   variables: Record<string, string>;
-}): Promise<{ delivered: boolean; mode: string }> {
-  const templates = await getEmailTemplates();
-  const tpl = templates.find((t) => t.templateId === params.templateId) || DEFAULT_EMAIL_TEMPLATES[3];
+}): Promise<TransactionalEmailResult> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    return {
+      delivered: false,
+      mode: 'unauthenticated',
+      error: 'Authentication required. Please sign in again to send emails.',
+    };
+  }
+
+  let templates = DEFAULT_EMAIL_TEMPLATES;
+  try {
+    templates = await getEmailTemplates();
+  } catch {
+    templates = DEFAULT_EMAIL_TEMPLATES;
+  }
+
+  const tpl =
+    templates.find((t) => t.templateId === params.templateId) ||
+    DEFAULT_EMAIL_TEMPLATES.find((t) => t.templateId === params.templateId) ||
+    DEFAULT_EMAIL_TEMPLATES[3];
+
   let subject = tpl.subject;
   let html = tpl.htmlBody;
   for (const [k, v] of Object.entries(params.variables)) {
     subject = subject.replaceAll(`{{${k}}}`, v);
     html = html.replaceAll(`{{${k}}}`, v);
   }
+  html = html.replaceAll('{{TRACKING_CTA}}', '');
 
-  let delivered = false;
-  let mode = 'unconfigured';
   try {
-    const resp = await fetch('/api/email/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to: params.to, subject, html }),
+    await currentUser.getIdToken();
+    const callable = httpsCallable<
+      {
+        orderId?: string;
+        uid: string;
+        to: string;
+        templateId: string;
+        variables: Record<string, string>;
+        subject: string;
+        html: string;
+      },
+      TransactionalEmailResult
+    >(functions, 'sendTransactionalEmail');
+
+    const res = await callable({
+      ...(params.orderId ? { orderId: params.orderId } : {}),
+      uid: params.uid,
+      to: params.to,
+      templateId: params.templateId,
+      variables: params.variables,
+      subject,
+      html,
     });
-    const data = (await resp.json()) as { delivered?: boolean; mode?: string };
-    delivered = Boolean(data.delivered);
-    mode = data.mode || 'unconfigured';
-  } catch {
-    mode = 'error';
+    const data = (res.data || {}) as Partial<TransactionalEmailResult>;
+    return {
+      delivered: data.delivered === true,
+      mode: typeof data.mode === 'string' ? data.mode : data.delivered ? 'resend_live' : 'error',
+      notificationId: data.notificationId,
+      resendMessageId: data.resendMessageId ?? null,
+      error: data.error,
+    };
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message.replace(/^FirebaseError:\s*/i, '').trim() : 'Unable to send transactional email.';
+    return {
+      delivered: false,
+      mode: 'error',
+      error: message || 'Unable to send transactional email.',
+    };
   }
+}
 
-  const notifId = `ntf_${Date.now()}`;
-  const notif: NotificationRecord = {
-    notificationId: notifId,
+export async function sendTestTransactionalEmail(params: {
+  uid: string;
+  to: string;
+  recipientName?: string;
+}): Promise<TransactionalEmailResult> {
+  return sendAndLogTransactionalEmail({
     uid: params.uid,
-    title: subject.slice(0, 150),
-    message: `Email notification (${tpl.name}) -> ${params.to} [${delivered ? 'Sent via Resend' : 'Queued (Resend API key required)'}]`,
-    channel: 'email',
-    deliveryStatus: delivered ? 'Sent' : 'ConfigRequired',
-    createdAt: serverTimestamp(),
-  };
-
-  try {
-    await setDoc(doc(db, 'notifications', notifId), notif);
-  } catch {
-    // Non-blocking notification log
-  }
-
-  return { delivered, mode };
+    to: params.to.trim(),
+    templateId: 'test_email',
+    variables: {
+      CUSTOMER_NAME: params.recipientName || 'Admin',
+    },
+  });
 }
 
 // --- Shop Categories & Products ---

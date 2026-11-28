@@ -184,8 +184,8 @@ export const PortalLayout: React.FC<PortalLayoutProps> = ({ portal, title, child
   };
 
   const SidebarContent = (
-    <div className="flex flex-col h-full bg-[#050814] text-slate-200">
-      <div className="px-4 py-4 border-b border-slate-800 space-y-2.5">
+    <div className="flex flex-col h-full bg-[#18122B] text-[#E9E4F5]">
+      <div className="px-4 py-4 border-b border-[#2E234E] space-y-2.5">
         <Link
           to="/"
           className="flex items-center justify-center bg-white rounded-xl px-3 py-2 shadow-xs"
@@ -197,7 +197,7 @@ export const PortalLayout: React.FC<PortalLayoutProps> = ({ portal, title, child
             className="h-12 w-auto max-w-full object-contain"
           />
         </Link>
-        <div className="text-[11px] font-semibold text-cyan-400 tracking-wide text-center truncate">
+        <div className="text-[11px] font-semibold text-[#C4B5FD] tracking-wide text-center truncate">
           {portalLabel}
         </div>
       </div>
@@ -211,10 +211,10 @@ export const PortalLayout: React.FC<PortalLayoutProps> = ({ portal, title, child
               key={`${item.to}-${idx}`}
               to={item.to}
               onClick={() => setSidebarOpen(false)}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors min-h-[40px] ${
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors min-h-[40px] ${
                 active
-                  ? 'bg-[#1D4ED8] text-white'
-                  : 'text-slate-300 hover:bg-slate-800/70 hover:text-white'
+                  ? 'bg-[#7C3AED] text-white shadow-sm shadow-[#7C3AED]/30'
+                  : 'text-[#D6D0EC] hover:bg-[#2A2048] hover:text-white'
               }`}
             >
               <Icon className="h-4 w-4 shrink-0" />
@@ -226,13 +226,13 @@ export const PortalLayout: React.FC<PortalLayoutProps> = ({ portal, title, child
 
       {/* Role Cross-Links for Authorized Roles */}
       {(userRecord?.role === 'ADMIN' || userRecord?.role === 'SUPERADMIN') && (
-        <div className="px-3 py-3 border-t border-slate-800 space-y-1">
-          <div className="px-3 pb-1 text-xs font-medium text-slate-400">Switch Workspace</div>
+        <div className="px-3 py-3 border-t border-[#2E234E] space-y-1">
+          <div className="px-3 pb-1 text-xs font-medium text-[#A99EC9]">Switch Workspace</div>
           {portal !== 'customer' && (
             <Link
               to="/dashboard"
               onClick={() => setSidebarOpen(false)}
-              className="block px-3 py-1.5 rounded text-xs text-slate-300 hover:bg-slate-800"
+              className="block px-3 py-1.5 rounded-lg text-xs text-[#D6D0EC] hover:bg-[#2A2048] hover:text-white"
             >
               Customer Portal
             </Link>
@@ -241,7 +241,7 @@ export const PortalLayout: React.FC<PortalLayoutProps> = ({ portal, title, child
             <Link
               to="/admin/dashboard"
               onClick={() => setSidebarOpen(false)}
-              className="block px-3 py-1.5 rounded text-xs text-slate-300 hover:bg-slate-800"
+              className="block px-3 py-1.5 rounded-lg text-xs text-[#D6D0EC] hover:bg-[#2A2048] hover:text-white"
             >
               Admin Portal
             </Link>
@@ -250,7 +250,7 @@ export const PortalLayout: React.FC<PortalLayoutProps> = ({ portal, title, child
             <Link
               to="/superadmin/dashboard"
               onClick={() => setSidebarOpen(false)}
-              className="block px-3 py-1.5 rounded text-xs text-cyan-300 hover:bg-slate-800"
+              className="block px-3 py-1.5 rounded-lg text-xs text-[#C4B5FD] hover:bg-[#2A2048] hover:text-white"
             >
               SuperAdmin Control
             </Link>
@@ -258,19 +258,19 @@ export const PortalLayout: React.FC<PortalLayoutProps> = ({ portal, title, child
         </div>
       )}
 
-      <div className="p-4 border-t border-slate-800">
+      <div className="p-4 border-t border-[#2E234E]">
         <div className="mb-3">
           <p className="text-sm font-semibold text-white truncate">
             {userRecord?.displayName || userRecord?.email}
           </p>
-          <p className="text-xs text-slate-400 truncate">
+          <p className="text-xs text-[#A99EC9] truncate">
             {userRecord?.role} · {userRecord?.status}
           </p>
         </div>
         <button
           type="button"
           onClick={handleLogout}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors min-h-[38px]"
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-medium bg-[#2A2048] hover:bg-[#382C5E] text-[#F3EEFF] transition-colors min-h-[38px]"
         >
           <LogOut className="h-3.5 w-3.5" />
           <span>Sign Out</span>
@@ -280,9 +280,9 @@ export const PortalLayout: React.FC<PortalLayoutProps> = ({ portal, title, child
   );
 
   return (
-    <div className="min-h-screen flex bg-slate-50 text-slate-900 overflow-x-hidden">
+    <div className="min-h-screen flex bg-[#FAF9FE] text-[#18142C] overflow-x-hidden">
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:block w-64 shrink-0 border-r border-slate-200">{SidebarContent}</aside>
+      <aside className="hidden lg:block w-64 shrink-0 border-r border-[#E9E4F5]">{SidebarContent}</aside>
 
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
@@ -299,26 +299,26 @@ export const PortalLayout: React.FC<PortalLayoutProps> = ({ portal, title, child
 
       {/* Main Content */}
       <div className="flex-1 min-w-0 flex flex-col">
-        <header className="sticky top-0 z-30 h-16 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between gap-4">
+        <header className="sticky top-0 z-30 h-16 bg-white/95 backdrop-blur-md border-b border-[#E9E4F5] px-4 sm:px-6 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
               onClick={() => setSidebarOpen((v) => !v)}
-              className="lg:hidden min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg text-slate-700 hover:bg-slate-100"
+              className="lg:hidden min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg text-[#18142C] hover:bg-[#F3EEFF]"
               aria-label="Open menu"
             >
               {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
             <div className="min-w-0">
-              <div className="text-xs text-slate-500 truncate">{portalLabel}</div>
-              <h1 className="font-display text-base sm:text-lg font-bold text-[#0B1D3A] truncate">{title}</h1>
+              <div className="text-xs text-[#64607D] truncate">{portalLabel}</div>
+              <h1 className="font-display text-base sm:text-lg font-bold text-[#18142C] truncate">{title}</h1>
             </div>
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
             <Link
               to="/"
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 border border-slate-200 rounded-lg whitespace-nowrap min-h-[38px]"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-[#18142C] hover:text-[#6D28D9] border border-[#E9E4F5] bg-[#FAF9FE] hover:bg-[#F3EEFF] rounded-xl whitespace-nowrap min-h-[38px] transition-colors"
             >
               <span>Public Site</span>
               <ExternalLink className="h-3.5 w-3.5" />

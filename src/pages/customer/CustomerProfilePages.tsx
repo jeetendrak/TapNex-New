@@ -10,7 +10,6 @@ import {
   Trash2,
   Eye,
   CreditCard,
-  Package,
   UserCheck,
   Upload,
   Lock,
@@ -18,6 +17,7 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 import { PortalLayout } from '../../components/PortalLayout';
+import { CustomerOverviewDashboard } from '../../components/CustomerOverviewDashboard';
 import { CardDesignPreviewModal } from '../../components/CardDesignPreviewModal';
 import { RichBioEditor } from '../../components/RichBioEditor';
 import { ScreenProtectionShield } from '../../components/ScreenProtectionShield';
@@ -138,7 +138,7 @@ const WatermarkedProfileModal: React.FC<{
       role="dialog"
       aria-modal="true"
     >
-      <div className="relative w-full max-w-md max-h-[90vh] overflow-y-auto bg-white rounded-3xl border border-slate-200 shadow-2xl">
+      <div className="relative w-full max-w-md max-h-[90vh] overflow-y-auto bg-white rounded-3xl border border-[#E9E4F5] shadow-2xl">
         <ScreenProtectionShield
           active={!effectiveLive}
           watermarkLabel={
@@ -162,7 +162,7 @@ const WatermarkedProfileModal: React.FC<{
             </div>
           )}
 
-          <div className="sticky top-0 z-40 bg-[#050814] text-white px-5 py-4 flex items-center justify-between">
+          <div className="sticky top-0 z-40 bg-[#18122B] text-white px-5 py-4 flex items-center justify-between">
             {effectiveLive && !profile.adminDisabled ? (
               <div className="flex items-center gap-2 text-xs font-semibold text-emerald-300">
                 <Check className="h-3.5 w-3.5" />
@@ -212,17 +212,17 @@ const WatermarkedProfileModal: React.FC<{
                   className="w-20 h-20 rounded-full object-cover border-2 border-slate-200 bg-transparent"
                 />
               ) : (
-                <div className="w-20 h-20 rounded-full bg-[#1D4ED8] text-white flex items-center justify-center font-display text-xl font-bold">
+                <div className="w-20 h-20 rounded-full bg-[#7C3AED] text-white flex items-center justify-center font-display text-xl font-bold">
                   {(info.fullName || 'T')[0].toUpperCase()}
                 </div>
               )}
               {profileType !== 'adult' && (
-                <div className="mt-2 text-[11px] font-semibold uppercase tracking-wider text-[#1D4ED8]">
+                <div className="mt-2 text-[11px] font-semibold uppercase tracking-wider text-[#7C3AED]">
                   {PROFILE_TYPE_OPTIONS.find((o) => o.id === profileType)?.label} Safety Profile
                 </div>
               )}
               {v.fullName && (
-                <h3 className="mt-2 font-display text-xl font-bold text-[#0B1D3A]">
+                <h3 className="mt-2 font-display text-xl font-bold text-[#18142C]">
                   {info.fullName || 'Your Name'}
                 </h3>
               )}
@@ -411,9 +411,9 @@ const WatermarkedProfileModal: React.FC<{
               </div>
             )}
 
-            <hr className="border-t border-slate-200" />
+            <hr className="border-t border-[#E9E4F5]" />
             <div className="text-center text-xs text-slate-500">
-              Get your portfolio at: <span className="font-semibold text-[#0B1D3A]">tapnex.in</span>
+              Get your portfolio at: <span className="font-semibold text-[#18142C]">tapnex.in</span>
             </div>
           </div>
         </ScreenProtectionShield>
@@ -590,11 +590,11 @@ const CreateDigitalProfileModal: React.FC<{
       >
         <form
           onSubmit={handleSubmit}
-          className="w-full max-w-lg max-h-[92vh] flex flex-col bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden"
+          className="w-full max-w-lg max-h-[92vh] flex flex-col bg-white rounded-2xl border border-[#E9E4F5] shadow-2xl overflow-hidden"
         >
-          <div className="px-6 py-4 bg-[#0B1D3A] text-white flex items-center justify-between shrink-0">
+          <div className="px-6 py-4 bg-[#18122B] text-white flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
-              <Plus className="h-4 w-4 text-cyan-300" />
+              <Plus className="h-4 w-4 text-[#C4B5FD]" />
               <h3 className="font-display font-bold text-base">Create New Digital Profile</h3>
             </div>
             <button
@@ -615,7 +615,7 @@ const CreateDigitalProfileModal: React.FC<{
               <select
                 value={profileType}
                 onChange={(e) => handleTypeChange(e.target.value as ProfileType)}
-                className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm font-semibold text-[#0B1D3A] bg-white"
+                className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm font-semibold text-[#18142C] bg-white"
               >
                 {PROFILE_TYPE_OPTIONS.map((opt) => (
                   <option key={opt.id} value={opt.id}>
@@ -626,7 +626,7 @@ const CreateDigitalProfileModal: React.FC<{
             </div>
 
             {/* Mandatory Photo Upload */}
-            <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 flex items-center gap-4">
+            <div className="p-3.5 rounded-xl border border-[#E9E4F5] bg-[#FAF9FE] flex items-center gap-4">
               {photoDataUrl ? (
                 <img
                   src={photoDataUrl}
@@ -634,19 +634,19 @@ const CreateDigitalProfileModal: React.FC<{
                   className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-xs shrink-0"
                 />
               ) : (
-                <div className="w-16 h-16 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-xs font-semibold shrink-0">
+                <div className="w-16 h-16 rounded-full bg-[#F3EEFF] text-[#6D28D9] flex items-center justify-center text-xs font-semibold shrink-0">
                   Photo *
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-semibold text-[#0B1D3A]">
+                <div className="text-xs font-semibold text-[#18142C]">
                   Profile Photo <span className="text-rose-600">* Required</span>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-0.5">
                   Upload a clear photo for this {currentTypeOption.label.toLowerCase()} profile.
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0B1D3A] text-white text-xs font-semibold hover:bg-[#132A52] cursor-pointer">
+                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#18142C] text-white text-xs font-semibold hover:bg-[#2A2048] cursor-pointer">
                     <Upload className="h-3.5 w-3.5" />
                     <span>{photoDataUrl ? 'Change Photo' : 'Upload Photo'}</span>
                     <input type="file" accept="image/*" onChange={handlePhotoSelect} className="hidden" />
@@ -710,7 +710,7 @@ const CreateDigitalProfileModal: React.FC<{
                     setNewSlug(generateAutoProfileSlug(subjectName || profileType));
                     setModalSlugStatus('idle');
                   }}
-                  className="text-[11px] font-semibold text-[#1D4ED8] hover:underline"
+                  className="text-[11px] font-semibold text-[#7C3AED] hover:underline"
                 >
                   Auto-Generate New
                 </button>
@@ -751,9 +751,9 @@ const CreateDigitalProfileModal: React.FC<{
 
             {/* Family Profiles – Reuse Existing Information */}
             {existingProfiles.length > 0 && (
-              <div className="p-4 rounded-xl border border-blue-200 bg-blue-50/50 space-y-3">
+              <div className="p-4 rounded-xl border border-[#DDD6FE] bg-[#F3EEFF]/60 space-y-3">
                 <div>
-                  <div className="text-xs font-bold text-[#0B1D3A]">
+                  <div className="text-xs font-bold text-[#18142C]">
                     Reuse Details from Existing Profile (Family / Quick Fill)
                   </div>
                   <p className="text-[11px] text-slate-600 mt-0.5">
@@ -789,7 +789,7 @@ const CreateDigitalProfileModal: React.FC<{
                               [opt.key]: e.target.checked,
                             }))
                           }
-                          className="h-3.5 w-3.5 accent-[#1D4ED8] rounded"
+                          className="h-3.5 w-3.5 accent-[#7C3AED] rounded"
                         />
                         <span>{opt.label}</span>
                       </label>
@@ -810,7 +810,7 @@ const CreateDigitalProfileModal: React.FC<{
               <button
                 type="submit"
                 disabled={creatingProfile}
-                className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#1D4ED8] hover:bg-blue-700 text-white text-xs font-semibold disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold disabled:opacity-50"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>{creatingProfile ? 'Creating Profile...' : 'Create Profile'}</span>
@@ -842,6 +842,8 @@ export const CustomerOverviewPage: React.FC = () => {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [cardPreviewOpen, setCardPreviewOpen] = useState(false);
 
+  const [deletingProfileId, setDeletingProfileId] = useState<string | null>(null);
+
   useEffect(() => {
     if (activeProfile?.profileType) {
       setCreateProfileType(activeProfile.profileType);
@@ -857,7 +859,6 @@ export const CustomerOverviewPage: React.FC = () => {
   }, [userRecord]);
 
   const completion = calculateProfileCompletion(activeProfile);
-  const latestOrder = orders[0];
   const savedProfileDesign =
     (activeProfile && designs.find((d) => d.profileId === activeProfile.profileId)) || designs[0] || null;
   const localStudioDraft =
@@ -890,7 +891,7 @@ export const CustomerOverviewPage: React.FC = () => {
   };
 
   const handleDeleteProfile = async (target: ProfileRecord) => {
-    if (!userRecord) return;
+    if (!userRecord || deletingProfileId) return;
     const ok = await confirmAction({
       title: 'Delete Digital Profile',
       message: `Are you sure you want to permanently delete "${target.profileLabel || target.slug}"? This removes both your private profile and public link.`,
@@ -898,307 +899,86 @@ export const CustomerOverviewPage: React.FC = () => {
       confirmLabel: 'Delete Profile',
     });
     if (!ok) return;
-    await deleteDigitalProfile({
-      profile: target,
-      actor: { uid: userRecord.uid, email: userRecord.email, role: userRecord.role },
-    });
-    notify('Digital profile deleted', target.profileLabel || target.slug, 'success');
-    await reload();
+    setDeletingProfileId(target.profileId);
+    try {
+      await deleteDigitalProfile({
+        profile: target,
+        actor: { uid: userRecord.uid, email: userRecord.email, role: userRecord.role },
+      });
+      notify('Digital profile deleted', target.profileLabel || target.slug, 'success');
+      await reload();
+    } finally {
+      setDeletingProfileId(null);
+    }
+  };
+
+  const handleCopyPublicUrl = async (urlToCopy: string) => {
+    if (!urlToCopy) return;
+    await navigator.clipboard.writeText(urlToCopy);
+    notify('Copied public URL', urlToCopy, 'success');
   };
 
   return (
     <PortalLayout portal="customer" title="Customer Overview">
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-28 bg-slate-200 rounded-xl animate-pulse" />
-          ))}
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {/* Top Metric Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white border border-slate-200 rounded-xl p-5">
-              <div className="text-xs font-medium text-slate-500">Profile Completion</div>
-              <div className="mt-2 font-display text-2xl font-bold text-[#0B1D3A] tabular-nums">{completion}%</div>
-              <div className="mt-2 w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-[#1D4ED8]" style={{ width: `${completion}%` }} />
-              </div>
-            </div>
+      <CustomerOverviewDashboard
+        loading={loading}
+        profiles={profiles}
+        activeProfile={activeProfile}
+        orders={orders}
+        designs={designs}
+        activeDesign={activeDesign}
+        completion={completion}
+        hasPaid={hasPaid}
+        isDisabledByAdmin={isDisabledByAdmin}
+        publicUrl={publicUrl}
+        multipleProfilesEnabled={appSettings.multipleProfilesEnabled}
+        createProfileType={createProfileType}
+        deletingProfileId={deletingProfileId}
+        onChangeCreateProfileType={setCreateProfileType}
+        onOpenCreateModal={openAddProfileModal}
+        onSelectProfile={selectProfile}
+        onOpenPreview={() => setPreviewOpen(true)}
+        onOpenCardPreview={() => setCardPreviewOpen(true)}
+        onEditProfile={() => navigate('/dashboard/profile')}
+        onControlVisibility={() => navigate('/dashboard/visibility')}
+        onCopyUrl={handleCopyPublicUrl}
+        onDeleteProfile={handleDeleteProfile}
+      />
 
-            <div className="bg-white border border-slate-200 rounded-xl p-5">
-              <div className="text-xs font-medium text-slate-500">Digital Profile Status</div>
-              <div className="mt-2 font-display text-lg font-bold text-[#0B1D3A]">
-                {!activeProfile?.isPublic
-                  ? 'Paused / Private'
-                  : hasPaid
-                    ? activeProfile?.adminApproved && !isOrderPaymentConfirmed(orders, activeProfile?.profileId, activeProfile?.slug)
-                      ? 'Approved by Admin (Live)'
-                      : 'Published & Active'
-                    : 'Payment Pending (Locked)'}
-              </div>
-              {activeProfile && hasPaid && activeProfile.isPublic ? (
-                <a
-                  href={`/p/${activeProfile.slug}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-[#1D4ED8] hover:underline"
-                >
-                  <span>/p/{activeProfile.slug}</span>
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              ) : activeProfile ? (
-                <button
-                  type="button"
-                  onClick={() => setPreviewOpen(true)}
-                  className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-[#1D4ED8] hover:underline"
-                >
-                  <Eye className="h-3.5 w-3.5" />
-                  <span>View Watermarked Preview</span>
-                </button>
-              ) : null}
-            </div>
+      <CreateDigitalProfileModal
+        open={addModalOpen}
+        onClose={() => setAddModalOpen(false)}
+        profilesCount={profiles.length}
+        existingProfiles={profiles}
+        initialProfileType={createProfileType}
+        onCreated={async (created) => {
+          await reload();
+          notify('Digital profile created', `Now editing "${created.profileLabel}" — fill in your details below.`, 'success');
+          navigate('/dashboard/profile');
+        }}
+      />
 
-            <div className="bg-white border border-slate-200 rounded-xl p-5">
-              <div className="text-xs font-medium text-slate-500">Latest Card & Order Status</div>
-              <div className="mt-2 font-display text-lg font-bold text-[#0B1D3A] truncate">
-                {latestOrder ? latestOrder.orderStatus : designs.length > 0 ? 'Design Saved' : 'Not Ordered Yet'}
-              </div>
-              <div className="mt-1 flex items-center justify-between gap-2 text-xs text-slate-500 font-mono tabular-nums">
-                <span>{latestOrder ? `${latestOrder.orderNumber} · ₹${latestOrder.total}` : '85.6 × 54 mm Ready'}</span>
-                {activeDesign && (
-                  <button
-                    type="button"
-                    onClick={() => setCardPreviewOpen(true)}
-                    className="font-sans font-semibold text-[#1D4ED8] hover:underline"
-                  >
-                    Preview Card
-                  </button>
-                )}
-              </div>
-            </div>
+      {activeProfile && (
+        <WatermarkedProfileModal
+          open={previewOpen}
+          onClose={() => setPreviewOpen(false)}
+          profile={activeProfile}
+          isPaid={hasPaid}
+        />
+      )}
 
-            <div className="bg-white border border-slate-200 rounded-xl p-5">
-              <div className="text-xs font-medium text-slate-500">Profile & Smart Tap Visits</div>
-              <div className="mt-2 font-display text-2xl font-bold text-[#0B1D3A] tabular-nums">
-                {activeProfile?.viewsCount ?? 0}
-              </div>
-              <div className="mt-1 text-xs text-slate-500 tabular-nums">
-                QR/SMART visits resolve after card activation
-              </div>
-            </div>
-          </div>
-
-          {/* Digital Profiles Switcher & + Digital Profile Trigger */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h2 className="font-display text-base font-bold text-[#0B1D3A]">Your Digital Profiles</h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {hasPaid
-                    ? 'Active & unlocked — your live profile URL is ready for sharing.'
-                    : 'Preview your profile with watermarked protection. Your active URL unlocks upon payment or admin approval.'}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {(appSettings.multipleProfilesEnabled || profiles.length === 0) && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label
-                      htmlFor="overview-profile-type-select"
-                      className="text-xs font-semibold text-slate-600 whitespace-nowrap"
-                    >
-                      Profile Type:
-                    </label>
-                    <select
-                      id="overview-profile-type-select"
-                      value={createProfileType}
-                      onChange={(e) => setCreateProfileType(e.target.value as ProfileType)}
-                      className="px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold bg-white text-[#0B1D3A] min-h-[40px]"
-                    >
-                      {PROFILE_TYPE_OPTIONS.map((opt) => (
-                        <option key={opt.id} value={opt.id}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={openAddProfileModal}
-                      className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg bg-[#1D4ED8] hover:bg-blue-700 text-white text-xs font-semibold shadow-sm whitespace-nowrap min-h-[40px]"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      <span>Create Profile</span>
-                    </button>
-                  </div>
-                )}
-                {activeProfile && (
-                  <button
-                    type="button"
-                    onClick={() => setPreviewOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 whitespace-nowrap min-h-[40px]"
-                  >
-                    <Eye className="h-3.5 w-3.5" />
-                    <span>Preview Profile</span>
-                  </button>
-                )}
-                {activeDesign && (
-                  <button
-                    type="button"
-                    onClick={() => setCardPreviewOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-lg border border-[#1D4ED8]/30 bg-blue-50 text-xs font-semibold text-[#1D4ED8] hover:bg-blue-100 whitespace-nowrap min-h-[40px]"
-                  >
-                    <CreditCard className="h-3.5 w-3.5" />
-                    <span>Preview Card Design</span>
-                  </button>
-                )}
-                {activeProfile && (
-                  <button
-                    type="button"
-                    disabled={!hasPaid || !activeProfile.isPublic}
-                    title={hasPaid ? 'Copy active public profile URL' : 'Complete payment to unlock & copy URL'}
-                    onClick={async () => {
-                      if (!publicUrl) return;
-                      await navigator.clipboard.writeText(publicUrl);
-                      notify('Copied public URL', publicUrl, 'success');
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 whitespace-nowrap min-h-[40px] disabled:opacity-45 disabled:cursor-not-allowed"
-                  >
-                    {hasPaid ? <Copy className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5 text-amber-600" />}
-                    <span>{hasPaid ? 'Copy Active URL' : 'Copy Active URL (Locked)'}</span>
-                  </button>
-                )}
-                {activeProfile && (
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteProfile(activeProfile)}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-lg border border-rose-200 text-xs font-semibold text-rose-600 hover:bg-rose-50 whitespace-nowrap min-h-[40px]"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    <span>Delete Profile</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="mt-4 flex flex-wrap gap-2.5">
-              {profiles.map((p) => {
-                const selected = p.profileId === activeProfile?.profileId;
-                const pPaid =
-                  isOrderPaymentConfirmed(orders, p.profileId, p.slug) ||
-                  Boolean(p.adminApproved) ||
-                  Boolean(p.paymentConfirmed);
-                return (
-                  <button
-                    key={p.profileId}
-                    type="button"
-                    onClick={() => selectProfile(p.profileId)}
-                    className={`px-4 py-2 rounded-lg text-xs font-semibold border transition-colors min-h-[40px] ${
-                      selected
-                        ? 'bg-[#0B1D3A] text-white border-[#0B1D3A]'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    {p.profileLabel || 'Profile'} {pPaid ? `(/p/${p.slug})` : '(Unpaid Preview)'}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <CreateDigitalProfileModal
-            open={addModalOpen}
-            onClose={() => setAddModalOpen(false)}
-            profilesCount={profiles.length}
-            existingProfiles={profiles}
-            initialProfileType={createProfileType}
-            onCreated={async (created) => {
-              await reload();
-              notify('Digital profile created', `Now editing "${created.profileLabel}" — fill in your details below.`, 'success');
-              navigate('/dashboard/profile');
-            }}
-          />
-
-          {activeProfile && (
-            <WatermarkedProfileModal
-              open={previewOpen}
-              onClose={() => setPreviewOpen(false)}
-              profile={activeProfile}
-              isPaid={hasPaid}
-            />
-          )}
-
-          {activeDesign && (
-            <CardDesignPreviewModal
-              open={cardPreviewOpen}
-              onClose={() => setCardPreviewOpen(false)}
-              title="Your Customized Card Design"
-              subtitle={`${activeDesign.dimensions} · ${activeDesign.approved ? 'Approved' : 'Draft'}`}
-              frontDesign={activeDesign.frontDesign}
-              backDesign={activeDesign.backDesign}
-              orientation={activeDesign.cardOrientation}
-              personalInfo={activeProfile?.personalInformation || {}}
-              onEditClick={() => navigate('/dashboard/card-design')}
-            />
-          )}
-
-          {/* Quick Actions */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Link
-              to="/dashboard/profile"
-              className="bg-white border border-slate-200 hover:border-[#1D4ED8] rounded-xl p-5 transition-colors flex items-start gap-3"
-            >
-              <UserCheck className="h-5 w-5 text-[#1D4ED8] shrink-0 mt-0.5" />
-              <div>
-                <div className="font-display font-bold text-sm text-[#0B1D3A]">Edit Business Profile</div>
-                <div className="text-xs text-slate-500 mt-1">Update contact details, photo, and custom slug.</div>
-              </div>
-            </Link>
-
-            <Link
-              to="/dashboard/visibility"
-              className="bg-white border border-slate-200 hover:border-[#1D4ED8] rounded-xl p-5 transition-colors flex items-start gap-3"
-            >
-              <Eye className="h-5 w-5 text-[#1D4ED8] shrink-0 mt-0.5" />
-              <div>
-                <div className="font-display font-bold text-sm text-[#0B1D3A]">Control Public Visibility</div>
-                <div className="text-xs text-slate-500 mt-1">Choose which fields appear publicly and in .vcf downloads.</div>
-              </div>
-            </Link>
-
-            <Link
-              to="/dashboard/card-design"
-              className="bg-white border border-slate-200 hover:border-[#1D4ED8] rounded-xl p-5 transition-colors flex items-start gap-3"
-            >
-              <CreditCard className="h-5 w-5 text-[#1D4ED8] shrink-0 mt-0.5" />
-              <div>
-                <div className="font-display font-bold text-sm text-[#0B1D3A]">Design & Order SMART Card</div>
-                <div className="text-xs text-slate-500 mt-1">Customize your 85.6 × 54 mm layout and checkout.</div>
-              </div>
-            </Link>
-          </div>
-
-          {latestOrder && (
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <Package className="h-5 w-5 text-[#1D4ED8] mt-0.5" />
-                <div>
-                  <h3 className="font-display font-bold text-sm text-[#0B1D3A]">
-                    Latest Order: {latestOrder.orderNumber}
-                  </h3>
-                  <p className="text-xs text-slate-600 mt-0.5">
-                    Status: <strong>{latestOrder.orderStatus}</strong> · Payment: {latestOrder.paymentStatus} · Expected delivery: 10–15 days within India
-                  </p>
-                </div>
-              </div>
-              <Link
-                to={`/dashboard/orders/${latestOrder.orderId}`}
-                className="px-4 py-2 bg-[#0B1D3A] text-white text-xs font-semibold rounded-lg whitespace-nowrap text-center"
-              >
-                Track Order
-              </Link>
-            </div>
-          )}
-        </div>
+      {activeDesign && (
+        <CardDesignPreviewModal
+          open={cardPreviewOpen}
+          onClose={() => setCardPreviewOpen(false)}
+          title="Your Customized Card Design"
+          subtitle={`${activeDesign.dimensions} · ${activeDesign.approved ? 'Approved' : 'Draft'}`}
+          frontDesign={activeDesign.frontDesign}
+          backDesign={activeDesign.backDesign}
+          orientation={activeDesign.cardOrientation}
+          personalInfo={activeProfile?.personalInformation || {}}
+          onEditClick={() => navigate('/dashboard/card-design')}
+        />
       )}
     </PortalLayout>
   );
@@ -1232,17 +1012,17 @@ const CustomerProfileHubHeader: React.FC<{
   ];
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 mb-6 space-y-4">
+    <div className="bg-white border border-[#E9E4F5] rounded-2xl p-4 sm:p-5 mb-6 space-y-4">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-1.5 bg-slate-100 p-1 rounded-xl">
+        <div className="flex flex-wrap gap-1.5 bg-[#F3EEFF]/70 p-1 rounded-xl border border-[#E9E4F5]">
           {tabs.map((tab) => (
             <Link
               key={tab.id}
               to={tab.to}
               className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors ${
                 activeTab === tab.id
-                  ? 'bg-[#0B1D3A] text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
+                  ? 'bg-[#18142C] text-white shadow-xs'
+                  : 'text-slate-600 hover:text-[#18142C] hover:bg-white/80'
               }`}
             >
               {tab.label}
@@ -1260,7 +1040,7 @@ const CustomerProfileHubHeader: React.FC<{
                 id="profile-switcher-select"
                 value={activeProfile.profileId}
                 onChange={(e) => onSelectProfile(e.target.value)}
-                className="px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold bg-white text-[#0B1D3A] min-w-[190px]"
+                className="px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold bg-white text-[#18142C] min-w-[190px]"
               >
                 {profiles.map((p) => (
                   <option key={p.profileId} value={p.profileId}>
@@ -1285,7 +1065,7 @@ const CustomerProfileHubHeader: React.FC<{
                     id="hub-profile-type-select"
                     value={selectedProfileType}
                     onChange={(e) => onChangeProfileType(e.target.value as ProfileType)}
-                    className="px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold bg-white text-[#0B1D3A]"
+                    className="px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold bg-white text-[#18142C]"
                   >
                     {PROFILE_TYPE_OPTIONS.map((opt) => (
                       <option key={opt.id} value={opt.id}>
@@ -1298,7 +1078,7 @@ const CustomerProfileHubHeader: React.FC<{
               <button
                 type="button"
                 onClick={onOpenCreateModal}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#1D4ED8] hover:bg-blue-700 text-white text-xs font-semibold shadow-xs whitespace-nowrap"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold shadow-xs whitespace-nowrap"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>Create Digital Profile</span>
@@ -1487,12 +1267,12 @@ export const CustomerProfilePage: React.FC = () => {
           onOpenCreateModal={() => setCreateModalOpen(true)}
           canCreateProfile
         />
-        <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center space-y-4">
-          <div className="w-14 h-14 rounded-2xl bg-blue-50 text-[#1D4ED8] flex items-center justify-center mx-auto">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-10 text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-[#F3EEFF] text-[#7C3AED] flex items-center justify-center mx-auto">
             <UserCheck className="h-7 w-7" />
           </div>
           <div>
-            <h2 className="font-display text-lg font-bold text-[#0B1D3A]">Create Your Digital Profile</h2>
+            <h2 className="font-display text-lg font-bold text-[#18142C]">Create Your Digital Profile</h2>
             <p className="text-sm text-slate-600 mt-1 max-w-md mx-auto">
               Select a profile type first, then click Create Digital Profile for Adult, Kids, Pets, or Personal Belongings.
             </p>
@@ -1506,7 +1286,7 @@ export const CustomerProfilePage: React.FC = () => {
                 id="empty-profile-type-select"
                 value={createProfileType}
                 onChange={(e) => setCreateProfileType(e.target.value as ProfileType)}
-                className="px-3 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold bg-white text-[#0B1D3A]"
+                className="px-3 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold bg-white text-[#18142C]"
               >
                 {PROFILE_TYPE_OPTIONS.map((opt) => (
                   <option key={opt.id} value={opt.id}>
@@ -1518,7 +1298,7 @@ export const CustomerProfilePage: React.FC = () => {
             <button
               type="button"
               onClick={() => setCreateModalOpen(true)}
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#1D4ED8] hover:bg-blue-700 text-white text-sm font-semibold shadow-sm"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-sm font-semibold shadow-sm"
             >
               <Plus className="h-4 w-4" />
               <span>Create Digital Profile</span>
@@ -1598,13 +1378,13 @@ export const CustomerProfilePage: React.FC = () => {
 
       <form onSubmit={handleSave} className="space-y-6">
         {/* Profile Photo & Slug */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#F0ECF9]">
             <div>
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-[#1D4ED8]">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[#7C3AED]">
                 {activeTypeOption.label} Profile
               </span>
-              <h2 className="font-display text-base font-bold text-[#0B1D3A]">
+              <h2 className="font-display text-base font-bold text-[#18142C]">
                 {activeProfile.profileLabel || activeTypeOption.defaultLabel}
               </h2>
             </div>
@@ -1618,7 +1398,7 @@ export const CustomerProfilePage: React.FC = () => {
                     profileType: e.target.value as ProfileType,
                   })
                 }
-                className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold bg-white text-[#0B1D3A]"
+                className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold bg-white text-[#18142C]"
               >
                 {PROFILE_TYPE_OPTIONS.map((opt) => (
                   <option key={opt.id} value={opt.id}>
@@ -1634,10 +1414,10 @@ export const CustomerProfilePage: React.FC = () => {
               <img
                 src={info.photoDataUrl}
                 alt="Profile"
-                className="w-20 h-20 rounded-full object-cover border border-slate-200 bg-transparent"
+                className="w-20 h-20 rounded-full object-cover border border-[#E9E4F5] bg-transparent"
               />
             ) : (
-              <div className="w-20 h-20 rounded-full bg-[#0B1D3A] text-white flex items-center justify-center font-display text-2xl font-bold">
+              <div className="w-20 h-20 rounded-full bg-[#7C3AED] text-white flex items-center justify-center font-display text-2xl font-bold">
                 {(info.fullName || 'T')[0]}
               </div>
             )}
@@ -1661,7 +1441,7 @@ export const CustomerProfilePage: React.FC = () => {
                       setPendingPhotoSrc(info.photoDataUrl || '');
                       setPhotoEditorOpen(true);
                     }}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-[#1D4ED8]/30 bg-blue-50 text-xs font-semibold text-[#1D4ED8] hover:bg-blue-100"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-[#DDD6FE] bg-[#F3EEFF] text-xs font-semibold text-[#6D28D9] hover:bg-[#EDE7FF]"
                   >
                     <SlidersHorizontal className="h-3.5 w-3.5" />
                     <span>Edit / Crop &amp; Resize Photo</span>
@@ -1734,7 +1514,7 @@ export const CustomerProfilePage: React.FC = () => {
               )}
               <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-xs font-bold text-[#0B1D3A] flex items-center gap-1.5">
+                  <div className="text-xs font-bold text-[#18142C] flex items-center gap-1.5">
                     {hasPaid && !isDisabledByAdmin ? (
                       <>
                         <Check className="h-3.5 w-3.5 text-emerald-600" />
@@ -1757,7 +1537,7 @@ export const CustomerProfilePage: React.FC = () => {
                         href={`/p/${activeProfile.slug}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-[#1D4ED8] hover:underline break-all"
+                        className="text-[#7C3AED] hover:underline break-all"
                       >
                         {window.location.origin}/p/{activeProfile.slug}
                       </a>
@@ -1786,7 +1566,7 @@ export const CustomerProfilePage: React.FC = () => {
                   ) : !hasPaid && !isDisabledByAdmin ? (
                     <Link
                       to="/dashboard/card-design"
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#0B1D3A] hover:bg-[#132A52] text-white text-xs font-semibold"
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#18142C] hover:bg-[#2A2048] text-white text-xs font-semibold"
                     >
                       <CreditCard className="h-3.5 w-3.5" />
                       <span>Order Card &amp; Pay</span>
@@ -1799,7 +1579,7 @@ export const CustomerProfilePage: React.FC = () => {
         </div>
 
         {/* Dynamic Profile Fields Based on Profile Type */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Profile Label</label>
             <input
@@ -2196,7 +1976,7 @@ export const CustomerProfilePage: React.FC = () => {
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
               <label className="block text-xs font-medium text-slate-600">WhatsApp Number</label>
-              <label className="inline-flex items-center gap-1.5 text-xs font-medium text-[#1D4ED8] cursor-pointer select-none">
+              <label className="inline-flex items-center gap-1.5 text-xs font-medium text-[#7C3AED] cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={sameWhatsappAsMobile}
@@ -2217,7 +1997,7 @@ export const CustomerProfilePage: React.FC = () => {
                       }
                     }
                   }}
-                  className="h-3.5 w-3.5 accent-[#1D4ED8] rounded"
+                  className="h-3.5 w-3.5 accent-[#7C3AED] rounded"
                 />
                 <span>Same as Mobile Number</span>
               </label>
@@ -2272,7 +2052,7 @@ export const CustomerProfilePage: React.FC = () => {
             <div className="md:col-span-2">
               <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
                 <label className="block text-xs font-medium text-slate-600">Personal Address</label>
-                <label className="inline-flex items-center gap-1.5 text-xs font-medium text-[#1D4ED8] cursor-pointer select-none">
+                <label className="inline-flex items-center gap-1.5 text-xs font-medium text-[#7C3AED] cursor-pointer select-none">
                   <input
                     type="checkbox"
                     checked={samePersonalAsBusiness}
@@ -2293,7 +2073,7 @@ export const CustomerProfilePage: React.FC = () => {
                         }
                       }
                     }}
-                    className="h-3.5 w-3.5 accent-[#1D4ED8] rounded"
+                    className="h-3.5 w-3.5 accent-[#7C3AED] rounded"
                   />
                   <span>Same as Business Address</span>
                 </label>
@@ -2355,8 +2135,8 @@ export const CustomerProfilePage: React.FC = () => {
           </div>
 
           {/* Emergency Contact Section (All Types) + Adult Optional Govt IDs & Blood Group */}
-          <div className="md:col-span-2 pt-4 mt-2 border-t border-slate-200">
-            <h3 className="font-display font-bold text-sm text-[#0B1D3A] mb-3">
+          <div className="md:col-span-2 pt-4 mt-2 border-t border-[#E9E4F5]">
+            <h3 className="font-display font-bold text-sm text-[#18142C] mb-3">
               Emergency Contact {activeProfileType === 'adult' ? '& Medical / Identity Details (Optional)' : '& SOS Contact'}
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -2479,7 +2259,7 @@ export const CustomerProfilePage: React.FC = () => {
               type="button"
               disabled={saving}
               onClick={() => saveCurrentProfile(true)}
-              className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#1D4ED8] hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-sm font-semibold disabled:opacity-50"
             >
               <CreditCard className="h-4 w-4" />
               <span>Save &amp; Preview Ready Card</span>
@@ -2487,7 +2267,7 @@ export const CustomerProfilePage: React.FC = () => {
             <button
               type="submit"
               disabled={saving}
-              className="px-6 py-2.5 rounded-xl bg-[#0B1D3A] hover:bg-[#132A52] text-white text-sm font-semibold disabled:opacity-50"
+              className="px-6 py-2.5 rounded-xl bg-[#18142C] hover:bg-[#2A2048] text-white text-sm font-semibold disabled:opacity-50"
             >
               {saving ? 'Saving...' : 'Save Profile'}
             </button>
@@ -2627,7 +2407,7 @@ export const CustomerSocialLinksPage: React.FC = () => {
           onOpenCreateModal={() => setCreateModalOpen(true)}
           canCreateProfile
         />
-        <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center space-y-3">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-8 text-center space-y-3">
           <p className="text-sm text-slate-600">Select a profile type and create a digital profile first to add social links.</p>
           <div className="flex flex-wrap items-center justify-center gap-2.5">
             <label htmlFor="social-empty-profile-type" className="text-xs font-semibold text-slate-600">
@@ -2637,7 +2417,7 @@ export const CustomerSocialLinksPage: React.FC = () => {
               id="social-empty-profile-type"
               value={createProfileType}
               onChange={(e) => setCreateProfileType(e.target.value as ProfileType)}
-              className="px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold bg-white text-[#0B1D3A]"
+              className="px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold bg-white text-[#18142C]"
             >
               {PROFILE_TYPE_OPTIONS.map((opt) => (
                 <option key={opt.id} value={opt.id}>
@@ -2648,7 +2428,7 @@ export const CustomerSocialLinksPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setCreateModalOpen(true)}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#1D4ED8] text-white text-xs font-semibold"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold"
             >
               <Plus className="h-4 w-4" />
               <span>Create Digital Profile</span>
@@ -2721,14 +2501,14 @@ export const CustomerSocialLinksPage: React.FC = () => {
           <button
             type="submit"
             disabled={saving}
-            className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-[#1D4ED8] text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-[#7C3AED] text-white rounded-lg text-sm font-semibold hover:bg-[#6D28D9] disabled:opacity-50"
           >
             <Plus className="h-4 w-4" />
             <span>Add &amp; Save Link</span>
           </button>
         </form>
 
-        <div className="bg-white border border-slate-200 rounded-2xl divide-y divide-slate-100">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl divide-y divide-[#F0ECF9]">
           {activeProfile.socialLinks.length === 0 ? (
             <div className="p-8 text-center text-sm text-slate-500">
               No social links added yet. Add WhatsApp, LinkedIn, Instagram, or portfolio URLs above — links save automatically.
@@ -2737,7 +2517,7 @@ export const CustomerSocialLinksPage: React.FC = () => {
             activeProfile.socialLinks.map((item, idx) => (
               <div key={item.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <div className="font-semibold text-sm text-[#0B1D3A]">{item.label}</div>
+                  <div className="font-semibold text-sm text-[#18142C]">{item.label}</div>
                   <div className="text-xs text-slate-500 truncate">{item.url}</div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -2817,7 +2597,7 @@ export const CustomerSocialLinksPage: React.FC = () => {
             type="button"
             disabled={saving}
             onClick={handleSave}
-            className="px-6 py-2.5 bg-[#0B1D3A] text-white rounded-xl text-sm font-semibold disabled:opacity-50"
+            className="px-6 py-2.5 bg-[#18142C] hover:bg-[#2A2048] text-white rounded-xl text-sm font-semibold disabled:opacity-50"
           >
             {saving ? 'Saving...' : 'Save Social Links'}
           </button>
@@ -2912,7 +2692,7 @@ export const CustomerCustomFieldsPage: React.FC = () => {
           onOpenCreateModal={() => setCreateModalOpen(true)}
           canCreateProfile
         />
-        <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center space-y-3">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-8 text-center space-y-3">
           <p className="text-sm text-slate-600">Select a profile type and create a digital profile first to add custom fields.</p>
           <div className="flex flex-wrap items-center justify-center gap-2.5">
             <label htmlFor="custom-empty-profile-type" className="text-xs font-semibold text-slate-600">
@@ -2922,7 +2702,7 @@ export const CustomerCustomFieldsPage: React.FC = () => {
               id="custom-empty-profile-type"
               value={createProfileType}
               onChange={(e) => setCreateProfileType(e.target.value as ProfileType)}
-              className="px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold bg-white text-[#0B1D3A]"
+              className="px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold bg-white text-[#18142C]"
             >
               {PROFILE_TYPE_OPTIONS.map((opt) => (
                 <option key={opt.id} value={opt.id}>
@@ -2933,7 +2713,7 @@ export const CustomerCustomFieldsPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setCreateModalOpen(true)}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#1D4ED8] text-white text-xs font-semibold"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold"
             >
               <Plus className="h-4 w-4" />
               <span>Create Digital Profile</span>
@@ -3006,14 +2786,14 @@ export const CustomerCustomFieldsPage: React.FC = () => {
           <button
             type="submit"
             disabled={saving}
-            className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-[#1D4ED8] text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white rounded-lg text-sm font-semibold disabled:opacity-50"
           >
             <Plus className="h-4 w-4" />
             <span>Add &amp; Save Field</span>
           </button>
         </form>
 
-        <div className="bg-white border border-slate-200 rounded-2xl divide-y divide-slate-100">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl divide-y divide-[#F0ECF9]">
           {activeProfile.customFields.length === 0 ? (
             <div className="p-8 text-center text-sm text-slate-500">
               No custom fields yet. Add GST numbers, registration IDs, office numbers, or appointment URLs.
@@ -3022,7 +2802,7 @@ export const CustomerCustomFieldsPage: React.FC = () => {
             activeProfile.customFields.map((field) => (
               <div key={field.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-[#0B1D3A]">
+                  <div className="text-sm font-semibold text-[#18142C]">
                     {field.label} <span className="text-xs font-normal text-slate-400">· {field.type}</span>
                   </div>
                   <div className="text-xs text-slate-600 mt-0.5">{field.value}</div>
@@ -3067,7 +2847,7 @@ export const CustomerCustomFieldsPage: React.FC = () => {
             type="button"
             disabled={saving}
             onClick={handleSave}
-            className="px-6 py-2.5 bg-[#0B1D3A] text-white rounded-xl text-sm font-semibold disabled:opacity-50"
+            className="px-6 py-2.5 bg-[#18142C] hover:bg-[#2A2048] text-white rounded-xl text-sm font-semibold disabled:opacity-50"
           >
             {saving ? 'Saving...' : 'Save Custom Fields'}
           </button>
@@ -3129,7 +2909,7 @@ export const CustomerVisibilityPage: React.FC = () => {
           onOpenCreateModal={() => setCreateModalOpen(true)}
           canCreateProfile
         />
-        <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center space-y-3">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-8 text-center space-y-3">
           <p className="text-sm text-slate-600">Select a profile type and create a digital profile first to configure public visibility settings.</p>
           <div className="flex flex-wrap items-center justify-center gap-2.5">
             <label htmlFor="visibility-empty-profile-type" className="text-xs font-semibold text-slate-600">
@@ -3139,7 +2919,7 @@ export const CustomerVisibilityPage: React.FC = () => {
               id="visibility-empty-profile-type"
               value={createProfileType}
               onChange={(e) => setCreateProfileType(e.target.value as ProfileType)}
-              className="px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold bg-white text-[#0B1D3A]"
+              className="px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold bg-white text-[#18142C]"
             >
               {PROFILE_TYPE_OPTIONS.map((opt) => (
                 <option key={opt.id} value={opt.id}>
@@ -3150,7 +2930,7 @@ export const CustomerVisibilityPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setCreateModalOpen(true)}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#1D4ED8] text-white text-xs font-semibold"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold"
             >
               <Plus className="h-4 w-4" />
               <span>Create Digital Profile</span>
@@ -3344,16 +3124,16 @@ export const CustomerVisibilityPage: React.FC = () => {
             </div>
             <Link
               to="/dashboard/card-design"
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0B1D3A] hover:bg-[#132A52] text-white text-xs font-semibold whitespace-nowrap"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#18142C] hover:bg-[#2A2048] text-white text-xs font-semibold whitespace-nowrap"
             >
               <CreditCard className="h-3.5 w-3.5" />
               <span>Order Card &amp; Pay</span>
             </Link>
           </div>
         )}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h2 className="font-display font-bold text-base text-[#0B1D3A]">Public Profile Availability</h2>
+            <h2 className="font-display font-bold text-base text-[#18142C]">Public Profile Availability</h2>
             <p className="text-xs text-slate-600 mt-1">
               Changes auto-sync to your public profile and vCard (.vcf) downloads. Only fields with saved values appear publicly.
             </p>
@@ -3363,17 +3143,18 @@ export const CustomerVisibilityPage: React.FC = () => {
             <button
               type="button"
               onClick={handleCheckAll}
-              className="px-3.5 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-[#0B1D3A] hover:bg-slate-50"
+              className="px-3.5 py-2 rounded-xl border border-[#DDD6FE] text-xs font-semibold text-[#18142C] hover:bg-[#F3EEFF]"
             >
               Show All Fields
             </button>
-            <label className="inline-flex items-center gap-2.5 px-4 py-2 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer">
+            <label className="inline-flex items-center gap-2.5 px-4 py-2 rounded-xl border border-[#E9E4F5] bg-[#FAF9FE] cursor-pointer">
               <input
                 type="checkbox"
                 checked={activeProfile.isPublic}
                 onChange={(e) => persistVisibility({ ...activeProfile, isPublic: e.target.checked })}
+                className="h-4 w-4 accent-[#7C3AED]"
               />
-              <span className="text-sm font-semibold text-[#0B1D3A]">
+              <span className="text-sm font-semibold text-[#18142C]">
                 {activeProfile.isPublic ? 'Profile Active (Public)' : 'Profile Deactivated'}
               </span>
             </label>
@@ -3381,13 +3162,13 @@ export const CustomerVisibilityPage: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6">
-            <h3 className="font-display font-bold text-sm text-[#0B1D3A] mb-4">Personal &amp; Contact Fields</h3>
+          <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6">
+            <h3 className="font-display font-bold text-sm text-[#18142C] mb-4">Personal &amp; Contact Fields</h3>
             <div className="space-y-2.5">
               {fieldsList.map((f) => (
                 <label
                   key={f.key}
-                  className="flex items-center justify-between px-3.5 py-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer gap-2"
+                  className="flex items-center justify-between px-3.5 py-2.5 rounded-lg border border-[#E9E4F5] hover:bg-[#FAF9FE] cursor-pointer gap-2"
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-sm text-slate-800">{f.label}</span>
@@ -3401,7 +3182,7 @@ export const CustomerVisibilityPage: React.FC = () => {
                     type="checkbox"
                     checked={Boolean(vis[f.key])}
                     onChange={() => toggleField(f.key)}
-                    className="h-4 w-4 accent-[#1D4ED8] shrink-0"
+                    className="h-4 w-4 accent-[#7C3AED] shrink-0"
                   />
                 </label>
               ))}
@@ -3409,8 +3190,8 @@ export const CustomerVisibilityPage: React.FC = () => {
           </div>
 
           <div className="space-y-6">
-            <div className="bg-white border border-slate-200 rounded-2xl p-6">
-              <h3 className="font-display font-bold text-sm text-[#0B1D3A] mb-4">Social Links Visibility</h3>
+            <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6">
+              <h3 className="font-display font-bold text-sm text-[#18142C] mb-4">Social Links Visibility</h3>
               {activeProfile.socialLinks.length === 0 ? (
                 <p className="text-xs text-slate-500">No social links configured yet.</p>
               ) : (
@@ -3423,7 +3204,7 @@ export const CustomerVisibilityPage: React.FC = () => {
                     return (
                       <label
                         key={link.id}
-                        className="flex items-center justify-between px-3.5 py-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer"
+                        className="flex items-center justify-between px-3.5 py-2.5 rounded-lg border border-[#E9E4F5] hover:bg-[#FAF9FE] cursor-pointer"
                       >
                         <span className="text-sm text-slate-800">{link.label}</span>
                         <input
@@ -3442,7 +3223,7 @@ export const CustomerVisibilityPage: React.FC = () => {
                               },
                             });
                           }}
-                          className="h-4 w-4 accent-[#1D4ED8]"
+                          className="h-4 w-4 accent-[#7C3AED]"
                         />
                       </label>
                     );
@@ -3451,8 +3232,8 @@ export const CustomerVisibilityPage: React.FC = () => {
               )}
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-2xl p-6">
-              <h3 className="font-display font-bold text-sm text-[#0B1D3A] mb-4">Custom Fields Visibility</h3>
+            <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6">
+              <h3 className="font-display font-bold text-sm text-[#18142C] mb-4">Custom Fields Visibility</h3>
               {activeProfile.customFields.length === 0 ? (
                 <p className="text-xs text-slate-500">No custom fields configured yet.</p>
               ) : (
@@ -3460,7 +3241,7 @@ export const CustomerVisibilityPage: React.FC = () => {
                   {activeProfile.customFields.map((cf) => (
                     <label
                       key={cf.id}
-                      className="flex items-center justify-between px-3.5 py-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer"
+                      className="flex items-center justify-between px-3.5 py-2.5 rounded-lg border border-[#E9E4F5] hover:bg-[#FAF9FE] cursor-pointer"
                     >
                       <span className="text-sm text-slate-800">
                         {cf.label} <span className="text-xs text-slate-400">({cf.value})</span>
@@ -3474,7 +3255,7 @@ export const CustomerVisibilityPage: React.FC = () => {
                           );
                           persistVisibility({ ...activeProfile, customFields: next });
                         }}
-                        className="h-4 w-4 accent-[#1D4ED8]"
+                        className="h-4 w-4 accent-[#7C3AED]"
                       />
                     </label>
                   ))}
@@ -3509,7 +3290,7 @@ export const CustomerVisibilityPage: React.FC = () => {
             type="button"
             disabled={saving}
             onClick={handleSave}
-            className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#0B1D3A] text-white rounded-xl text-sm font-semibold disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#18142C] hover:bg-[#2A2048] text-white rounded-xl text-sm font-semibold disabled:opacity-50"
           >
             <Check className="h-4 w-4" />
             <span>{saving ? 'Syncing...' : 'Save & Sync Public Profile'}</span>

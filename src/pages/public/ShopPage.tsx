@@ -34,6 +34,7 @@ import {
   generatePurchasedQr,
   verifyPayment,
 } from '../../lib/paymentApi';
+import { formatEmailDeliveryFailureReason } from '../../lib/dispatchEmailFeedback';
 import {
   DEFAULT_PAYMENT_GATEWAYS,
   DEFAULT_SHOP_CATEGORIES,
@@ -401,7 +402,7 @@ export const ShopPage: React.FC = () => {
             email: shipping.email,
             contact: cleanPhone,
           },
-          theme: { color: '#0B1D3A' },
+          theme: { color: '#7C3AED' },
           handler: (response: {
             razorpay_order_id?: string;
             razorpay_payment_id: string;
@@ -444,7 +445,8 @@ export const ShopPage: React.FC = () => {
 
       const verifiedAmountInr = Math.round((verification.amountPaise || gwOrder.amountPaise) / 100);
       try {
-        await sendAndLogTransactionalEmail({
+        const emailRes = await sendAndLogTransactionalEmail({
+          orderId,
           uid: userRecord.uid,
           to: shipping.email,
           templateId: 'order_confirmation',
@@ -454,6 +456,15 @@ export const ShopPage: React.FC = () => {
             CUSTOMER_NAME: shipping.fullName,
           },
         });
+        if (!emailRes.delivered) {
+          const reason = formatEmailDeliveryFailureReason(emailRes);
+          console.warn('Shop order confirmation email not delivered:', reason || emailRes);
+          notify(
+            'Order confirmed — confirmation email pending',
+            reason || 'Your order is confirmed, but confirmation email delivery failed.',
+            'info'
+          );
+        }
       } catch (emailErr) {
         console.error('Order confirmation email failed after verified payment:', emailErr);
       }
@@ -483,26 +494,26 @@ export const ShopPage: React.FC = () => {
   return (
     <PublicLayout>
       {/* Editorial Header */}
-      <section className="bg-[#0B1D3A] text-white border-b border-slate-800">
+      <section className="bg-gradient-to-br from-[#DFD4FF] via-[#EDE7FF] to-[#FAF9FE] text-[#18142C] border-b border-[#E9E4F5]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16 flex flex-col lg:flex-row lg:items-end justify-between gap-8">
           <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-3">
+            <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#6D28D9] mb-3">
               <Tag className="h-3.5 w-3.5" />
               <span>TapNex Smart Tags &amp; Safety Essentials</span>
             </div>
             <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight">
               Smart Tags &amp; Stickers for What Matters Most
             </h1>
-            <p className="mt-3 text-sm sm:text-base text-slate-300 leading-relaxed">
+            <p className="mt-3 text-sm sm:text-base text-[#524D6B] leading-relaxed">
               Weatherproof helmet decals, pet collar tags, kids safety badges, and Find My Owner labels—paired with dynamic TapNex digital profiles accessible with zero app required.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
             <SmartCardLink
-              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white text-sm font-semibold transition-colors whitespace-nowrap"
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white hover:bg-[#F3EEFF] text-[#18142C] border border-[#DDD6FE] text-sm font-semibold transition-colors whitespace-nowrap"
             >
-              <Sparkles className="h-4 w-4 text-cyan-300" />
+              <Sparkles className="h-4 w-4 text-[#7C3AED]" />
               <span>Design Custom Smart Card</span>
             </SmartCardLink>
             <button
@@ -511,7 +522,7 @@ export const ShopPage: React.FC = () => {
                 setCheckoutStep('bag');
                 setBagOpen(true);
               }}
-              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#1D4ED8] hover:bg-blue-600 text-white text-sm font-semibold transition-colors whitespace-nowrap"
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-sm font-semibold transition-colors whitespace-nowrap"
             >
               <ShoppingBag className="h-4 w-4" />
               <span>Shopping Bag</span>
@@ -524,7 +535,7 @@ export const ShopPage: React.FC = () => {
       </section>
 
       {/* Filter & Search Bar */}
-      <section className="bg-white border-b border-slate-200 sticky top-16 z-30">
+      <section className="bg-white border-b border-[#E9E4F5] sticky top-16 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:pb-0">
             <button
@@ -532,7 +543,7 @@ export const ShopPage: React.FC = () => {
               onClick={() => handleCategoryTabClick('all')}
               className={`px-3.5 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
                 activeCategoryId === 'all'
-                  ? 'bg-[#0B1D3A] text-white'
+                  ? 'bg-[#18142C] text-white'
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
@@ -545,7 +556,7 @@ export const ShopPage: React.FC = () => {
                 onClick={() => handleCategoryTabClick(cat.categoryId)}
                 className={`px-3.5 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
                   activeCategoryId === cat.categoryId
-                    ? 'bg-[#0B1D3A] text-white'
+                    ? 'bg-[#18142C] text-white'
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 }`}
               >
@@ -561,14 +572,14 @@ export const ShopPage: React.FC = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search helmet, pet, kids tags..."
-              className="w-full pl-9 pr-3.5 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/20 focus:border-[#1D4ED8]"
+              className="w-full pl-9 pr-3.5 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/20 focus:border-[#7C3AED]"
             />
           </div>
         </div>
       </section>
 
       {/* Product Catalog Grid */}
-      <section className="py-12 bg-slate-50 min-h-[55vh]">
+      <section className="py-12 bg-[#FAF9FE] min-h-[55vh]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {loading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -577,9 +588,9 @@ export const ShopPage: React.FC = () => {
               ))}
             </div>
           ) : visibleProducts.length === 0 ? (
-            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center max-w-lg mx-auto">
+            <div className="bg-white border border-[#E9E4F5] rounded-2xl p-12 text-center max-w-lg mx-auto">
               <Package className="h-10 w-10 text-slate-400 mx-auto mb-3" />
-              <h2 className="font-display font-bold text-lg text-[#0B1D3A]">No Matching Tags Found</h2>
+              <h2 className="font-display font-bold text-lg text-[#18142C]">No Matching Tags Found</h2>
               <p className="mt-1.5 text-sm text-slate-600">
                 Try switching categories or clearing your search query.
               </p>
@@ -589,7 +600,7 @@ export const ShopPage: React.FC = () => {
                   setSearchQuery('');
                   handleCategoryTabClick('all');
                 }}
-                className="mt-5 px-5 py-2.5 rounded-xl bg-[#0B1D3A] text-white text-xs font-semibold hover:bg-[#132A52]"
+                className="mt-5 px-5 py-2.5 rounded-xl bg-[#18142C] text-white text-xs font-semibold hover:bg-[#2A2048]"
               >
                 Show All Smart Tags
               </button>
@@ -610,7 +621,7 @@ export const ShopPage: React.FC = () => {
                 return (
                   <article
                     key={product.productId}
-                    className="group bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col justify-between transition-all hover:shadow-lg hover:border-blue-300/80"
+                    className="group bg-white border border-[#E9E4F5] rounded-2xl overflow-hidden flex flex-col justify-between transition-all hover:shadow-lg hover:border-[#C4B5FD]"
                   >
                     <div>
                       <button
@@ -630,7 +641,7 @@ export const ShopPage: React.FC = () => {
 
                       <div className="p-5">
                         <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
-                          <span className="font-medium text-[#1D4ED8] truncate">{catName}</span>
+                          <span className="font-medium text-[#7C3AED] truncate">{catName}</span>
                           {discountPct > 0 && (
                             <span className="font-mono font-semibold text-emerald-700 shrink-0 tabular-nums">
                               Save {discountPct}%
@@ -638,14 +649,14 @@ export const ShopPage: React.FC = () => {
                           )}
                         </div>
 
-                        <h2 className="mt-1.5 font-display text-lg font-bold text-[#0B1D3A] leading-snug">
+                        <h2 className="mt-1.5 font-display text-lg font-bold text-[#18142C] leading-snug">
                           <button
                             type="button"
                             onClick={() => {
                               setQuickViewProduct(product);
                               setQuickViewQty(1);
                             }}
-                            className="text-left hover:text-[#1D4ED8] transition-colors"
+                            className="text-left hover:text-[#7C3AED] transition-colors"
                           >
                             {product.name}
                           </button>
@@ -670,7 +681,7 @@ export const ShopPage: React.FC = () => {
 
                     <div className="px-5 pb-5 pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
                       <div>
-                        <div className="font-display text-xl font-extrabold text-[#0B1D3A] tabular-nums">
+                        <div className="font-display text-xl font-extrabold text-[#18142C] tabular-nums">
                           ₹{product.priceInr}
                         </div>
                         {product.compareAtPriceInr && product.compareAtPriceInr > product.priceInr && (
@@ -687,7 +698,7 @@ export const ShopPage: React.FC = () => {
                             setQuickViewProduct(product);
                             setQuickViewQty(1);
                           }}
-                          className="px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 whitespace-nowrap"
+                          className="px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-[#FAF9FE] whitespace-nowrap"
                         >
                           Details
                         </button>
@@ -695,7 +706,7 @@ export const ShopPage: React.FC = () => {
                           type="button"
                           disabled={!product.inStock}
                           onClick={() => addToBag(product, 1)}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0B1D3A] hover:bg-[#132A52] text-white text-xs font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#18142C] hover:bg-[#2A2048] text-white text-xs font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
                         >
                           <ShoppingBag className="h-3.5 w-3.5" />
                           <span>{product.inStock ? 'Add to Bag' : 'Out of Stock'}</span>
@@ -709,9 +720,9 @@ export const ShopPage: React.FC = () => {
           )}
 
           {/* Custom Studio & Trust Strip */}
-          <div className="mt-12 bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div className="mt-12 bg-white border border-[#E9E4F5] rounded-2xl p-6 sm:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
             <div>
-              <h3 className="font-display text-xl font-bold text-[#0B1D3A]">
+              <h3 className="font-display text-xl font-bold text-[#18142C]">
                 Want to create a digital profile for Kids, Pets, Helmet, or Belongings first?
               </h3>
               <p className="mt-1.5 text-sm text-slate-600 max-w-2xl">
@@ -721,7 +732,7 @@ export const ShopPage: React.FC = () => {
             <div className="flex flex-wrap items-center gap-3 shrink-0">
               <Link
                 to={userRecord ? getRoleDashboardPath(userRecord.role) : '/register'}
-                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#1D4ED8] hover:bg-blue-700 text-white text-sm font-semibold whitespace-nowrap"
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-sm font-semibold whitespace-nowrap"
               >
                 <span>
                   {userRecord?.role === 'PRINTER'
@@ -744,9 +755,9 @@ export const ShopPage: React.FC = () => {
           role="dialog"
           aria-modal="true"
         >
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white rounded-3xl border border-slate-200 shadow-2xl">
-            <div className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-              <div className="text-xs font-semibold text-[#1D4ED8]">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white rounded-3xl border border-[#E9E4F5] shadow-2xl">
+            <div className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-[#E9E4F5] px-6 py-4 flex items-center justify-between">
+              <div className="text-xs font-semibold text-[#7C3AED]">
                 {categories.find((c) => c.categoryId === quickViewProduct.categoryId)?.name ||
                   quickViewProduct.categoryName ||
                   'Smart Tag'}
@@ -762,7 +773,7 @@ export const ShopPage: React.FC = () => {
             </div>
 
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="aspect-[4/3] rounded-2xl overflow-hidden bg-slate-100 border border-slate-200">
+              <div className="aspect-[4/3] rounded-2xl overflow-hidden bg-slate-100 border border-[#E9E4F5]">
                 <img
                   src={quickViewProduct.imageDataUrl}
                   alt={quickViewProduct.name}
@@ -772,14 +783,14 @@ export const ShopPage: React.FC = () => {
 
               <div className="flex flex-col justify-between space-y-4">
                 <div>
-                  <h2 className="font-display text-xl font-bold text-[#0B1D3A]">
+                  <h2 className="font-display text-xl font-bold text-[#18142C]">
                     {quickViewProduct.name}
                   </h2>
                   {quickViewProduct.cardType && (
                     <div className="mt-1 text-xs text-slate-500">{quickViewProduct.cardType}</div>
                   )}
                   <div className="mt-3 flex items-baseline gap-2.5">
-                    <span className="font-display text-2xl font-extrabold text-[#0B1D3A] tabular-nums">
+                    <span className="font-display text-2xl font-extrabold text-[#18142C] tabular-nums">
                       ₹{quickViewProduct.priceInr}
                     </span>
                     {quickViewProduct.compareAtPriceInr &&
@@ -795,8 +806,8 @@ export const ShopPage: React.FC = () => {
                 </div>
 
                 {quickViewProduct.features && quickViewProduct.features.length > 0 && (
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5">
-                    <div className="text-xs font-semibold text-[#0B1D3A] mb-2">Key Features</div>
+                  <div className="bg-[#FAF9FE] border border-[#E9E4F5] rounded-xl p-3.5">
+                    <div className="text-xs font-semibold text-[#18142C] mb-2">Key Features</div>
                     <ul className="space-y-1.5 text-xs text-slate-700">
                       {quickViewProduct.features.map((feat) => (
                         <li key={feat} className="flex items-start gap-2">
@@ -813,7 +824,7 @@ export const ShopPage: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setQuickViewQty((q) => Math.max(1, q - 1))}
-                      className="p-2.5 text-slate-700 hover:bg-slate-50"
+                      className="p-2.5 text-slate-700 hover:bg-[#FAF9FE]"
                       aria-label="Decrease quantity"
                     >
                       <Minus className="h-3.5 w-3.5" />
@@ -824,7 +835,7 @@ export const ShopPage: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setQuickViewQty((q) => Math.min(20, q + 1))}
-                      className="p-2.5 text-slate-700 hover:bg-slate-50"
+                      className="p-2.5 text-slate-700 hover:bg-[#FAF9FE]"
                       aria-label="Increase quantity"
                     >
                       <Plus className="h-3.5 w-3.5" />
@@ -837,7 +848,7 @@ export const ShopPage: React.FC = () => {
                       addToBag(quickViewProduct, quickViewQty);
                       setQuickViewProduct(null);
                     }}
-                    className="flex-1 inline-flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#0B1D3A] hover:bg-[#132A52] text-white text-sm font-semibold disabled:opacity-50"
+                    className="flex-1 inline-flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#18142C] hover:bg-[#2A2048] text-white text-sm font-semibold disabled:opacity-50"
                   >
                     <ShoppingBag className="h-4 w-4" />
                     <span>
@@ -856,10 +867,10 @@ export const ShopPage: React.FC = () => {
       {/* Slide-Over Shopping Bag & Direct Shop Checkout */}
       {bagOpen && (
         <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/60 backdrop-blur-xs">
-          <div className="w-full max-w-lg bg-white h-full flex flex-col shadow-2xl border-l border-slate-200">
-            <div className="px-6 py-4 bg-[#0B1D3A] text-white flex items-center justify-between">
+          <div className="w-full max-w-lg bg-white h-full flex flex-col shadow-2xl border-l border-[#E9E4F5]">
+            <div className="px-6 py-4 bg-[#18142C] text-white flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <ShoppingBag className="h-5 w-5 text-cyan-300" />
+                <ShoppingBag className="h-5 w-5 text-[#C4B5FD]" />
                 <div>
                   <h2 className="font-display font-bold text-base">
                     {checkoutStep === 'bag' ? 'Your Smart Tag Bag' : 'Shipping & Payment'}
@@ -883,7 +894,7 @@ export const ShopPage: React.FC = () => {
               {cart.length === 0 ? (
                 <div className="text-center py-16">
                   <ShoppingBag className="h-10 w-10 text-slate-300 mx-auto mb-3" />
-                  <div className="font-display font-bold text-base text-[#0B1D3A]">
+                  <div className="font-display font-bold text-base text-[#18142C]">
                     Your shopping bag is empty
                   </div>
                   <p className="mt-1 text-xs text-slate-500">
@@ -892,16 +903,16 @@ export const ShopPage: React.FC = () => {
                 </div>
               ) : checkoutStep === 'bag' ? (
                 <>
-                  <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl">
+                  <div className="divide-y divide-[#F0ECF9] border border-[#E9E4F5] rounded-2xl">
                     {cart.map(({ product, quantity }) => (
                       <div key={product.productId} className="p-4 flex gap-3.5 items-center">
                         <img
                           src={product.imageDataUrl}
                           alt={product.name}
-                          className="w-16 h-14 rounded-xl object-cover border border-slate-200 shrink-0"
+                          className="w-16 h-14 rounded-xl object-cover border border-[#E9E4F5] shrink-0"
                         />
                         <div className="flex-1 min-w-0">
-                          <div className="font-display font-bold text-sm text-[#0B1D3A] truncate">
+                          <div className="font-display font-bold text-sm text-[#18142C] truncate">
                             {product.name}
                           </div>
                           <div className="text-xs text-slate-500 font-mono tabular-nums mt-0.5">
@@ -911,7 +922,7 @@ export const ShopPage: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => updateCartQty(product.productId, -1)}
-                              className="p-1.5 text-slate-600 hover:bg-slate-50"
+                              className="p-1.5 text-slate-600 hover:bg-[#FAF9FE]"
                               aria-label="Decrease"
                             >
                               <Minus className="h-3 w-3" />
@@ -922,7 +933,7 @@ export const ShopPage: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => updateCartQty(product.productId, 1)}
-                              className="p-1.5 text-slate-600 hover:bg-slate-50"
+                              className="p-1.5 text-slate-600 hover:bg-[#FAF9FE]"
                               aria-label="Increase"
                             >
                               <Plus className="h-3 w-3" />
@@ -930,7 +941,7 @@ export const ShopPage: React.FC = () => {
                           </div>
                         </div>
                         <div className="text-right shrink-0">
-                          <div className="font-mono font-bold text-sm text-[#0B1D3A] tabular-nums">
+                          <div className="font-mono font-bold text-sm text-[#18142C] tabular-nums">
                             ₹{product.priceInr * quantity}
                           </div>
                           <button
@@ -946,7 +957,7 @@ export const ShopPage: React.FC = () => {
                     ))}
                   </div>
 
-                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2 text-xs">
+                  <div className="bg-[#FAF9FE] border border-[#E9E4F5] rounded-2xl p-4 space-y-2 text-xs">
                     <div className="flex justify-between">
                       <span className="text-slate-600">Subtotal</span>
                       <span className="font-mono font-semibold tabular-nums">₹{subtotal}</span>
@@ -961,7 +972,7 @@ export const ShopPage: React.FC = () => {
                       <span className="text-slate-600">Pan-India Shipping</span>
                       <span className="font-mono font-semibold tabular-nums">₹{shippingFee}</span>
                     </div>
-                    <div className="pt-2 border-t border-slate-200 flex justify-between text-sm font-bold text-[#0B1D3A]">
+                    <div className="pt-2 border-t border-[#E9E4F5] flex justify-between text-sm font-bold text-[#18142C]">
                       <span>Total Payable</span>
                       <span className="font-mono tabular-nums">₹{total}</span>
                     </div>
@@ -1091,14 +1102,14 @@ export const ShopPage: React.FC = () => {
                         type="text"
                         readOnly
                         value="India"
-                        className="w-full px-3 py-2 border border-slate-200 bg-slate-50 rounded-lg text-sm text-slate-600"
+                        className="w-full px-3 py-2 border border-[#E9E4F5] bg-[#FAF9FE] rounded-lg text-sm text-slate-600"
                       />
                     </div>
                   </div>
 
                   {/* Payment Method (Razorpay Only) */}
-                  <div className="pt-3 border-t border-slate-200 space-y-2.5">
-                    <div className="flex items-center justify-between text-xs font-semibold text-[#0B1D3A]">
+                  <div className="pt-3 border-t border-[#E9E4F5] space-y-2.5">
+                    <div className="flex items-center justify-between text-xs font-semibold text-[#18142C]">
                       <span>Payment Method</span>
                       <span className="inline-flex items-center gap-1 text-emerald-700">
                         <ShieldCheck className="h-3.5 w-3.5" />
@@ -1121,11 +1132,11 @@ export const ShopPage: React.FC = () => {
                               aria-disabled={!isRazorpay}
                               className={`p-2.5 rounded-xl border text-left text-xs transition-colors ${
                                 isRazorpay
-                                  ? 'border-[#1D4ED8] bg-blue-50/70 ring-1 ring-[#1D4ED8]'
-                                  : 'border-slate-200 bg-slate-50 opacity-55 cursor-not-allowed'
+                                  ? 'border-[#7C3AED] bg-[#F3EEFF]/80 ring-1 ring-[#7C3AED]'
+                                  : 'border-[#E9E4F5] bg-[#FAF9FE] opacity-55 cursor-not-allowed'
                               }`}
                             >
-                              <div className="font-bold text-[#0B1D3A]">{gw.label}</div>
+                              <div className="font-bold text-[#18142C]">{gw.label}</div>
                               <div className="text-[10px] font-mono uppercase text-slate-500 mt-0.5">
                                 {isRazorpay ? 'Razorpay Live' : 'Temporarily Unavailable'}
                               </div>
@@ -1140,7 +1151,7 @@ export const ShopPage: React.FC = () => {
             </div>
 
             {cart.length > 0 && (
-              <div className="p-5 border-t border-slate-200 bg-white space-y-2.5">
+              <div className="p-5 border-t border-[#E9E4F5] bg-white space-y-2.5">
                 {checkoutStep === 'bag' ? (
                   <button
                     type="button"
@@ -1166,7 +1177,7 @@ export const ShopPage: React.FC = () => {
                       }
                       setCheckoutStep('checkout');
                     }}
-                    className="w-full py-3.5 rounded-xl bg-[#0B1D3A] hover:bg-[#132A52] text-white text-sm font-semibold flex items-center justify-center gap-2"
+                    className="w-full py-3.5 rounded-xl bg-[#18142C] hover:bg-[#2A2048] text-white text-sm font-semibold flex items-center justify-center gap-2"
                   >
                     <span>Proceed to Checkout · ₹{total}</span>
                     <ArrowRight className="h-4 w-4" />
@@ -1176,7 +1187,7 @@ export const ShopPage: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setCheckoutStep('bag')}
-                      className="px-4 py-3 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      className="px-4 py-3 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-[#FAF9FE]"
                     >
                       Back
                     </button>
@@ -1184,7 +1195,7 @@ export const ShopPage: React.FC = () => {
                       type="submit"
                       form="shop-checkout-form"
                       disabled={processing || !activeGatewayConfig}
-                      className="flex-1 py-3 rounded-xl bg-[#1D4ED8] hover:bg-blue-700 text-white text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                      className="flex-1 py-3 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
                     >
                       <CreditCard className="h-4 w-4" />
                       <span>

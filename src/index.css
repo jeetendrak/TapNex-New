@@ -4,12 +4,15 @@
   --font-display: "Plus Jakarta Sans", system-ui, sans-serif;
   --font-sans: "DM Sans", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
-  --color-navy-950: #071226;
-  --color-navy-900: #0B1D3A;
-  --color-navy-800: #132A52;
-  --color-electric-600: #1D4ED8;
-  --color-electric-500: #2563EB;
-  --color-cyan-500: #06B6D4;
+  --color-navy-950: #18122B;
+  --color-navy-900: #18142C;
+  --color-navy-800: #2A2048;
+  --color-electric-600: #7C3AED;
+  --color-electric-500: #8B5CF6;
+  --color-cyan-500: #A78BFA;
+  --color-lavender-50: #FAF9FE;
+  --color-lavender-100: #F3EEFF;
+  --color-lavender-200: #E9E4F5;
 }
 
 @layer base {

@@ -39,7 +39,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRoles, ch
           <button
             type="button"
             onClick={() => logout()}
-            className="mt-5 px-4 py-2 bg-[#0B1D3A] text-white text-sm font-semibold rounded-lg"
+            className="mt-5 px-4 py-2 bg-[#18142C] hover:bg-[#2A2048] text-white text-sm font-semibold rounded-lg"
           >
             Sign Out
           </button>

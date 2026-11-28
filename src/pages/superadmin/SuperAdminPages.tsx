@@ -25,7 +25,7 @@ const SuperAdminRolesHubTabs: React.FC = () => {
     { label: 'Admin Permissions Matrix', to: '/superadmin/permissions' },
   ];
   return (
-    <div className="mb-5 flex flex-wrap gap-2 bg-white border border-slate-200 rounded-2xl p-2">
+    <div className="mb-5 flex flex-wrap gap-2 bg-white border border-[#E9E4F5] rounded-2xl p-2">
       {tabs.map((tab) => {
         const active = location.pathname === tab.to;
         return (
@@ -34,8 +34,8 @@ const SuperAdminRolesHubTabs: React.FC = () => {
             to={tab.to}
             className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors ${
               active
-                ? 'bg-[#0B1D3A] text-white shadow-xs'
-                : 'text-slate-600 hover:bg-slate-100 hover:text-[#0B1D3A]'
+                ? 'bg-[#18142C] text-white shadow-xs'
+                : 'text-slate-600 hover:bg-[#F3EEFF] hover:text-[#18142C]'
             }`}
           >
             {tab.label}
@@ -71,20 +71,20 @@ export const SuperAdminDashboardPage: React.FC = () => {
   return (
     <PortalLayout portal="superadmin" title="SuperAdmin Command Center">
       <div className="space-y-6">
-        <div className="bg-[#071226] text-white rounded-2xl p-6 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="bg-gradient-to-br from-[#18122B] via-[#241848] to-[#140E26] text-white rounded-2xl p-6 border border-[#2E234E] flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
           <div>
-            <div className="flex items-center gap-2 text-cyan-400 text-xs font-semibold">
+            <div className="flex items-center gap-2 text-[#C4B5FD] text-xs font-semibold">
               <ShieldCheck className="h-4 w-4" />
               <span>Unrestricted Platform Governance</span>
             </div>
             <h2 className="font-display text-2xl font-bold mt-1">SuperAdmin Control Plane</h2>
-            <p className="text-xs text-slate-300 mt-1">
+            <p className="text-xs text-[#D8CCFF] mt-1">
               Manage administrators, RBAC permissions, multi-gateway checkout, direct URL QR generation, pricing, and global feature flags.
             </p>
           </div>
           <Link
             to="/superadmin/system-settings?tab=gateways"
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#1D4ED8] hover:bg-[#1E40AF] text-white text-xs font-semibold rounded-xl shrink-0"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold rounded-xl shrink-0"
           >
             <CreditCard className="h-4 w-4" />
             <span>Configure Payment Gateways</span>
@@ -92,25 +92,25 @@ export const SuperAdminDashboardPage: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white border border-slate-200 rounded-xl p-5">
+          <div className="bg-white border border-[#E9E4F5] rounded-xl p-5">
             <div className="text-xs text-slate-500">Active Payment Gateways</div>
-            <div className="mt-1.5 font-display text-lg font-bold text-[#0B1D3A]">
+            <div className="mt-1.5 font-display text-lg font-bold text-[#18142C]">
               {enabledGateways.length} / {PAYMENT_GATEWAY_ORDER.length} Enabled
             </div>
             <p className="mt-1 text-xs text-slate-500">
               Razorpay ({health?.razorpayMode === 'live' ? 'Live' : 'Sandbox'}), Cashfree, Easebuzz, PayU, GPay &amp; UPI.
             </p>
           </div>
-          <div className="bg-white border border-slate-200 rounded-xl p-5">
+          <div className="bg-white border border-[#E9E4F5] rounded-xl p-5">
             <div className="text-xs text-slate-500">Transactional Email (Resend)</div>
-            <div className="mt-1.5 font-display text-lg font-bold text-[#0B1D3A]">
+            <div className="mt-1.5 font-display text-lg font-bold text-[#18142C]">
               {health?.resendConfigured ? 'Connected (Live)' : 'API Key Pending'}
             </div>
-            <p className="mt-1 text-xs text-slate-500">Set RESEND_API_KEY in server environment variables to send live emails.</p>
+            <p className="mt-1 text-xs text-slate-500">Set RESEND_API_KEY in Firebase Functions Secrets to send live emails.</p>
           </div>
-          <div className="bg-white border border-slate-200 rounded-xl p-5">
+          <div className="bg-white border border-[#E9E4F5] rounded-xl p-5">
             <div className="text-xs text-slate-500">Initial Bootstrap Guard</div>
-            <div className="mt-1.5 font-display text-lg font-bold text-[#0B1D3A]">
+            <div className="mt-1.5 font-display text-lg font-bold text-[#18142C]">
               {health?.superAdminBootstrapEnabled ? 'Enabled (Disable After Init)' : 'Disabled (Secured)'}
             </div>
             <p className="mt-1 text-xs text-slate-500">One-time bootstrap script controlled via SUPERADMIN_BOOTSTRAP_ENABLED.</p>
@@ -123,7 +123,7 @@ export const SuperAdminDashboardPage: React.FC = () => {
               <RotateCcw className="h-4 w-4" />
               <span>Workspace Maintenance</span>
             </div>
-            <h3 className="font-display text-base font-bold text-[#0B1D3A]">
+            <h3 className="font-display text-base font-bold text-[#18142C]">
               Clear All Test Data &amp; Start Fresh Blank
             </h3>
             <p className="text-xs text-slate-600 max-w-2xl">
@@ -172,20 +172,20 @@ export const SuperAdminRolesPage: React.FC = () => {
   return (
     <PortalLayout portal="superadmin" title="Role & Administrator Control">
       <SuperAdminRolesHubTabs />
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
+      <div className="bg-white border border-[#E9E4F5] rounded-2xl overflow-x-auto">
         <table className="w-full text-left text-xs">
-          <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
+          <thead className="bg-[#FAF9FE] border-b border-[#E9E4F5] text-slate-500">
             <tr>
               <th className="py-3 px-4">Account</th>
               <th className="py-3 px-4">Status</th>
               <th className="py-3 px-4">Assigned Role</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-[#F0ECF9]">
             {users.map((u) => (
               <tr key={u.uid}>
                 <td className="py-3 px-4">
-                  <div className="font-semibold text-[#0B1D3A]">{u.displayName || u.email}</div>
+                  <div className="font-semibold text-[#18142C]">{u.displayName || u.email}</div>
                   <div className="text-slate-500">{u.email}</div>
                 </td>
                 <td className="py-3 px-4">{u.status}</td>
@@ -244,24 +244,24 @@ export const SuperAdminPermissionsPage: React.FC = () => {
       ) : (
         <div className="space-y-4">
           {admins.map((a) => (
-            <div key={a.uid} className="bg-white border border-slate-200 rounded-2xl p-6">
-              <div className="font-display font-bold text-base text-[#0B1D3A] mb-3">{a.email}</div>
+            <div key={a.uid} className="bg-white border border-[#E9E4F5] rounded-2xl p-6">
+              <div className="font-display font-bold text-base text-[#18142C] mb-3">{a.email}</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                 {ALL_ADMIN_PERMISSIONS.map((perm) => {
                   const enabled = (a.permissions || []).includes(perm.id);
                   return (
                     <label
                       key={perm.id}
-                      className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50"
+                      className="flex items-start gap-2.5 p-3 rounded-xl border border-[#E9E4F5] cursor-pointer hover:bg-[#FAF9FE]"
                     >
                       <input
                         type="checkbox"
                         checked={enabled}
                         onChange={() => togglePerm(a, perm.id)}
-                        className="mt-0.5 accent-[#1D4ED8]"
+                        className="mt-0.5 accent-[#7C3AED]"
                       />
                       <div>
-                        <div className="text-xs font-semibold text-[#0B1D3A]">{perm.label}</div>
+                        <div className="text-xs font-semibold text-[#18142C]">{perm.label}</div>
                         <div className="text-[11px] text-slate-500">{perm.description}</div>
                       </div>
                     </label>
@@ -316,9 +316,9 @@ export const SuperAdminQrGeneratorPage: React.FC = () => {
   return (
     <PortalLayout portal="superadmin" title="Generate QR from Any URL">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <form onSubmit={handleGenerate} className="lg:col-span-5 bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
-          <div className="flex items-center gap-2 font-display font-bold text-base text-[#0B1D3A]">
-            <QrCode className="h-5 w-5 text-[#1D4ED8]" />
+        <form onSubmit={handleGenerate} className="lg:col-span-5 bg-white border border-[#E9E4F5] rounded-2xl p-6 space-y-4">
+          <div className="flex items-center gap-2 font-display font-bold text-base text-[#18142C]">
+            <QrCode className="h-5 w-5 text-[#7C3AED]" />
             <span>Direct Public URL QR Generator</span>
           </div>
           <p className="text-xs text-slate-600">
@@ -365,7 +365,7 @@ export const SuperAdminQrGeneratorPage: React.FC = () => {
           <button
             type="submit"
             disabled={generating}
-            className="w-full py-3 bg-[#0B1D3A] text-white text-sm font-semibold rounded-xl disabled:opacity-50"
+            className="w-full py-3 bg-[#18142C] hover:bg-[#2A2048] text-white text-sm font-semibold rounded-xl disabled:opacity-50"
           >
             {generating ? 'Generating High-Res QR...' : 'Generate QR Code'}
           </button>
@@ -373,8 +373,8 @@ export const SuperAdminQrGeneratorPage: React.FC = () => {
 
         <div className="lg:col-span-7 space-y-6">
           {latestQr && latestQr.pngDataUrl && (
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col sm:flex-row items-center gap-6">
-              <img src={latestQr.pngDataUrl} alt="Generated QR" className="w-40 h-40 border border-slate-200 rounded-xl" />
+            <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 flex flex-col sm:flex-row items-center gap-6">
+              <img src={latestQr.pngDataUrl} alt="Generated QR" className="w-40 h-40 border border-[#E9E4F5] rounded-xl" />
               <div className="space-y-3 min-w-0 flex-1">
                 <div className="text-xs font-semibold text-emerald-700">Ready for Print & Digital Use</div>
                 <div className="text-xs font-mono text-slate-600 break-all">{latestQr.targetUrl}</div>
@@ -382,7 +382,7 @@ export const SuperAdminQrGeneratorPage: React.FC = () => {
                   <a
                     href={latestQr.pngDataUrl}
                     download={`${latestQr.qrCodeId}-1024px.png`}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0B1D3A] text-white text-xs font-semibold rounded-lg"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#18142C] hover:bg-[#2A2048] text-white text-xs font-semibold rounded-lg"
                   >
                     <Download className="h-3.5 w-3.5" />
                     <span>Download PNG (1024px)</span>
@@ -400,28 +400,28 @@ export const SuperAdminQrGeneratorPage: React.FC = () => {
             </div>
           )}
 
-          <div className="bg-white border border-slate-200 rounded-2xl p-6">
-            <h3 className="font-display font-bold text-sm text-[#0B1D3A] mb-3">Saved Custom QR Codes</h3>
+          <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6">
+            <h3 className="font-display font-bold text-sm text-[#18142C] mb-3">Saved Custom QR Codes</h3>
             {history.length === 0 ? (
               <p className="text-xs text-slate-500">No custom admin QR codes generated yet.</p>
             ) : (
               <div className="space-y-2.5">
                 {history.map((item) => (
-                  <div key={item.qrCodeId} className="p-3 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
+                  <div key={item.qrCodeId} className="p-3 border border-[#E9E4F5] rounded-xl flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-xs font-semibold text-[#0B1D3A] truncate">{item.customerName || item.targetUrl}</div>
+                      <div className="text-xs font-semibold text-[#18142C] truncate">{item.customerName || item.targetUrl}</div>
                       <div className="text-[11px] font-mono text-slate-500 truncate">{item.targetUrl}</div>
                     </div>
                     <div className="flex gap-2 shrink-0">
                       {item.pngDataUrl && (
-                        <a href={item.pngDataUrl} download={`${item.qrCodeId}.png`} className="text-xs font-semibold text-[#1D4ED8]">
+                        <a href={item.pngDataUrl} download={`${item.qrCodeId}.png`} className="text-xs font-semibold text-[#7C3AED]">
                           PNG
                         </a>
                       )}
                       <button
                         type="button"
                         onClick={() => downloadBlob(new Blob([item.svgContent], { type: 'image/svg+xml' }), `${item.qrCodeId}.svg`)}
-                        className="text-xs font-semibold text-[#1D4ED8]"
+                        className="text-xs font-semibold text-[#7C3AED]"
                       >
                         SVG
                       </button>
@@ -518,14 +518,14 @@ export const SuperAdminSystemSettingsPage: React.FC = () => {
 
   return (
     <PortalLayout portal="superadmin" title="Payment Gateways & System Settings">
-      <div className="mb-6 flex flex-wrap gap-2 bg-white border border-slate-200 rounded-2xl p-2 max-w-4xl">
+      <div className="mb-6 flex flex-wrap gap-2 bg-white border border-[#E9E4F5] rounded-2xl p-2 max-w-4xl">
         <button
           type="button"
           onClick={() => setActiveTab('pricing')}
           className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${
             activeTab === 'pricing'
-              ? 'bg-[#0B1D3A] text-white'
-              : 'text-slate-600 hover:bg-slate-100'
+              ? 'bg-[#18142C] text-white'
+              : 'text-slate-600 hover:bg-[#F3EEFF]'
           }`}
         >
           <Settings className="h-3.5 w-3.5" />
@@ -536,8 +536,8 @@ export const SuperAdminSystemSettingsPage: React.FC = () => {
           onClick={() => setActiveTab('gateways')}
           className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${
             activeTab === 'gateways'
-              ? 'bg-[#0B1D3A] text-white'
-              : 'text-slate-600 hover:bg-slate-100'
+              ? 'bg-[#18142C] text-white'
+              : 'text-slate-600 hover:bg-[#F3EEFF]'
           }`}
         >
           <CreditCard className="h-3.5 w-3.5" />
@@ -563,7 +563,7 @@ export const SuperAdminSystemSettingsPage: React.FC = () => {
         </div>
       ) : activeTab === 'pricing' ? (
         <div className="space-y-8 max-w-3xl">
-          <form onSubmit={handleSave} className="bg-white border border-slate-200 rounded-2xl p-6 space-y-5">
+          <form onSubmit={handleSave} className="bg-white border border-[#E9E4F5] rounded-2xl p-6 space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Company Brand Name</label>
@@ -622,30 +622,30 @@ export const SuperAdminSystemSettingsPage: React.FC = () => {
             />
           </div>
 
-          <div className="space-y-3 pt-2 border-t border-slate-100">
-            <label className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 cursor-pointer">
+          <div className="space-y-3 pt-2 border-t border-[#F0ECF9]">
+            <label className="flex items-center justify-between p-3.5 rounded-xl border border-[#E9E4F5] cursor-pointer">
               <div>
-                <div className="text-sm font-semibold text-[#0B1D3A]">Enable Multiple Digital Profiles per Account</div>
+                <div className="text-sm font-semibold text-[#18142C]">Enable Multiple Digital Profiles per Account</div>
                 <div className="text-xs text-slate-500">Allows customers to create Personal, Business, or Real Estate profiles under one login.</div>
               </div>
               <input
                 type="checkbox"
                 checked={form.multipleProfilesEnabled}
                 onChange={(e) => setForm({ ...form, multipleProfilesEnabled: e.target.checked })}
-                className="h-4 w-4 accent-[#1D4ED8]"
+                className="h-4 w-4 accent-[#7C3AED]"
               />
             </label>
 
-            <label className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 cursor-pointer">
+            <label className="flex items-center justify-between p-3.5 rounded-xl border border-[#E9E4F5] cursor-pointer">
               <div>
-                <div className="text-sm font-semibold text-[#0B1D3A]">Allow Customers to View QR Code Post-Purchase</div>
+                <div className="text-sm font-semibold text-[#18142C]">Allow Customers to View QR Code Post-Purchase</div>
                 <div className="text-xs text-slate-500">When disabled, verified QR codes are visible only to Admins and Assigned Printers.</div>
               </div>
               <input
                 type="checkbox"
                 checked={form.allowCustomerQrView}
                 onChange={(e) => setForm({ ...form, allowCustomerQrView: e.target.checked })}
-                className="h-4 w-4 accent-[#1D4ED8]"
+                className="h-4 w-4 accent-[#7C3AED]"
               />
             </label>
           </div>
@@ -653,7 +653,7 @@ export const SuperAdminSystemSettingsPage: React.FC = () => {
           <button
             type="submit"
             disabled={saving}
-            className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#0B1D3A] text-white text-sm font-semibold rounded-xl disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#18142C] hover:bg-[#2A2048] text-white text-sm font-semibold rounded-xl disabled:opacity-50"
           >
             <CheckCircle2 className="h-4 w-4" />
             <span>{saving ? 'Saving...' : 'Save Global Settings'}</span>
@@ -684,7 +684,7 @@ export const SuperAdminSystemSettingsPage: React.FC = () => {
           <div className="space-y-2.5 pt-2 border-t border-rose-100">
             <label className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 cursor-pointer">
               <div>
-                <div className="text-sm font-semibold text-[#0B1D3A]">Restore Default Card Templates, Email Templates &amp; Pricing</div>
+                <div className="text-sm font-semibold text-[#18142C]">Restore Default Card Templates, Email Templates &amp; Pricing</div>
                 <div className="text-xs text-slate-500">Deletes any custom test templates and restores clean factory-default templates and INR pricing.</div>
               </div>
               <input
@@ -730,8 +730,8 @@ export const SuperAdminSystemSettingsPage: React.FC = () => {
           </form>
 
           {resetResult && (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
-              <div className="text-xs font-bold text-[#0B1D3A]">
+            <div className="rounded-xl border border-[#E9E4F5] bg-[#FAF9FE] p-4 space-y-3">
+              <div className="text-xs font-bold text-[#18142C]">
                 Reset Summary: {resetResult.totalDeleted} Firestore document(s) cleared · {resetResult.localDraftsCleared} browser draft(s) cleared
               </div>
               <div>
@@ -740,9 +740,9 @@ export const SuperAdminSystemSettingsPage: React.FC = () => {
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] font-mono text-slate-600">
                   {Object.entries(resetResult.deletedCounts).map(([col, count]) => (
-                    <div key={col} className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 flex items-center justify-between">
+                    <div key={col} className="bg-white border border-[#E9E4F5] rounded-lg px-2.5 py-1.5 flex items-center justify-between">
                       <span>{col}</span>
-                      <span className="font-bold text-[#0B1D3A]">{count}</span>
+                      <span className="font-bold text-[#18142C]">{count}</span>
                     </div>
                   ))}
                 </div>

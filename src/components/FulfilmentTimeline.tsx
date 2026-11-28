@@ -19,8 +19,13 @@ export interface FulfilmentTimelineProps {
   updating?: boolean;
   pendingStatus?: OrderStatus | null;
   errorMessage?: string | null;
+  warningMessage?: string | null;
   successMessage?: string | null;
+  retryActionLabel?: string;
+  retryingAction?: boolean;
+  onRetryAction?: () => Promise<void> | void;
   onDismissError?: () => void;
+  onDismissWarning?: () => void;
   onDismissSuccess?: () => void;
   onSelectStatus?: (nextStatus: OrderStatus) => Promise<void> | void;
   onOpenDispatchForm?: () => void;
@@ -38,8 +43,13 @@ export const FulfilmentTimeline: React.FC<FulfilmentTimelineProps> = ({
   updating = false,
   pendingStatus = null,
   errorMessage = null,
+  warningMessage = null,
   successMessage = null,
+  retryActionLabel,
+  retryingAction = false,
+  onRetryAction,
   onDismissError,
+  onDismissWarning,
   onDismissSuccess,
   onSelectStatus,
   onOpenDispatchForm,
@@ -87,20 +97,20 @@ export const FulfilmentTimeline: React.FC<FulfilmentTimelineProps> = ({
     <section
       aria-label="Order Fulfilment Timeline"
       aria-busy={updating}
-      className="relative bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 space-y-4"
+      className="relative bg-white border border-[#E9E4F5] rounded-2xl p-5 sm:p-6 space-y-4"
     >
       {/* Header Row + Progress + Quick Advance */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2.5">
-            <h3 className="font-display font-bold text-sm text-[#0B1D3A]">Fulfilment Timeline</h3>
+            <h3 className="font-display font-bold text-sm text-[#18142C]">Fulfilment Timeline</h3>
             {!isTerminalException && (
               <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700 tabular-nums">
                 Step {Math.max(1, completedCount)} / {ORDER_STATUS_FLOW.length} ({progressPct}%)
               </span>
             )}
             {printerLabel && (
-              <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded bg-blue-50 text-[#1D4ED8] border border-blue-200">
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded bg-[#F3EEFF] text-[#6D28D9] border border-[#DDD6FE]">
                 <PrinterIcon className="h-3 w-3" />
                 <span>{printerLabel}</span>
               </span>
@@ -125,7 +135,7 @@ export const FulfilmentTimeline: React.FC<FulfilmentTimelineProps> = ({
                   : `Advance: ${nextStep}`
               }
               onClick={handleAdvanceClick}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#0B1D3A] hover:bg-[#132A52] text-white text-xs font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#18142C] hover:bg-[#2A2048] text-white text-xs font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {updating ? (
                 <>
@@ -165,9 +175,9 @@ export const FulfilmentTimeline: React.FC<FulfilmentTimelineProps> = ({
         <div
           role="status"
           aria-live="polite"
-          className="p-3 rounded-xl bg-blue-50 border border-blue-200 flex items-center gap-2.5 text-xs text-[#0B1D3A] font-medium"
+          className="p-3 rounded-xl bg-[#F3EEFF] border border-[#DDD6FE] flex items-center gap-2.5 text-xs text-[#18142C] font-medium"
         >
-          <Loader2 className="h-4 w-4 text-[#1D4ED8] animate-spin shrink-0" />
+          <Loader2 className="h-4 w-4 text-[#7C3AED] animate-spin shrink-0" />
           <span>
             {pendingStatus
               ? `Updating order status to "${pendingStatus}"...`
@@ -203,8 +213,48 @@ export const FulfilmentTimeline: React.FC<FulfilmentTimelineProps> = ({
         </div>
       )}
 
+      {/* Inline Warning / Partial Success (e.g. Dispatch Saved, Email Delivery Failed) */}
+      {!updating && warningMessage && (
+        <div
+          role="alert"
+          aria-live="polite"
+          className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-950"
+        >
+          <div className="flex items-start gap-2.5 min-w-0">
+            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <div className="font-semibold">Customer email delivery attention required</div>
+              <p className="mt-0.5 text-amber-900 leading-relaxed">{warningMessage}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {onRetryAction && (
+              <button
+                type="button"
+                disabled={retryingAction}
+                onClick={() => void onRetryAction()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {retryingAction && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                <span>{retryingAction ? 'Retrying Email...' : retryActionLabel || 'Retry Dispatch Email'}</span>
+              </button>
+            )}
+            {onDismissWarning && (
+              <button
+                type="button"
+                onClick={onDismissWarning}
+                aria-label="Dismiss email delivery warning"
+                className="p-1 rounded-lg text-amber-700 hover:bg-amber-100 shrink-0 cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Inline Success Confirmation */}
-      {!updating && !errorMessage && successMessage && (
+      {!updating && !errorMessage && !warningMessage && successMessage && (
         <div
           role="status"
           aria-live="polite"
@@ -251,7 +301,7 @@ export const FulfilmentTimeline: React.FC<FulfilmentTimelineProps> = ({
               ? 'bg-emerald-50 border-emerald-500 ring-1 ring-emerald-400/40 text-emerald-950 font-bold shadow-xs'
               : done
                 ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900 font-semibold'
-                : 'bg-slate-50 border-slate-200 text-slate-600'
+                : 'bg-slate-50 border-[#E9E4F5] text-slate-600'
           }`;
 
           if (clickable && !isCurrent) {
@@ -264,11 +314,11 @@ export const FulfilmentTimeline: React.FC<FulfilmentTimelineProps> = ({
                 aria-label={`Set status to "${step}"`}
                 onClick={() => triggerStatusSelection(step)}
                 title={`Set status to "${step}"`}
-                className={`${baseClass} hover:border-[#1D4ED8] hover:shadow-xs cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed`}
+                className={`${baseClass} hover:border-[#7C3AED] hover:shadow-xs cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed`}
               >
                 <span className="flex items-center gap-2.5 min-w-0">
                   {isPendingTarget ? (
-                    <Loader2 className="h-4 w-4 shrink-0 text-[#1D4ED8] animate-spin" />
+                    <Loader2 className="h-4 w-4 shrink-0 text-[#7C3AED] animate-spin" />
                   ) : (
                     <CheckCircle2 className={`h-4 w-4 shrink-0 ${done ? 'text-emerald-600' : 'text-slate-300'}`} />
                   )}
@@ -302,10 +352,10 @@ export const FulfilmentTimeline: React.FC<FulfilmentTimelineProps> = ({
       {trackingNumber && (
         <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2 text-slate-700">
-            <Truck className="h-4 w-4 text-[#1D4ED8] shrink-0" />
+            <Truck className="h-4 w-4 text-[#7C3AED] shrink-0" />
             <span>
               <strong>{courierName || 'Courier'}</strong> · Tracking:{' '}
-              <span className="font-mono font-semibold text-[#0B1D3A]">{trackingNumber}</span>
+              <span className="font-mono font-semibold text-[#18142C]">{trackingNumber}</span>
               {dispatchDate ? ` · Dispatched ${dispatchDate}` : ''}
             </span>
           </div>
@@ -314,7 +364,7 @@ export const FulfilmentTimeline: React.FC<FulfilmentTimelineProps> = ({
               href={trackingUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[#1D4ED8] font-semibold hover:underline"
+              className="text-[#7C3AED] font-semibold hover:underline"
             >
               Track Shipment →
             </a>

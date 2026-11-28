@@ -145,8 +145,8 @@ export const PublicProfilePage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-white rounded-3xl p-6 space-y-4 border border-slate-200">
+      <div className="min-h-screen bg-[#FAF9FE] flex items-center justify-center p-4">
+        <div className="w-full max-w-md bg-white rounded-3xl p-6 space-y-4 border border-[#E9E4F5]">
           <div className="h-24 w-24 rounded-full bg-slate-200 mx-auto animate-pulse" />
           <div className="h-6 w-48 bg-slate-200 mx-auto rounded animate-pulse" />
           <div className="h-12 w-full bg-slate-200 rounded-xl animate-pulse" />
@@ -157,10 +157,10 @@ export const PublicProfilePage: React.FC = () => {
 
   if (!profile || ((!profile.isPublic || profile.adminDisabled) && !isPrivilegedViewer)) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-white rounded-3xl p-8 text-center border border-slate-200 shadow-xs">
+      <div className="min-h-screen bg-[#FAF9FE] flex items-center justify-center p-4">
+        <div className="w-full max-w-md bg-white rounded-3xl p-8 text-center border border-[#E9E4F5] shadow-xs">
           <AlertCircle className="h-10 w-10 text-slate-400 mx-auto mb-3" />
-          <h1 className="font-display text-xl font-bold text-[#0B1D3A]">Profile Unavailable</h1>
+          <h1 className="font-display text-xl font-bold text-[#18142C]">Profile Unavailable</h1>
           <p className="mt-2 text-sm text-slate-600 leading-relaxed">
             {profile?.adminDisabled
               ? 'This digital profile link has been disabled by an administrator.'
@@ -168,7 +168,7 @@ export const PublicProfilePage: React.FC = () => {
           </p>
           <Link
             to="/"
-            className="mt-6 inline-block px-5 py-2.5 bg-[#0B1D3A] text-white rounded-xl text-sm font-semibold"
+            className="mt-6 inline-block px-5 py-2.5 bg-[#18142C] hover:bg-[#2A2048] text-white rounded-xl text-sm font-semibold"
           >
             Visit TapNex
           </Link>
@@ -197,9 +197,9 @@ export const PublicProfilePage: React.FC = () => {
 
   return (
     <ScreenProtectionShield active={!isPaidLive} watermarkLabel={`TAPNEX PROTECTED · /p/${profile.slug}`}>
-    <div className="min-h-screen bg-slate-100 py-6 sm:py-12 px-4">
+    <div className="min-h-screen bg-[#FAF9FE] py-6 sm:py-12 px-4">
       <div
-        className={`relative max-w-lg mx-auto bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm ${
+        className={`relative max-w-lg mx-auto bg-white rounded-3xl border border-[#E9E4F5] overflow-hidden shadow-sm ${
           !isPaidLive ? 'select-none' : ''
         }`}
       >
@@ -220,19 +220,19 @@ export const PublicProfilePage: React.FC = () => {
           </div>
         )}
 
-        {/* Executive Navy Header Banner */}
-        <div className="bg-[#050814] px-5 sm:px-7 pt-6 pb-20 text-white flex items-center justify-between gap-4">
+        {/* Executive Deep Indigo Header Banner */}
+        <div className="bg-gradient-to-br from-[#18122B] via-[#241848] to-[#140E26] px-5 sm:px-7 pt-6 pb-20 text-white flex items-center justify-between gap-4">
           <Link to="/" className="inline-flex items-center gap-3.5 sm:gap-4 group" aria-label="TapNex">
             <img
               src={TAPNEX_PUBLIC_BADGE_LOGO_URL}
               alt="TapNex — Smart Connections. One Tap."
-              className="h-20 w-20 sm:h-24 sm:w-24 rounded-2xl object-contain shrink-0 shadow-[0_8px_28px_rgba(56,189,248,0.28)] ring-1 ring-white/15 group-hover:scale-[1.03] transition-transform"
+              className="h-20 w-20 sm:h-24 sm:w-24 rounded-2xl object-contain shrink-0 shadow-[0_8px_28px_rgba(124,58,237,0.32)] ring-1 ring-white/15 group-hover:scale-[1.03] transition-transform"
             />
             <div className="min-w-0">
               <div className="font-display text-xl sm:text-2xl font-extrabold tracking-tight text-white leading-none">
                 TapNex
               </div>
-              <div className="mt-1.5 text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-300/90">
+              <div className="mt-1.5 text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.18em] text-[#C4B5FD]">
                 Smart Connections
               </div>
             </div>
@@ -280,20 +280,20 @@ export const PublicProfilePage: React.FC = () => {
                 className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-md bg-transparent"
               />
             ) : (
-              <div className="w-24 h-24 rounded-full border-4 border-white shadow-md bg-[#1D4ED8] text-white flex items-center justify-center font-display text-2xl font-bold">
+              <div className="w-24 h-24 rounded-full border-4 border-white shadow-md bg-[#7C3AED] text-white flex items-center justify-center font-display text-2xl font-bold">
                 {(info.fullName || profile.slug || 'T')[0].toUpperCase()}
               </div>
             )}
 
             {profileType !== 'adult' && (
-              <div className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[#1D4ED8]">
+              <div className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[#7C3AED]">
                 {profileType === 'kids' && <><ShieldAlert className="h-3.5 w-3.5" /> <span>Child Safety SMART ID</span></>}
                 {profileType === 'pets' && <><PawPrint className="h-3.5 w-3.5" /> <span>Pet Collar Safety Tag</span></>}
                 {profileType === 'belongings' && <><Package className="h-3.5 w-3.5" /> <span>Find My Owner Tag</span></>}
               </div>
             )}
 
-            <h1 className="mt-2 font-display text-2xl font-bold text-[#0B1D3A]">
+            <h1 className="mt-2 font-display text-2xl font-bold text-[#18142C]">
               {info.fullName || `@${profile.slug}`}
             </h1>
             {profileType === 'adult' && (info.jobTitle || info.companyName) && (
@@ -344,7 +344,7 @@ export const PublicProfilePage: React.FC = () => {
                 downloadVCard(profile, publicUrl);
                 notify('Contact downloaded', 'Open the .vcf file to save directly to your address book.', 'success');
               }}
-              className="flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl bg-[#0B1D3A] hover:bg-[#132A52] text-white text-sm font-semibold transition-colors min-h-[48px] disabled:opacity-45 disabled:cursor-not-allowed"
+              className="flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl bg-[#18142C] hover:bg-[#2A2048] text-white text-sm font-semibold transition-colors min-h-[48px] disabled:opacity-45 disabled:cursor-not-allowed"
             >
               <Download className="h-4 w-4" />
               <span>Save Contact</span>
@@ -354,7 +354,7 @@ export const PublicProfilePage: React.FC = () => {
               type="button"
               disabled={!isPaidLive}
               onClick={handleCopyUrl}
-              className="flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-800 text-sm font-semibold min-h-[48px] disabled:opacity-45 disabled:cursor-not-allowed"
+              className="flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl border border-slate-300 hover:bg-[#FAF9FE] text-slate-800 text-sm font-semibold min-h-[48px] disabled:opacity-45 disabled:cursor-not-allowed"
             >
               {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
               <span>{isPaidLive ? (copied ? 'Link Copied' : 'Copy Profile URL') : 'URL Locked Until Payment'}</span>
@@ -362,14 +362,14 @@ export const PublicProfilePage: React.FC = () => {
           </div>
 
           {/* Visible Contact Rows */}
-          <div className="mt-6 divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden">
+          <div className="mt-6 divide-y divide-slate-100 border border-[#E9E4F5] rounded-2xl overflow-hidden">
             {displayedMobile && (
               isPaidLive ? (
                 <a
                   href={`tel:${info.mobile}`}
-                  className="flex items-center gap-3.5 px-4 py-3.5 hover:bg-slate-50 transition-colors min-h-[52px]"
+                  className="flex items-center gap-3.5 px-4 py-3.5 hover:bg-[#FAF9FE] transition-colors min-h-[52px]"
                 >
-                  <Phone className="h-4 w-4 text-[#1D4ED8] shrink-0" />
+                  <Phone className="h-4 w-4 text-[#7C3AED] shrink-0" />
                   <div className="min-w-0 flex-1">
                     <div className="text-xs text-slate-500">Mobile</div>
                     <div className="text-sm font-medium text-slate-900 font-mono">{displayedMobile}</div>
@@ -413,7 +413,7 @@ export const PublicProfilePage: React.FC = () => {
                   href={`mailto:${info.email}`}
                   className="flex items-center gap-3.5 px-4 py-3.5 hover:bg-slate-50 transition-colors min-h-[52px]"
                 >
-                  <Mail className="h-4 w-4 text-[#1D4ED8] shrink-0" />
+                  <Mail className="h-4 w-4 text-[#7C3AED] shrink-0" />
                   <div className="min-w-0 flex-1">
                     <div className="text-xs text-slate-500">Email</div>
                     <div className="text-sm font-medium text-slate-900 truncate">{displayedEmail}</div>
@@ -433,7 +433,7 @@ export const PublicProfilePage: React.FC = () => {
               isPaidLive ? (
                 <a
                   href={`mailto:${info.alternateEmail}`}
-                  className="flex items-center gap-3.5 px-4 py-3.5 hover:bg-slate-50 transition-colors min-h-[52px]"
+                  className="flex items-center gap-3.5 px-4 py-3.5 hover:bg-[#FAF9FE] transition-colors min-h-[52px]"
                 >
                   <Mail className="h-4 w-4 text-slate-500 shrink-0" />
                   <div className="min-w-0 flex-1">
@@ -457,12 +457,12 @@ export const PublicProfilePage: React.FC = () => {
                   href={info.website.startsWith('http') ? info.website : `https://${info.website}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-3.5 px-4 py-3.5 hover:bg-slate-50 transition-colors min-h-[52px]"
+                  className="flex items-center gap-3.5 px-4 py-3.5 hover:bg-[#FAF9FE] transition-colors min-h-[52px]"
                 >
-                  <Globe className="h-4 w-4 text-[#1D4ED8] shrink-0" />
+                  <Globe className="h-4 w-4 text-[#7C3AED] shrink-0" />
                   <div className="min-w-0 flex-1">
                     <div className="text-xs text-slate-500">Website</div>
-                    <div className="text-sm font-medium text-[#1D4ED8] truncate">{displayedWebsite}</div>
+                    <div className="text-sm font-medium text-[#7C3AED] truncate">{displayedWebsite}</div>
                   </div>
                   <ExternalLink className="h-3.5 w-3.5 text-slate-400" />
                 </a>
@@ -478,7 +478,7 @@ export const PublicProfilePage: React.FC = () => {
             )}
             {addressParts.length > 0 && (
               <div className="flex items-start gap-3.5 px-4 py-3.5">
-                <MapPin className="h-4 w-4 text-[#1D4ED8] shrink-0 mt-0.5" />
+                <MapPin className="h-4 w-4 text-[#7C3AED] shrink-0 mt-0.5" />
                 <div className="min-w-0 flex-1">
                   <div className="text-xs text-slate-500">
                     {profileType === 'adult' ? 'Business Address' : profileType === 'belongings' ? 'Return Address' : 'Residential Address'}
@@ -568,7 +568,7 @@ export const PublicProfilePage: React.FC = () => {
                   )}
                   {info.schoolOrClass && (
                     <div className="px-4 py-3 flex items-center justify-between gap-4">
-                      <span className="text-xs text-slate-500 inline-flex items-center gap-1.5"><School className="h-3.5 w-3.5 text-[#1D4ED8]" />School / Class</span>
+                      <span className="text-xs text-slate-500 inline-flex items-center gap-1.5"><School className="h-3.5 w-3.5 text-[#7C3AED]" />School / Class</span>
                       <span className="text-sm font-medium text-slate-900 text-right">{info.schoolOrClass}</span>
                     </div>
                   )}
@@ -658,7 +658,7 @@ export const PublicProfilePage: React.FC = () => {
                       <span className="text-xs text-slate-500">Veterinarian</span>
                       <div className="text-right text-sm font-medium text-slate-900">
                         {info.vetName && <div>{info.vetName}</div>}
-                        {info.vetPhone && <a href={`tel:${info.vetPhone}`} className="text-[#1D4ED8] font-mono text-xs">{info.vetPhone}</a>}
+                        {info.vetPhone && <a href={`tel:${info.vetPhone}`} className="text-[#7C3AED] font-mono text-xs">{info.vetPhone}</a>}
                       </div>
                     </div>
                   )}
@@ -691,7 +691,7 @@ export const PublicProfilePage: React.FC = () => {
                       {info.ownerMobile && (
                         <a
                           href={`tel:${info.ownerMobile}`}
-                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#0B1D3A] hover:bg-[#132A52] text-white text-xs font-semibold font-mono"
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#18142C] hover:bg-[#2A2048] text-white text-xs font-semibold font-mono"
                         >
                           <Phone className="h-3.5 w-3.5" />
                           <span>Call {info.ownerMobile}</span>
@@ -772,7 +772,7 @@ export const PublicProfilePage: React.FC = () => {
                     </div>
                     {info.emergencyContactPhone && (
                       isPaidLive ? (
-                        <a href={`tel:${info.emergencyContactPhone}`} className="text-xs font-semibold font-mono text-[#1D4ED8] hover:underline">
+                        <a href={`tel:${info.emergencyContactPhone}`} className="text-xs font-semibold font-mono text-[#7C3AED] hover:underline">
                           {info.emergencyContactPhone}
                         </a>
                       ) : (
@@ -869,7 +869,7 @@ export const PublicProfilePage: React.FC = () => {
                         href={field.value.startsWith('http') ? field.value : `https://${field.value}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-sm font-medium text-[#1D4ED8] hover:underline truncate max-w-[60%]"
+                        className="text-sm font-medium text-[#7C3AED] hover:underline truncate max-w-[60%]"
                       >
                         {field.value}
                       </a>
@@ -878,7 +878,7 @@ export const PublicProfilePage: React.FC = () => {
                         {field.value}
                       </a>
                     ) : field.type === 'email' ? (
-                      <a href={`mailto:${field.value}`} className="text-sm font-medium text-[#1D4ED8]">
+                      <a href={`mailto:${field.value}`} className="text-sm font-medium text-[#7C3AED]">
                         {field.value}
                       </a>
                     ) : (
@@ -892,11 +892,11 @@ export const PublicProfilePage: React.FC = () => {
 
           {/* Share Bar */}
           {isPaidLive && (
-            <div className="mt-6 pt-5 border-t border-slate-200 flex items-center justify-between gap-3">
+            <div className="mt-6 pt-5 border-t border-[#E9E4F5] flex items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={handleCopyUrl}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 min-h-[44px]"
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-[#E9E4F5] text-xs font-semibold text-slate-700 hover:bg-[#FAF9FE] min-h-[44px]"
               >
                 <Copy className="h-3.5 w-3.5" />
                 <span>Copy Link</span>
@@ -905,7 +905,7 @@ export const PublicProfilePage: React.FC = () => {
                 href={`https://wa.me/?text=${encodeURIComponent(`${info.fullName || profile.slug} — Digital Business Card: ${publicUrl}`)}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 min-h-[44px]"
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-[#E9E4F5] text-xs font-semibold text-slate-700 hover:bg-[#FAF9FE] min-h-[44px]"
               >
                 <Share2 className="h-3.5 w-3.5" />
                 <span>Share via WhatsApp</span>
@@ -914,10 +914,10 @@ export const PublicProfilePage: React.FC = () => {
           )}
 
           {/* Horizontal Line & Portfolio Footer Text after User Info Ends */}
-          <hr className="border-t border-slate-200 my-6" />
+          <hr className="border-t border-[#E9E4F5] my-6" />
           <div className="text-center text-xs text-slate-500">
             Get your portfolio at:{' '}
-            <Link to="/" className="font-semibold text-[#0B1D3A] hover:text-[#1D4ED8] hover:underline">
+            <Link to="/" className="font-semibold text-[#18142C] hover:text-[#7C3AED] hover:underline">
               tapnex.in
             </Link>
           </div>

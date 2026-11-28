@@ -28,9 +28,9 @@ export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 overflow-x-hidden">
+    <div className="min-h-screen flex flex-col bg-[#FAF9FE] text-[#18142C] overflow-x-hidden">
       {/* Strict 3-Zone Top Bar Contract */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200">
+      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-[#E9E4F5]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between gap-4 sm:gap-8">
           {/* Zone 1: Brand Logo */}
           <Link
@@ -46,15 +46,15 @@ export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children
           </Link>
 
           {/* Zone 2: 5 concise single-line nav links */}
-          <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-slate-600">
+          <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-[#64607D]">
             {navLinks.map((item) => {
               const active = location.pathname === item.to;
               return (
                 <Link
                   key={item.to}
                   to={item.to}
-                  className={`whitespace-nowrap shrink-0 transition-colors hover:text-[#0B1D3A] ${
-                    active ? 'text-[#1D4ED8] font-semibold' : ''
+                  className={`whitespace-nowrap shrink-0 transition-colors hover:text-[#6D28D9] ${
+                    active ? 'text-[#7C3AED] font-semibold' : ''
                   }`}
                 >
                   {item.label}
@@ -66,7 +66,7 @@ export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children
           {/* Zone 3: 1 primary CTA */}
           <div className="flex items-center gap-3 shrink-0">
             <SmartCardLink
-              className="hidden sm:inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-white bg-[#0B1D3A] hover:bg-[#132A52] rounded-lg transition-colors whitespace-nowrap shrink-0 min-h-[40px]"
+              className="hidden sm:inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-white bg-[#7C3AED] hover:bg-[#6D28D9] rounded-xl shadow-xs shadow-[#7C3AED]/20 transition-colors whitespace-nowrap shrink-0 min-h-[40px]"
             >
               Get Your Smart Card
             </SmartCardLink>
@@ -124,7 +124,7 @@ export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children
             </Link>
             <SmartCardLink
               onClick={() => setMobileMenuOpen(false)}
-              className="block text-center mt-2 px-4 py-3 rounded-lg text-sm font-semibold text-white bg-[#0B1D3A]"
+              className="block text-center mt-2 px-4 py-3 rounded-xl text-sm font-semibold text-white bg-[#7C3AED] hover:bg-[#6D28D9]"
             >
               Get Your Smart Card
             </SmartCardLink>
@@ -135,7 +135,7 @@ export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children
       <main className="flex-1">{children}</main>
 
       {/* Quiet Structured Footer */}
-      <footer className="bg-[#050814] text-slate-300 border-t border-slate-800">
+      <footer className="bg-[#18122B] text-[#D6D0EC] border-t border-[#2E234E]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 grid grid-cols-1 md:grid-cols-4 gap-10">
           <div className="md:col-span-1">
             <Link to="/" className="inline-flex items-center bg-white px-4 py-2.5 rounded-xl shadow-xs">
@@ -145,14 +145,14 @@ export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children
                 className="h-14 w-auto object-contain"
               />
             </Link>
-            <p className="mt-3 text-sm text-slate-400 leading-relaxed">
+            <p className="mt-3 text-sm text-[#B8AFD6] leading-relaxed">
               Premium smart business cards paired with seamless digital identity integration, enabling instant contact sharing and real-time digital networking across India.
             </p>
           </div>
 
           <div>
             <h3 className="text-sm font-semibold text-white mb-3">Platform</h3>
-            <ul className="space-y-2 text-sm text-slate-400">
+            <ul className="space-y-2 text-sm text-[#B8AFD6]">
               <li><Link to="/shop" className="hover:text-white transition-colors">Shop Smart Tags</Link></li>
               <li><Link to="/how-it-works" className="hover:text-white transition-colors">How It Works</Link></li>
               <li><Link to="/features" className="hover:text-white transition-colors">Features</Link></li>
@@ -163,7 +163,7 @@ export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children
 
           <div>
             <h3 className="text-sm font-semibold text-white mb-3">Resources</h3>
-            <ul className="space-y-2 text-sm text-slate-400">
+            <ul className="space-y-2 text-sm text-[#B8AFD6]">
               <li><Link to="/guide" className="hover:text-white transition-colors">Complete User Guide (PDF)</Link></li>
               <li><Link to="/faq" className="hover:text-white transition-colors">FAQ</Link></li>
               <li><Link to="/nfc-guide" className="hover:text-white transition-colors">Smartcard Compatibility Guide</Link></li>
@@ -181,15 +181,15 @@ export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children
 
           <div>
             <h3 className="text-sm font-semibold text-white mb-3">Legal & Policies</h3>
-            <ul className="space-y-2 text-sm text-slate-400">
+            <ul className="space-y-2 text-sm text-[#B8AFD6]">
               <li><Link to="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link></li>
               <li><Link to="/terms" className="hover:text-white transition-colors">Terms of Service</Link></li>
               <li><Link to="/refund-policy" className="hover:text-white transition-colors">Refund & Cancellation Policy</Link></li>
-              <li className="pt-2 text-xs text-slate-400">support@tapnex.in · India Fulfilment (10–15 Days)</li>
+              <li className="pt-2 text-xs text-[#C4B5FD]">support@tapnex.in · India Fulfilment (10–15 Days)</li>
             </ul>
           </div>
         </div>
-        <div className="border-t border-slate-800/80 py-5 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+        <div className="border-t border-[#2E234E] py-5 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-[#9C92BD]">
           <span>© {new Date().getFullYear()} TapNex Smart Identity Systems. All rights reserved.</span>
           <span>Tap &amp; QR Hybrid SMART Business Cards</span>
         </div>

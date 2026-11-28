@@ -173,10 +173,10 @@ export const UserGuidePage: React.FC = () => {
     <PublicLayout>
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-10">
         {/* Hero Header */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+        <div className="bg-gradient-to-br from-[#EDE7FF]/70 via-white to-[#FAF9FE] border border-[#E9E4F5] rounded-2xl p-6 sm:p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="space-y-2.5 max-w-3xl">
             <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
-              <BookOpen className="h-4 w-4 text-[#1D4ED8]" />
+              <BookOpen className="h-4 w-4 text-[#7C3AED]" />
               <span>Platform Documentation</span>
               <span aria-hidden="true">·</span>
               <span>{visibleGuides.length} {visibleGuides.length === 1 ? 'Section' : 'Guides'}</span>
@@ -185,7 +185,7 @@ export const UserGuidePage: React.FC = () => {
               <span aria-hidden="true">·</span>
               <span>Downloadable A4 PDF</span>
             </div>
-            <h1 className="font-display text-3xl sm:text-4xl font-bold text-[#0B1D3A] tracking-tight">
+            <h1 className="font-display text-3xl sm:text-4xl font-bold text-[#18142C] tracking-tight">
               {isStaffViewer ? 'TapNex Complete Role & Feature Guide' : 'TapNex User Guide & Card Handbook'}
             </h1>
             <p className="text-sm sm:text-base text-slate-600 leading-relaxed">
@@ -197,7 +197,7 @@ export const UserGuidePage: React.FC = () => {
               <div className="pt-1">
                 <Link
                   to={portalHome}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#1D4ED8] hover:underline"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#7C3AED] hover:text-[#6D28D9] hover:underline"
                 >
                   <span>Return to {userRecord.role} Portal</span>
                   <ArrowRight className="h-3.5 w-3.5" />
@@ -211,7 +211,7 @@ export const UserGuidePage: React.FC = () => {
               type="button"
               disabled={downloadingTarget !== null}
               onClick={() => handleDownloadPdf('all')}
-              className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-[#0B1D3A] hover:bg-[#132A52] text-white text-sm font-semibold rounded-xl transition-colors whitespace-nowrap shrink-0 disabled:opacity-60"
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-sm font-semibold rounded-xl transition-colors whitespace-nowrap shrink-0 disabled:opacity-60"
             >
               <Download className="h-4 w-4" />
               <span>
@@ -227,9 +227,9 @@ export const UserGuidePage: React.FC = () => {
                 type="button"
                 disabled={downloadingTarget !== null}
                 onClick={() => handleDownloadPdf(activeRole)}
-                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 border border-slate-300 bg-white hover:bg-slate-50 text-[#0B1D3A] text-sm font-semibold rounded-xl transition-colors whitespace-nowrap shrink-0 disabled:opacity-60"
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 border border-[#DDD6FE] bg-white hover:bg-[#F3EEFF] text-[#18142C] text-sm font-semibold rounded-xl transition-colors whitespace-nowrap shrink-0 disabled:opacity-60"
               >
-                <FileText className="h-4 w-4 text-[#1D4ED8]" />
+                <FileText className="h-4 w-4 text-[#7C3AED]" />
                 <span>
                   {downloadingTarget === activeRole
                     ? 'Building Role PDF...'
@@ -242,14 +242,14 @@ export const UserGuidePage: React.FC = () => {
 
         {/* Progress Bar during PDF Composition */}
         {pdfProgress && (
-          <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
+          <div className="bg-white border border-[#E9E4F5] rounded-xl p-4 space-y-2">
             <div className="flex items-center justify-between text-xs font-medium text-slate-700">
               <span>{pdfProgress.label}</span>
               <span className="font-mono tabular-nums">{pdfProgress.pct}%</span>
             </div>
-            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+            <div className="h-2 bg-[#F3EEFF] rounded-full overflow-hidden">
               <div
-                className="h-full bg-[#1D4ED8] transition-all duration-200"
+                className="h-full bg-[#7C3AED] transition-all duration-200"
                 style={{ width: `${pdfProgress.pct}%` }}
               />
             </div>
@@ -257,9 +257,9 @@ export const UserGuidePage: React.FC = () => {
         )}
 
         {/* Role Capability Matrix */}
-        <section className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <h2 className="font-display text-lg font-bold text-[#0B1D3A]">
+        <section className="bg-white border border-[#E9E4F5] rounded-2xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-[#E9E4F5] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <h2 className="font-display text-lg font-bold text-[#18142C]">
               {isStaffViewer ? 'Role Access & Capability Matrix' : 'Your TapNex Features Overview'}
             </h2>
             <span className="text-xs text-slate-500">
@@ -280,14 +280,14 @@ export const UserGuidePage: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {visibleMatrixRows.map((row) => (
-                  <tr key={row.role} className="hover:bg-slate-50/70">
-                    <td className="py-3.5 px-5 font-semibold text-[#0B1D3A] whitespace-nowrap">
+                  <tr key={row.role} className="hover:bg-[#FAF9FE]">
+                    <td className="py-3.5 px-5 font-semibold text-[#18142C] whitespace-nowrap">
                       {row.role}
                     </td>
                     <td className="py-3.5 px-5 text-slate-600 whitespace-nowrap">
                       {row.accessLevel}
                     </td>
-                    <td className="py-3.5 px-5 font-mono text-[#1D4ED8] whitespace-nowrap">
+                    <td className="py-3.5 px-5 font-mono text-[#7C3AED] whitespace-nowrap">
                       {row.portalEntry}
                     </td>
                     <td className="py-3.5 px-5 text-slate-600 leading-relaxed">
@@ -302,7 +302,7 @@ export const UserGuidePage: React.FC = () => {
 
         {/* Filter Bar: Segmented Role Tabs + Search */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-200/70 rounded-xl">
+          <div className="flex flex-wrap items-center gap-1 p-1 bg-[#F3EEFF] rounded-xl">
             {visibleRoleTabs.map((tab) => {
               const selected = activeRole === tab.id;
               return (
@@ -312,8 +312,8 @@ export const UserGuidePage: React.FC = () => {
                   onClick={() => setActiveRole(tab.id)}
                   className={`px-3.5 py-2 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap shrink-0 ${
                     selected
-                      ? 'bg-white text-[#0B1D3A] shadow-xs'
-                      : 'text-slate-600 hover:text-[#0B1D3A]'
+                      ? 'bg-white text-[#18142C] shadow-xs'
+                      : 'text-slate-600 hover:text-[#18142C]'
                   }`}
                 >
                   {tab.label}
@@ -329,14 +329,14 @@ export const UserGuidePage: React.FC = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search feature, route, or step..."
-              className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]"
+              className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
             />
           </div>
         </div>
 
         {/* Role Sections */}
         {filteredRoles.length === 0 ? (
-          <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center space-y-3">
+          <div className="bg-white border border-[#E9E4F5] rounded-2xl p-10 text-center space-y-3">
             <p className="text-sm text-slate-600">
               No guide sections matched &ldquo;{searchQuery}&rdquo;.
             </p>
@@ -346,7 +346,7 @@ export const UserGuidePage: React.FC = () => {
                 setSearchQuery('');
                 setActiveRole('all');
               }}
-              className="px-4 py-2 bg-[#0B1D3A] text-white text-xs font-semibold rounded-lg"
+              className="px-4 py-2 bg-[#18142C] text-white text-xs font-semibold rounded-lg"
             >
               Reset Filter
             </button>
@@ -356,9 +356,9 @@ export const UserGuidePage: React.FC = () => {
             {filteredRoles.map((role) => (
               <section key={role.roleId} className="space-y-6">
                 {/* Role Chapter Header */}
-                <div className="bg-[#0B1D3A] text-white rounded-2xl p-6 sm:p-7 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="bg-gradient-to-br from-[#18122B] via-[#241848] to-[#140E26] text-white rounded-2xl p-6 sm:p-7 flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="space-y-1.5">
-                    <div className="flex flex-wrap items-center gap-2 text-xs font-mono text-cyan-300">
+                    <div className="flex flex-wrap items-center gap-2 text-xs font-mono text-[#C4B5FD]">
                       <span>ROLE: {role.roleCode}</span>
                       <span aria-hidden="true">·</span>
                       <span>ENTRY: {role.portalPath}</span>
@@ -374,7 +374,7 @@ export const UserGuidePage: React.FC = () => {
                     type="button"
                     disabled={downloadingTarget !== null}
                     onClick={() => handleDownloadPdf(role.roleId)}
-                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white text-[#0B1D3A] hover:bg-slate-100 text-xs font-semibold rounded-xl whitespace-nowrap shrink-0 disabled:opacity-60"
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white text-[#18142C] hover:bg-[#F3EEFF] text-xs font-semibold rounded-xl whitespace-nowrap shrink-0 disabled:opacity-60"
                   >
                     <Download className="h-3.5 w-3.5" />
                     <span>
@@ -390,14 +390,14 @@ export const UserGuidePage: React.FC = () => {
                     return (
                       <article
                         key={feat.id}
-                        className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-6"
+                        className="bg-white border border-[#E9E4F5] rounded-2xl p-6 sm:p-8 space-y-6"
                       >
-                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 border-b border-slate-100 pb-4">
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 border-b border-[#F0ECF9] pb-4">
                           <div className="space-y-1">
-                            <h3 className="font-display text-xl font-bold text-[#0B1D3A]">
+                            <h3 className="font-display text-xl font-bold text-[#18142C]">
                               {feat.title}
                             </h3>
-                            <div className="font-mono text-xs text-[#1D4ED8]">{feat.route}</div>
+                            <div className="font-mono text-xs text-[#7C3AED]">{feat.route}</div>
                           </div>
                           <span className="text-xs font-medium text-slate-500 whitespace-nowrap shrink-0">
                             {feat.steps.length} Steps · {feat.callouts.length} Callouts
@@ -408,7 +408,7 @@ export const UserGuidePage: React.FC = () => {
 
                         {/* Annotated Screenshot Container */}
                         <div className="space-y-2">
-                          <div className="relative bg-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                          <div className="relative bg-[#FAF9FE] border border-[#E9E4F5] rounded-xl overflow-hidden">
                             {shotSrc ? (
                               <>
                                 <img
@@ -426,7 +426,7 @@ export const UserGuidePage: React.FC = () => {
                                       caption: feat.screenshotCaption,
                                     })
                                   }
-                                  className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0B1D3A]/90 hover:bg-[#0B1D3A] text-white text-xs font-semibold rounded-lg shadow-sm"
+                                  className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#18142C]/90 hover:bg-[#18142C] text-white text-xs font-semibold rounded-lg shadow-sm"
                                 >
                                   <Maximize2 className="h-3.5 w-3.5" />
                                   <span>Enlarge Screenshot</span>
@@ -445,7 +445,7 @@ export const UserGuidePage: React.FC = () => {
                         {/* Two-Column Breakdown: Annotated Callouts + Step-by-Step Guide */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-2">
                           <div className="space-y-3">
-                            <h4 className="font-display text-sm font-bold text-[#0B1D3A]">
+                            <h4 className="font-display text-sm font-bold text-[#18142C]">
                               Annotated Screen Callouts
                             </h4>
                             <ul className="space-y-3">
@@ -455,7 +455,7 @@ export const UserGuidePage: React.FC = () => {
                                     {c.num}
                                   </span>
                                   <div>
-                                    <div className="font-semibold text-[#0B1D3A]">{c.title}</div>
+                                    <div className="font-semibold text-[#18142C]">{c.title}</div>
                                     <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">
                                       {c.detail}
                                     </p>
@@ -467,13 +467,13 @@ export const UserGuidePage: React.FC = () => {
 
                           <div className="space-y-4">
                             <div className="space-y-3">
-                              <h4 className="font-display text-sm font-bold text-[#0B1D3A]">
+                              <h4 className="font-display text-sm font-bold text-[#18142C]">
                                 Step-by-Step Workflow
                               </h4>
                               <ol className="space-y-2.5">
                                 {feat.steps.map((step, sIdx) => (
                                   <li key={step} className="flex items-start gap-2.5 text-xs sm:text-sm text-slate-700 leading-relaxed">
-                                    <span className="font-mono font-bold text-[#1D4ED8] shrink-0 tabular-nums w-5">
+                                    <span className="font-mono font-bold text-[#7C3AED] shrink-0 tabular-nums w-5">
                                       {sIdx + 1}.
                                     </span>
                                     <span>{step}</span>
@@ -483,8 +483,8 @@ export const UserGuidePage: React.FC = () => {
                             </div>
 
                             {feat.notes.length > 0 && (
-                              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
-                                <h4 className="text-xs font-bold text-[#0B1D3A]">
+                              <div className="bg-[#FAF9FE] border border-[#E9E4F5] rounded-xl p-4 space-y-2">
+                                <h4 className="text-xs font-bold text-[#18142C]">
                                   Important Rules &amp; Guardrails
                                 </h4>
                                 <ul className="space-y-1.5">
@@ -512,10 +512,10 @@ export const UserGuidePage: React.FC = () => {
       {/* Fullscreen Screenshot Lightbox */}
       {lightbox && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-6xl w-full overflow-hidden shadow-2xl">
-            <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between gap-4">
+          <div className="bg-white border border-[#E9E4F5] rounded-2xl max-w-6xl w-full overflow-hidden shadow-2xl">
+            <div className="px-5 py-3.5 border-b border-[#E9E4F5] flex items-center justify-between gap-4">
               <div className="min-w-0">
-                <div className="font-display font-bold text-sm text-[#0B1D3A] truncate">
+                <div className="font-display font-bold text-sm text-[#18142C] truncate">
                   {lightbox.title}
                 </div>
                 <div className="text-xs text-slate-500 truncate">{lightbox.caption}</div>

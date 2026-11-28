@@ -94,6 +94,7 @@ import {
 } from '../../lib/paymentApi';
 import { getActiveStudioDraft, saveActiveStudioDraft } from '../../lib/studioDraft';
 import { formatFirestoreErrorMessage } from '../../lib/cardDesignSize';
+import { formatEmailDeliveryFailureReason } from '../../lib/dispatchEmailFeedback';
 import { compressImageFileToDataUrl } from '../../lib/qrArtwork';
 import { resolveCardTokens } from '../../lib/printPdf';
 import { resolveCardPricing } from '../../lib/pricing';
@@ -574,7 +575,7 @@ export const CustomerCardStudioPage: React.FC = () => {
           className={`inline-flex items-center gap-1 ${btnPad} rounded-md border font-semibold transition-colors ${
             undoAvailable
               ? 'border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100'
-              : 'border-slate-200 bg-white text-slate-400 cursor-not-allowed opacity-60'
+              : 'border-[#E9E4F5] bg-white text-slate-400 cursor-not-allowed opacity-60'
           }`}
         >
           <Undo2 className="h-3 w-3" />
@@ -1306,16 +1307,16 @@ export const CustomerCardStudioPage: React.FC = () => {
     <PortalLayout portal="customer" title="Business Card Design Studio">
       <div className="space-y-5">
         {/* Active User Profile Bar & Switcher */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:px-5 sm:py-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-4 sm:px-5 sm:py-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
           <div className="flex items-center gap-3.5 min-w-0">
             {effectiveProfileInfo.photoDataUrl ? (
               <img
                 src={effectiveProfileInfo.photoDataUrl}
                 alt={effectiveProfileInfo.fullName || selectedProfile?.profileLabel || 'User profile'}
-                className="w-11 h-11 rounded-full object-cover border border-slate-200 shrink-0"
+                className="w-11 h-11 rounded-full object-cover border border-[#E9E4F5] shrink-0"
               />
             ) : (
-              <div className="w-11 h-11 rounded-full bg-[#0B1D3A] text-white flex items-center justify-center font-display text-sm font-bold shrink-0">
+              <div className="w-11 h-11 rounded-full bg-[#18142C] text-white flex items-center justify-center font-display text-sm font-bold shrink-0">
                 {(effectiveProfileInfo.fullName || selectedProfile?.profileLabel || userRecord?.displayName || 'U')[0].toUpperCase()}
               </div>
             )}
@@ -1323,7 +1324,7 @@ export const CustomerCardStudioPage: React.FC = () => {
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                 <span className="text-[11px] font-semibold text-slate-500">User Profile</span>
                 <span className="text-slate-300" aria-hidden="true">·</span>
-                <span className="font-display text-sm font-bold text-[#0B1D3A] truncate">
+                <span className="font-display text-sm font-bold text-[#18142C] truncate">
                   {effectiveProfileInfo.fullName || selectedProfile?.profileLabel || userRecord?.displayName || 'No Profile Yet'}
                 </span>
               </div>
@@ -1373,7 +1374,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                       }, 0);
                     }
                   }}
-                  className="px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold text-[#0B1D3A] bg-white min-w-[220px] max-w-[320px]"
+                  className="px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold text-[#18142C] bg-white min-w-[220px] max-w-[320px]"
                 >
                   {profiles.map((p) => {
                     const pTypeLabel =
@@ -1391,14 +1392,14 @@ export const CustomerCardStudioPage: React.FC = () => {
             ) : (
               <Link
                 to="/dashboard/profile"
-                className="px-3.5 py-2 rounded-lg bg-[#1D4ED8] hover:bg-blue-700 text-white text-xs font-semibold whitespace-nowrap"
+                className="px-3.5 py-2 rounded-lg bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold whitespace-nowrap"
               >
                 Create User Profile
               </Link>
             )}
             <Link
               to="/dashboard/profile"
-              className="px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 whitespace-nowrap"
+              className="px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-[#FAF9FE] text-xs font-semibold text-slate-700 whitespace-nowrap"
             >
               Edit Profile
             </Link>
@@ -1406,13 +1407,13 @@ export const CustomerCardStudioPage: React.FC = () => {
         </div>
 
         {/* Top Studio Toolbar */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-4 sm:p-5 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setMode('default')}
               className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors min-h-[38px] ${
-                mode === 'default' ? 'bg-[#0B1D3A] text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                mode === 'default' ? 'bg-[#18142C] text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
               1. Card Templates
@@ -1427,7 +1428,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                 }
               }}
               className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors min-h-[38px] ${
-                mode === 'custom' ? 'bg-[#0B1D3A] text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                mode === 'custom' ? 'bg-[#18142C] text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
               2. Customize Card
@@ -1436,13 +1437,13 @@ export const CustomerCardStudioPage: React.FC = () => {
             <button
               type="button"
               onClick={() => handleStartBlankCard()}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 text-xs font-semibold min-h-[38px]"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 hover:bg-[#FAF9FE] text-xs font-semibold min-h-[38px]"
             >
-              <Sparkles className="h-3.5 w-3.5 text-[#1D4ED8]" />
+              <Sparkles className="h-3.5 w-3.5 text-[#7C3AED]" />
               <span>Blank Canvas</span>
             </button>
 
-            <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-dashed border-[#1D4ED8] bg-blue-50/70 text-[#1D4ED8] hover:bg-blue-100 text-xs font-semibold min-h-[38px] cursor-pointer">
+            <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-dashed border-[#7C3AED] bg-[#F3EEFF]/80 text-[#7C3AED] hover:bg-[#EAE3FF] text-xs font-semibold min-h-[38px] cursor-pointer">
               <Upload className="h-3.5 w-3.5" />
               <span>Upload Front Design</span>
               <input
@@ -1480,10 +1481,10 @@ export const CustomerCardStudioPage: React.FC = () => {
               </button>
 
               {fieldsDropdownOpen && (
-                <div className="absolute left-0 mt-2 w-80 max-w-[90vw] bg-white border border-slate-200 rounded-xl shadow-xl z-40 p-3 space-y-2">
-                  <label className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100 cursor-pointer">
+                <div className="absolute left-0 mt-2 w-80 max-w-[90vw] bg-white border border-[#E9E4F5] rounded-xl shadow-xl z-40 p-3 space-y-2">
+                  <label className="flex items-center justify-between gap-2 pb-2 border-b border-[#F0ECF9] cursor-pointer">
                     <div>
-                      <div className="text-xs font-bold text-[#0B1D3A]">
+                      <div className="text-xs font-bold text-[#18142C]">
                         Display Profile Data on {activeSide === 'front' ? 'Front' : 'Back'}
                       </div>
                       <div className="text-[11px] text-slate-500">
@@ -1494,12 +1495,12 @@ export const CustomerCardStudioPage: React.FC = () => {
                       type="checkbox"
                       checked={displayProfileDataChecked}
                       onChange={(e) => toggleDisplayAllProfileData(e.target.checked)}
-                      className="h-4 w-4 accent-[#1D4ED8]"
+                      className="h-4 w-4 accent-[#7C3AED]"
                     />
                   </label>
 
                   {/* Quick Photo Toggle */}
-                  <label className="flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg bg-slate-50 hover:bg-slate-100 cursor-pointer border border-slate-200">
+                  <label className="flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg bg-[#FAF9FE] hover:bg-slate-100 cursor-pointer border border-[#E9E4F5]">
                     <div className="flex items-center gap-2 min-w-0">
                       {pi?.photoDataUrl ? (
                         <img src={pi.photoDataUrl} alt="" className="w-6 h-6 rounded-full object-cover shrink-0 border border-slate-300" />
@@ -1507,7 +1508,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                         <UserCircle2 className="w-5 h-5 text-slate-400 shrink-0" />
                       )}
                       <div className="min-w-0">
-                        <div className="text-xs font-semibold text-[#0B1D3A]">Profile Photo</div>
+                        <div className="text-xs font-semibold text-[#18142C]">Profile Photo</div>
                         <div className="text-[10px] text-slate-500">Show photo frame on {activeSide} side</div>
                       </div>
                     </div>
@@ -1524,7 +1525,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                           false
                         )
                       }
-                      className="h-4 w-4 accent-[#1D4ED8]"
+                      className="h-4 w-4 accent-[#7C3AED]"
                     />
                   </label>
 
@@ -1536,8 +1537,8 @@ export const CustomerCardStudioPage: React.FC = () => {
                           key={opt.key}
                           className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-left transition-colors cursor-pointer ${
                             checked
-                              ? 'bg-blue-50 border border-blue-200 text-[#0B1D3A]'
-                              : 'hover:bg-slate-50 border border-transparent text-slate-700'
+                              ? 'bg-[#F3EEFF] border border-[#DDD6FE] text-[#18142C]'
+                              : 'hover:bg-[#FAF9FE] border border-transparent text-slate-700'
                           }`}
                         >
                           <div className="min-w-0">
@@ -1550,7 +1551,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                             type="checkbox"
                             checked={checked}
                             onChange={() => toggleProfileFieldOnCard(opt)}
-                            className="h-4 w-4 accent-[#1D4ED8] shrink-0"
+                            className="h-4 w-4 accent-[#7C3AED] shrink-0"
                           />
                         </label>
                       );
@@ -1563,7 +1564,7 @@ export const CustomerCardStudioPage: React.FC = () => {
             <button
               type="button"
               onClick={() => addTextElement('Custom Text', true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#1D4ED8] hover:bg-blue-700 text-white text-xs font-semibold min-h-[38px]"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold min-h-[38px]"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>Add Custom Text</span>
@@ -1581,7 +1582,7 @@ export const CustomerCardStudioPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setPreviewModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#1D4ED8]/30 bg-blue-50 text-xs font-semibold text-[#1D4ED8] hover:bg-blue-100 min-h-[38px]"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#7C3AED]/30 bg-[#F3EEFF] text-xs font-semibold text-[#7C3AED] hover:bg-[#EAE3FF] min-h-[38px]"
             >
               <Eye className="h-3.5 w-3.5" />
               <span>Preview</span>
@@ -1591,7 +1592,7 @@ export const CustomerCardStudioPage: React.FC = () => {
               type="button"
               disabled={saving || !selectedProfile}
               onClick={handleSaveDraft}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 min-h-[38px]"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-[#FAF9FE] disabled:opacity-50 min-h-[38px]"
             >
               <Save className="h-3.5 w-3.5" />
               <span>Save Draft</span>
@@ -1614,7 +1615,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                     notify('Template applied to custom studio', `Customizing ${found.name} — click any component to edit.`, 'info');
                   }
                 }}
-                className="px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold text-[#0B1D3A] bg-white min-w-[200px]"
+                className="px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold text-[#18142C] bg-white min-w-[200px]"
               >
                 {allDropdownTemplates.map((tpl) => {
                   const p = resolveCardPricing(tpl, cardTechnology);
@@ -1629,7 +1630,7 @@ export const CustomerCardStudioPage: React.FC = () => {
               </select>
             </div>
 
-            <div className="px-2.5 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-xs font-mono font-bold text-[#1D4ED8] tabular-nums">
+            <div className="px-2.5 py-1.5 rounded-lg bg-[#F3EEFF] border border-[#DDD6FE] text-xs font-mono font-bold text-[#7C3AED] tabular-nums">
               ₹{studioPricing.unitPriceInr} · {studioPricing.editionLabel}
             </div>
             <div className="text-xs font-mono text-slate-600">
@@ -1671,7 +1672,7 @@ export const CustomerCardStudioPage: React.FC = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Left Panel: Interactive Live 85.6 x 54 mm Canvas + Quick Format Bar */}
-          <div className="lg:col-span-7 bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 space-y-4">
+          <div className="lg:col-span-7 bg-white border border-[#E9E4F5] rounded-2xl p-5 sm:p-6 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
                 <button
@@ -1686,7 +1687,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                     setEditingTextId(null);
                   }}
                   className={`px-3 py-1.5 text-xs font-semibold rounded-md ${
-                    activeSide === 'front' ? 'bg-white text-[#0B1D3A] shadow-xs' : 'text-slate-600'
+                    activeSide === 'front' ? 'bg-white text-[#18142C] shadow-xs' : 'text-slate-600'
                   }`}
                 >
                   Front Side
@@ -1703,7 +1704,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                     setEditingTextId(null);
                   }}
                   className={`px-3 py-1.5 text-xs font-semibold rounded-md ${
-                    activeSide === 'back' ? 'bg-white text-[#0B1D3A] shadow-xs' : 'text-slate-600'
+                    activeSide === 'back' ? 'bg-white text-[#18142C] shadow-xs' : 'text-slate-600'
                   }`}
                 >
                   Back Side
@@ -1736,7 +1737,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setPreviewModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0B1D3A] text-white text-xs font-semibold hover:bg-[#132A52]"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#18142C] text-white text-xs font-semibold hover:bg-[#2A2048]"
                 >
                   <Eye className="h-3.5 w-3.5" />
                   <span>Full Preview</span>
@@ -1744,7 +1745,7 @@ export const CustomerCardStudioPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="py-5 px-3 sm:px-5 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+            <div className="py-5 px-3 sm:px-5 bg-[#FAF9FE] rounded-xl border border-[#E9E4F5] space-y-3">
               {/* Strictly NEVER pass actualQrPng here: Pre-purchase shows placeholder ONLY */}
               <CardCanvasPreview
                 side={currentSide}
@@ -1769,9 +1770,9 @@ export const CustomerCardStudioPage: React.FC = () => {
 
               {/* Multi-Select & Alignment Toolbar */}
               {mode === 'custom' && selectedTargets.length > 0 && (
-                <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-white border border-[#E9E4F5] shadow-2xs">
                   <div className="flex items-center gap-2 text-[11px] text-slate-600">
-                    <span className="font-bold text-[#0B1D3A]">
+                    <span className="font-bold text-[#18142C]">
                       {selectedTargets.length} selected
                     </span>
                     <span className="hidden sm:inline text-slate-400">
@@ -1794,7 +1795,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                         type="button"
                         onClick={() => handleAlignSelected(btn.action)}
                         title={btn.title}
-                        className="p-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-[#1D4ED8] hover:text-white hover:border-[#1D4ED8] text-slate-700 transition-colors"
+                        className="p-1.5 rounded-lg border border-[#E9E4F5] bg-[#FAF9FE] hover:bg-[#7C3AED] hover:text-white hover:border-[#7C3AED] text-slate-700 transition-colors"
                       >
                         {btn.icon}
                       </button>
@@ -1803,7 +1804,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setSelectedTarget(null)}
-                        className="ml-1 px-2 py-1 rounded-lg border border-slate-200 text-[11px] font-semibold text-slate-600 hover:bg-slate-100"
+                        className="ml-1 px-2 py-1 rounded-lg border border-[#E9E4F5] text-[11px] font-semibold text-slate-600 hover:bg-slate-100"
                       >
                         Clear
                       </button>
@@ -1820,10 +1821,10 @@ export const CustomerCardStudioPage: React.FC = () => {
 
             {/* Quick Contextual Formatting Toolbar right beneath Canvas */}
             {selectedEl ? (
-              <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-3.5 space-y-2.5">
+              <div className="rounded-xl border border-[#DDD6FE] bg-[#F3EEFF]/50 p-3.5 space-y-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-xs font-bold text-[#0B1D3A]">
-                    <Type className="h-3.5 w-3.5 text-[#1D4ED8]" />
+                  <div className="flex items-center gap-2 text-xs font-bold text-[#18142C]">
+                    <Type className="h-3.5 w-3.5 text-[#7C3AED]" />
                     <span>Quick Edit Selected Text</span>
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -1831,14 +1832,14 @@ export const CustomerCardStudioPage: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setEditingTextId(selectedEl.id)}
-                      className="px-2.5 py-1 rounded-md border border-blue-300 bg-white text-[11px] font-semibold text-[#1D4ED8] hover:bg-blue-50"
+                      className="px-2.5 py-1 rounded-md border border-[#C4B5FD] bg-white text-[11px] font-semibold text-[#7C3AED] hover:bg-[#F3EEFF]"
                     >
                       Edit on Card
                     </button>
                     <button
                       type="button"
                       onClick={duplicateSelectedText}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-300 bg-white text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-300 bg-white text-[11px] font-semibold text-slate-700 hover:bg-[#FAF9FE]"
                       title="Duplicate text"
                     >
                       <Copy className="h-3 w-3" />
@@ -1903,7 +1904,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                       onClick={() => updateSelectedEl({ fontWeight: selectedEl.fontWeight === 'bold' ? 'normal' : 'bold' })}
                       className={`p-1.5 rounded border ${
                         selectedEl.fontWeight === 'bold'
-                          ? 'bg-[#0B1D3A] text-white border-[#0B1D3A]'
+                          ? 'bg-[#18142C] text-white border-[#18142C]'
                           : 'bg-white text-slate-700 border-slate-300'
                       }`}
                       title="Bold"
@@ -1915,7 +1916,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                       onClick={() => updateSelectedEl({ fontStyle: selectedEl.fontStyle === 'italic' ? 'normal' : 'italic' })}
                       className={`p-1.5 rounded border ${
                         selectedEl.fontStyle === 'italic'
-                          ? 'bg-[#0B1D3A] text-white border-[#0B1D3A]'
+                          ? 'bg-[#18142C] text-white border-[#18142C]'
                           : 'bg-white text-slate-700 border-slate-300'
                       }`}
                       title="Italic"
@@ -1931,7 +1932,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                       }
                       className={`p-1.5 rounded border ${
                         selectedEl.textDecoration === 'underline'
-                          ? 'bg-[#0B1D3A] text-white border-[#0B1D3A]'
+                          ? 'bg-[#18142C] text-white border-[#18142C]'
                           : 'bg-white text-slate-700 border-slate-300'
                       }`}
                       title="Underline"
@@ -1947,7 +1948,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                         onClick={() => updateSelectedEl({ align: al })}
                         className={`p-1.5 rounded border ${
                           selectedEl.align === al
-                            ? 'bg-[#0B1D3A] text-white border-[#0B1D3A]'
+                            ? 'bg-[#18142C] text-white border-[#18142C]'
                             : 'bg-white text-slate-700 border-slate-300'
                         }`}
                         title={`Align ${al}`}
@@ -1965,9 +1966,9 @@ export const CustomerCardStudioPage: React.FC = () => {
                 </div>
               </div>
             ) : selectedTarget?.kind === 'avatar' ? (
-              <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-3.5 flex flex-wrap items-center justify-between gap-3">
+              <div className="rounded-xl border border-[#DDD6FE] bg-[#F3EEFF]/50 p-3.5 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-[#0B1D3A]">Selected: Profile Photo ({currentSide.avatarSizeMm || 13} mm)</span>
+                  <span className="text-xs font-bold text-[#18142C]">Selected: Profile Photo ({currentSide.avatarSizeMm || 13} mm)</span>
                   {renderElementHistoryButtons(activeSide, { kind: 'avatar' }, 'profile photo', true)}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -1979,7 +1980,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                         onClick={() => updateAvatarSide({ avatarShape: shp })}
                         className={`px-2 py-1 rounded text-[11px] font-semibold capitalize ${
                           (currentSide.avatarShape || 'square') === shp
-                            ? 'bg-[#0B1D3A] text-white'
+                            ? 'bg-[#18142C] text-white'
                             : 'text-slate-600 hover:bg-slate-100'
                         }`}
                       >
@@ -1995,7 +1996,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                     onChange={(e) => resizeAvatarSizeMm(Number(e.target.value))}
                     className="w-24"
                   />
-                  <label className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">
+                  <label className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-[#FAF9FE] cursor-pointer">
                     <Upload className="h-3.5 w-3.5" />
                     <span>Upload</span>
                     <input type="file" accept="image/*" className="hidden" onChange={handleStudioPhotoUpload} />
@@ -2004,7 +2005,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setPhotoCropSource(currentSide.avatarDataUrl || pi?.photoDataUrl || null)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-blue-300 bg-white text-xs font-semibold text-[#1D4ED8] hover:bg-blue-50"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#C4B5FD] bg-white text-xs font-semibold text-[#7C3AED] hover:bg-[#F3EEFF]"
                     >
                       <Crop className="h-3.5 w-3.5" />
                       <span>Crop</span>
@@ -2015,7 +2016,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                       type="checkbox"
                       checked={Boolean(currentSide.showAvatarBorder)}
                       onChange={(e) => updateAvatarSide({ showAvatarBorder: e.target.checked })}
-                      className="h-3.5 w-3.5 accent-[#1D4ED8]"
+                      className="h-3.5 w-3.5 accent-[#7C3AED]"
                     />
                     <span>Border</span>
                   </label>
@@ -2041,9 +2042,9 @@ export const CustomerCardStudioPage: React.FC = () => {
                 </div>
               </div>
             ) : selectedShape ? (
-              <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-3.5 flex flex-wrap items-center justify-between gap-2.5">
+              <div className="rounded-xl border border-[#DDD6FE] bg-[#F3EEFF]/50 p-3.5 flex flex-wrap items-center justify-between gap-2.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-[#0B1D3A]">
+                  <span className="text-xs font-bold text-[#18142C]">
                     Selected Shape ({selectedShape.kind})
                   </span>
                   {renderElementHistoryButtons(activeSide, { kind: 'shape', id: selectedShape.id }, 'selected shape', true)}
@@ -2060,14 +2061,14 @@ export const CustomerCardStudioPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setCustomizeTab('shapes')}
-                    className="px-2.5 py-1.5 rounded-lg border border-blue-300 bg-white text-xs font-semibold text-[#1D4ED8] hover:bg-blue-50"
+                    className="px-2.5 py-1.5 rounded-lg border border-[#C4B5FD] bg-white text-xs font-semibold text-[#7C3AED] hover:bg-[#F3EEFF]"
                   >
                     Size / Rotate / Border
                   </button>
                   <button
                     type="button"
                     onClick={duplicateSelectedShape}
-                    className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-[#FAF9FE]"
                   >
                     Duplicate
                   </button>
@@ -2081,9 +2082,9 @@ export const CustomerCardStudioPage: React.FC = () => {
                 </div>
               </div>
             ) : selectedTarget?.kind === 'logo' ? (
-              <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-3.5 flex flex-wrap items-center justify-between gap-3">
+              <div className="rounded-xl border border-[#DDD6FE] bg-[#F3EEFF]/50 p-3.5 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-[#0B1D3A]">Selected: Company Logo ({currentSide.logoWidthMm || 14} mm)</span>
+                  <span className="text-xs font-bold text-[#18142C]">Selected: Company Logo ({currentSide.logoWidthMm || 14} mm)</span>
                   {renderElementHistoryButtons(activeSide, { kind: 'logo' }, 'company logo', true)}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -2108,9 +2109,9 @@ export const CustomerCardStudioPage: React.FC = () => {
                 </div>
               </div>
             ) : selectedTarget?.kind === 'qr' ? (
-              <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-3.5 flex flex-wrap items-center justify-between gap-3">
+              <div className="rounded-xl border border-[#DDD6FE] bg-[#F3EEFF]/50 p-3.5 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-[#0B1D3A]">Selected: QR Code Slot ({currentSide.qrSizeMm} mm)</span>
+                  <span className="text-xs font-bold text-[#18142C]">Selected: QR Code Slot ({currentSide.qrSizeMm} mm)</span>
                   {renderElementHistoryButtons(activeSide, { kind: 'qr' }, 'QR code slot', true)}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -2135,9 +2136,9 @@ export const CustomerCardStudioPage: React.FC = () => {
                 </div>
               </div>
             ) : selectedTarget?.kind === 'nfc' ? (
-              <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-3.5 flex flex-wrap items-center justify-between gap-3">
+              <div className="rounded-xl border border-[#DDD6FE] bg-[#F3EEFF]/50 p-3.5 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-[#0B1D3A]">
+                  <span className="text-xs font-bold text-[#18142C]">
                     Selected: SMART Wave Icon ({currentSide.nfcSizeMm || 6} mm)
                   </span>
                   {renderElementHistoryButtons(activeSide, { kind: 'nfc' }, 'SMART icon', true)}
@@ -2172,8 +2173,8 @@ export const CustomerCardStudioPage: React.FC = () => {
                 </div>
               </div>
             ) : (
-              <div className="rounded-xl bg-blue-50/70 border border-blue-200 p-3.5 text-xs text-slate-700 flex items-start gap-2.5">
-                <QrCode className="h-4 w-4 text-[#1D4ED8] shrink-0 mt-0.5" />
+              <div className="rounded-xl bg-[#F3EEFF]/80 border border-[#DDD6FE] p-3.5 text-xs text-slate-700 flex items-start gap-2.5">
+                <QrCode className="h-4 w-4 text-[#7C3AED] shrink-0 mt-0.5" />
                 <span>
                   Templates open pre-filled with your editable profile details. Check or uncheck fields under{' '}
                   <strong>Information to Display on Card</strong> below, or click any element on the card to move and edit it.
@@ -2182,17 +2183,17 @@ export const CustomerCardStudioPage: React.FC = () => {
             )}
 
             {/* Always-Visible Information to Display on Card Panel (Available in Template & Customize Modes) */}
-            <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200">
+            <div className="rounded-xl border border-[#E9E4F5] bg-[#FAF9FE]/80 p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-[#E9E4F5]">
                 <div>
-                  <h3 className="font-display font-bold text-sm text-[#0B1D3A]">
+                  <h3 className="font-display font-bold text-sm text-[#18142C]">
                     Information to Display on Card
                   </h3>
                   <p className="text-[11px] text-slate-500">
                     Choose which saved details appear on the{' '}
-                    <strong className="text-[#0B1D3A]">{activeSide === 'front' ? 'Front Side' : 'Back Side'}</strong>{' '}
+                    <strong className="text-[#18142C]">{activeSide === 'front' ? 'Front Side' : 'Back Side'}</strong>{' '}
                     of your card ({selectedProfile?.profileLabel || 'Primary Profile'} ·{' '}
-                    <Link to="/dashboard/profile" className="text-[#1D4ED8] hover:underline font-medium">
+                    <Link to="/dashboard/profile" className="text-[#7C3AED] hover:underline font-medium">
                       Edit Profile Info
                     </Link>
                     )
@@ -2200,12 +2201,12 @@ export const CustomerCardStudioPage: React.FC = () => {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <div className="flex items-center gap-0.5 p-0.5 bg-white border border-slate-200 rounded-lg">
+                  <div className="flex items-center gap-0.5 p-0.5 bg-white border border-[#E9E4F5] rounded-lg">
                     <button
                       type="button"
                       onClick={() => setActiveSide('front')}
                       className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors ${
-                        activeSide === 'front' ? 'bg-[#0B1D3A] text-white' : 'text-slate-600 hover:bg-slate-100'
+                        activeSide === 'front' ? 'bg-[#18142C] text-white' : 'text-slate-600 hover:bg-slate-100'
                       }`}
                     >
                       Front ({frontFieldCount})
@@ -2214,7 +2215,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                       type="button"
                       onClick={() => setActiveSide('back')}
                       className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors ${
-                        activeSide === 'back' ? 'bg-[#0B1D3A] text-white' : 'text-slate-600 hover:bg-slate-100'
+                        activeSide === 'back' ? 'bg-[#18142C] text-white' : 'text-slate-600 hover:bg-slate-100'
                       }`}
                     >
                       Back ({backFieldCount})
@@ -2226,7 +2227,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                       type="checkbox"
                       checked={displayProfileDataChecked}
                       onChange={(e) => toggleDisplayAllProfileData(e.target.checked)}
-                      className="h-3.5 w-3.5 accent-[#1D4ED8]"
+                      className="h-3.5 w-3.5 accent-[#7C3AED]"
                     />
                     <span>Show Filled Details</span>
                   </label>
@@ -2238,8 +2239,8 @@ export const CustomerCardStudioPage: React.FC = () => {
                 <label
                   className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg border text-xs cursor-pointer transition-colors ${
                     currentSide.showAvatar
-                      ? 'bg-white border-blue-300 text-[#0B1D3A] font-semibold'
-                      : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'
+                      ? 'bg-white border-[#C4B5FD] text-[#18142C] font-semibold'
+                      : 'bg-white/60 border-[#E9E4F5] text-slate-600 hover:bg-white'
                   }`}
                 >
                   <span className="flex items-center gap-2 min-w-0">
@@ -2265,45 +2266,45 @@ export const CustomerCardStudioPage: React.FC = () => {
                         showAvatar: e.target.checked,
                       })
                     }
-                    className="h-4 w-4 accent-[#1D4ED8] shrink-0"
+                    className="h-4 w-4 accent-[#7C3AED] shrink-0"
                   />
                 </label>
 
                 <label
                   className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg border text-xs cursor-pointer transition-colors ${
                     currentSide.showQrSlot
-                      ? 'bg-white border-blue-300 text-[#0B1D3A] font-semibold'
-                      : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'
+                      ? 'bg-white border-[#C4B5FD] text-[#18142C] font-semibold'
+                      : 'bg-white/60 border-[#E9E4F5] text-slate-600 hover:bg-white'
                   }`}
                 >
                   <span className="flex items-center gap-2 min-w-0">
-                    <QrCode className="w-4 h-4 text-[#1D4ED8] shrink-0" />
+                    <QrCode className="w-4 h-4 text-[#7C3AED] shrink-0" />
                     <span className="truncate">QR Code Slot</span>
                   </span>
                   <input
                     type="checkbox"
                     checked={Boolean(currentSide.showQrSlot)}
                     onChange={(e) => setCurrentSide({ ...currentSide, showQrSlot: e.target.checked })}
-                    className="h-4 w-4 accent-[#1D4ED8] shrink-0"
+                    className="h-4 w-4 accent-[#7C3AED] shrink-0"
                   />
                 </label>
 
                 <label
                   className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg border text-xs cursor-pointer transition-colors ${
                     currentSide.showNfcIcon
-                      ? 'bg-white border-blue-300 text-[#0B1D3A] font-semibold'
-                      : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'
+                      ? 'bg-white border-[#C4B5FD] text-[#18142C] font-semibold'
+                      : 'bg-white/60 border-[#E9E4F5] text-slate-600 hover:bg-white'
                   }`}
                 >
                   <span className="flex items-center gap-2 min-w-0">
-                    <Wifi className="w-4 h-4 text-[#1D4ED8] rotate-90 shrink-0" />
+                    <Wifi className="w-4 h-4 text-[#7C3AED] rotate-90 shrink-0" />
                     <span className="truncate">SMART Wave Icon</span>
                   </span>
                   <input
                     type="checkbox"
                     checked={Boolean(currentSide.showNfcIcon)}
                     onChange={(e) => setCurrentSide({ ...currentSide, showNfcIcon: e.target.checked })}
-                    className="h-4 w-4 accent-[#1D4ED8] shrink-0"
+                    className="h-4 w-4 accent-[#7C3AED] shrink-0"
                   />
                 </label>
               </div>
@@ -2322,8 +2323,8 @@ export const CustomerCardStudioPage: React.FC = () => {
                       key={opt.key}
                       className={`flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg border text-left cursor-pointer transition-colors ${
                         checkedOnCurrent
-                          ? 'bg-white border-[#1D4ED8]/50 ring-1 ring-[#1D4ED8]/20 text-[#0B1D3A]'
-                          : 'bg-white/70 border-slate-200 text-slate-700 hover:bg-white'
+                          ? 'bg-white border-[#7C3AED]/50 ring-1 ring-[#7C3AED]/20 text-[#18142C]'
+                          : 'bg-white/70 border-[#E9E4F5] text-slate-700 hover:bg-white'
                       }`}
                     >
                       <div className="min-w-0 flex-1">
@@ -2347,7 +2348,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                         type="checkbox"
                         checked={checkedOnCurrent}
                         onChange={() => toggleProfileFieldOnCard(opt)}
-                        className="h-4 w-4 accent-[#1D4ED8] shrink-0"
+                        className="h-4 w-4 accent-[#7C3AED] shrink-0"
                       />
                     </label>
                   );
@@ -2357,11 +2358,11 @@ export const CustomerCardStudioPage: React.FC = () => {
           </div>
 
           {/* Right Panel: Template Picker or Tabbed Visual Editor */}
-          <div className="lg:col-span-5 bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 space-y-5">
+          <div className="lg:col-span-5 bg-white border border-[#E9E4F5] rounded-2xl p-5 sm:p-6 space-y-5">
             {mode === 'default' ? (
               <div className="space-y-4">
                 <div className="flex items-center justify-between gap-2">
-                  <h2 className="font-display font-bold text-base text-[#0B1D3A]">
+                  <h2 className="font-display font-bold text-base text-[#18142C]">
                     Select Predefined or Blank Template
                   </h2>
                   <span className="text-[11px] font-mono text-slate-500">
@@ -2387,8 +2388,8 @@ export const CustomerCardStudioPage: React.FC = () => {
                       onClick={() => setTemplateProfileFilter(f.id)}
                       className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors ${
                         templateProfileFilter === f.id
-                          ? 'bg-[#0B1D3A] text-white border-[#0B1D3A]'
-                          : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                          ? 'bg-[#18142C] text-white border-[#18142C]'
+                          : 'bg-[#FAF9FE] text-slate-600 border-[#E9E4F5] hover:bg-slate-100'
                       }`}
                     >
                       {f.label}
@@ -2409,7 +2410,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                         notify('Template loaded for customization', `Edit any component on ${found.name}.`, 'info');
                       }
                     }}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold text-[#0B1D3A] bg-white"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold text-[#18142C] bg-white"
                   >
                     {allDropdownTemplates.map((tpl) => {
                       const p = resolveCardPricing(tpl, cardTechnology);
@@ -2434,7 +2435,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                         type="button"
                         onClick={() => applyTemplate(tpl)}
                         className={`p-3 rounded-xl border text-left transition-colors ${
-                          active ? 'border-[#1D4ED8] bg-blue-50/60' : 'border-slate-200 hover:border-slate-300'
+                          active ? 'border-[#7C3AED] bg-[#F3EEFF]/60' : 'border-[#E9E4F5] hover:border-slate-300'
                         }`}
                       >
                         <div className="flex items-center justify-between gap-2">
@@ -2448,12 +2449,12 @@ export const CustomerCardStudioPage: React.FC = () => {
                                 Default
                               </span>
                             )}
-                            <span className="font-mono text-xs font-bold text-[#0B1D3A] tabular-nums">
+                            <span className="font-mono text-xs font-bold text-[#18142C] tabular-nums">
                               ₹{p.unitPriceInr}
                             </span>
                           </div>
                         </div>
-                        <div className="mt-2 font-display text-xs font-bold text-[#0B1D3A] truncate">
+                        <div className="mt-2 font-display text-xs font-bold text-[#18142C] truncate">
                           {tpl.name}
                         </div>
                         <div className="text-[11px] text-slate-500 truncate">
@@ -2464,10 +2465,10 @@ export const CustomerCardStudioPage: React.FC = () => {
                   })}
                 </div>
 
-                <div className="p-3.5 rounded-xl border border-dashed border-slate-300 bg-slate-50 space-y-2.5">
-                  <div className="text-xs font-semibold text-[#0B1D3A]">Upload Custom Front &amp; Back Card Artwork</div>
+                <div className="p-3.5 rounded-xl border border-dashed border-slate-300 bg-[#FAF9FE] space-y-2.5">
+                  <div className="text-xs font-semibold text-[#18142C]">Upload Custom Front &amp; Back Card Artwork</div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <label className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[#0B1D3A] text-white text-xs font-semibold cursor-pointer hover:bg-[#132A52]">
+                    <label className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[#18142C] text-white text-xs font-semibold cursor-pointer hover:bg-[#2A2048]">
                       <Upload className="h-3.5 w-3.5" />
                       <span>Upload Front Design</span>
                       <input
@@ -2496,13 +2497,13 @@ export const CustomerCardStudioPage: React.FC = () => {
             ) : (
               <div className="space-y-4">
                 <div className="flex items-center justify-between gap-2">
-                  <h2 className="font-display font-bold text-base text-[#0B1D3A]">
+                  <h2 className="font-display font-bold text-base text-[#18142C]">
                     Customize {activeSide === 'front' ? 'Front' : 'Back'} Side
                   </h2>
                   <button
                     type="button"
                     onClick={() => addTextElement('Custom Text', true)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-[#1D4ED8] hover:bg-blue-700 text-white rounded-lg text-xs font-semibold"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white rounded-lg text-xs font-semibold"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     <span>Add Text</span>
@@ -2525,7 +2526,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                       type="button"
                       onClick={() => setCustomizeTab(t.id)}
                       className={`py-2 px-1 rounded-lg text-[10.5px] font-semibold transition-colors ${
-                        customizeTab === t.id ? 'bg-white text-[#0B1D3A] shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                        customizeTab === t.id ? 'bg-white text-[#18142C] shadow-xs' : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
                       {t.label}
@@ -2536,7 +2537,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                 {customizeTab === 'text' && (
                   <div className="space-y-3.5">
                     {/* Clickable Layer Chips for Every Text Item on Current Side (Supports Shift/Ctrl Multi-Select) */}
-                    <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2">
+                    <div className="p-3 rounded-xl border border-[#E9E4F5] bg-[#FAF9FE]/70 space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] font-semibold text-slate-600">
                           Elements on {activeSide === 'front' ? 'Front' : 'Back'} ({currentSide.elements.length})
@@ -2564,7 +2565,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                                 }}
                                 className={`max-w-[190px] truncate px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-colors ${
                                   active
-                                    ? 'bg-[#0B1D3A] text-white border-[#0B1D3A]'
+                                    ? 'bg-[#18142C] text-white border-[#18142C]'
                                     : 'bg-white text-slate-700 border-slate-300 hover:border-slate-400'
                                 }`}
                               >
@@ -2578,22 +2579,22 @@ export const CustomerCardStudioPage: React.FC = () => {
 
                     {/* Full Selected Text Formatting & Position Inspector */}
                     {selectedEl ? (
-                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3.5">
+                      <div className="p-4 rounded-xl bg-[#FAF9FE] border border-[#E9E4F5] space-y-3.5">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="text-xs font-bold text-[#0B1D3A]">Text Formatting &amp; Position</span>
+                          <span className="text-xs font-bold text-[#18142C]">Text Formatting &amp; Position</span>
                           <div className="flex flex-wrap items-center gap-1.5">
                             {renderElementHistoryButtons(activeSide, { kind: 'text', id: selectedEl.id }, 'selected text', true)}
                             <button
                               type="button"
                               onClick={() => setEditingTextId(selectedEl.id)}
-                              className="text-[#1D4ED8] hover:underline text-[11px] font-semibold px-1"
+                              className="text-[#7C3AED] hover:underline text-[11px] font-semibold px-1"
                             >
                               Edit on Card
                             </button>
                             <button
                               type="button"
                               onClick={duplicateSelectedText}
-                              className="text-slate-600 hover:text-[#0B1D3A] text-[11px] font-semibold inline-flex items-center gap-0.5 px-1"
+                              className="text-slate-600 hover:text-[#18142C] text-[11px] font-semibold inline-flex items-center gap-0.5 px-1"
                               title="Duplicate text"
                             >
                               <Copy className="h-3 w-3" />
@@ -2616,7 +2617,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                               Text Content
                             </label>
                             {/\{\{[A-Z0-9_]+\}\}/.test(selectedEl.text) && (
-                              <span className="text-[10px] font-medium text-[#1D4ED8] bg-blue-50 px-1.5 py-0.5 rounded">
+                              <span className="text-[10px] font-medium text-[#7C3AED] bg-[#F3EEFF] px-1.5 py-0.5 rounded">
                                 Profile Auto-Fill · Type to edit
                               </span>
                             )}
@@ -2680,7 +2681,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                               }
                               className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-colors ${
                                 selectedEl.fontWeight === 'bold'
-                                  ? 'bg-[#0B1D3A] text-white border-[#0B1D3A]'
+                                  ? 'bg-[#18142C] text-white border-[#18142C]'
                                   : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
                               }`}
                               title="Bold"
@@ -2697,7 +2698,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                               }
                               className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs italic transition-colors ${
                                 selectedEl.fontStyle === 'italic'
-                                  ? 'bg-[#0B1D3A] text-white border-[#0B1D3A]'
+                                  ? 'bg-[#18142C] text-white border-[#18142C]'
                                   : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
                               }`}
                               title="Italic"
@@ -2714,7 +2715,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                               }
                               className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs underline transition-colors ${
                                 selectedEl.textDecoration === 'underline'
-                                  ? 'bg-[#0B1D3A] text-white border-[#0B1D3A]'
+                                  ? 'bg-[#18142C] text-white border-[#18142C]'
                                   : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
                               }`}
                               title="Underline"
@@ -2727,7 +2728,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                               onClick={() => updateSelectedEl({ uppercase: !selectedEl.uppercase })}
                               className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border text-xs font-bold transition-colors ${
                                 selectedEl.uppercase
-                                  ? 'bg-[#0B1D3A] text-white border-[#0B1D3A]'
+                                  ? 'bg-[#18142C] text-white border-[#18142C]'
                                   : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
                               }`}
                               title="Uppercase"
@@ -2744,7 +2745,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                                 onClick={() => updateSelectedEl({ align: al })}
                                 className={`p-1.5 rounded-lg border transition-colors ${
                                   selectedEl.align === al
-                                    ? 'bg-[#1D4ED8] text-white border-[#1D4ED8]'
+                                    ? 'bg-[#7C3AED] text-white border-[#7C3AED]'
                                     : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
                                 }`}
                                 title={`Align ${al}`}
@@ -2768,7 +2769,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                           onChange={(hex) => updateSelectedEl({ color: hex })}
                         />
 
-                        <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-200">
+                        <div className="grid grid-cols-3 gap-2 pt-1 border-t border-[#E9E4F5]">
                           <div>
                             <label className="text-[11px] text-slate-500">X: {selectedEl.xPct}%</label>
                             <input
@@ -2805,7 +2806,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                         </div>
 
                         {/* Curved / Arch Text Controls */}
-                        <div className="pt-2 border-t border-slate-200 space-y-1.5">
+                        <div className="pt-2 border-t border-[#E9E4F5] space-y-1.5">
                           <div className="flex items-center justify-between text-[11px]">
                             <span className="font-medium text-slate-600">
                               Arch / Curve: <span className="font-mono">{selectedEl.curveDeg || 0}°</span>
@@ -2814,7 +2815,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => updateSelectedEl({ curveDeg: 0 })}
-                                className="text-[#1D4ED8] hover:underline font-semibold"
+                                className="text-[#7C3AED] hover:underline font-semibold"
                               >
                                 Reset Flat
                               </button>
@@ -2842,7 +2843,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                     <div className="p-3.5 rounded-xl border border-indigo-200 bg-indigo-50/50 space-y-2.5">
                       <label className="flex items-center justify-between gap-2 cursor-pointer">
                         <div>
-                          <div className="text-xs font-bold text-[#0B1D3A]">
+                          <div className="text-xs font-bold text-[#18142C]">
                             Display Profile Data on {activeSide === 'front' ? 'Front' : 'Back'} Side
                           </div>
                           <div className="text-[11px] text-slate-600">
@@ -2853,7 +2854,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                           type="checkbox"
                           checked={displayProfileDataChecked}
                           onChange={(e) => toggleDisplayAllProfileData(e.target.checked)}
-                          className="h-4 w-4 accent-[#1D4ED8] shrink-0"
+                          className="h-4 w-4 accent-[#7C3AED] shrink-0"
                         />
                       </label>
 
@@ -2861,8 +2862,8 @@ export const CustomerCardStudioPage: React.FC = () => {
                         <label
                           className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border text-[11px] cursor-pointer ${
                             currentSide.showAvatar
-                              ? 'bg-white border-blue-300 text-[#0B1D3A] font-semibold'
-                              : 'bg-white/60 border-slate-200 text-slate-600'
+                              ? 'bg-white border-[#C4B5FD] text-[#18142C] font-semibold'
+                              : 'bg-white/60 border-[#E9E4F5] text-slate-600'
                           }`}
                         >
                           <input
@@ -2876,7 +2877,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                                 showAvatar: e.target.checked,
                               })
                             }
-                            className="h-3.5 w-3.5 accent-[#1D4ED8] shrink-0"
+                            className="h-3.5 w-3.5 accent-[#7C3AED] shrink-0"
                           />
                           <span className="truncate">Profile Photo</span>
                         </label>
@@ -2888,15 +2889,15 @@ export const CustomerCardStudioPage: React.FC = () => {
                               title={opt.previewValue || 'Not filled yet in My Profile'}
                               className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border text-[11px] cursor-pointer ${
                                 checked
-                                  ? 'bg-white border-blue-300 text-[#0B1D3A] font-semibold'
-                                  : 'bg-white/60 border-slate-200 text-slate-600'
+                                  ? 'bg-white border-[#C4B5FD] text-[#18142C] font-semibold'
+                                  : 'bg-white/60 border-[#E9E4F5] text-slate-600'
                               }`}
                             >
                               <input
                                 type="checkbox"
                                 checked={checked}
                                 onChange={() => toggleProfileFieldOnCard(opt)}
-                                className="h-3.5 w-3.5 accent-[#1D4ED8] shrink-0"
+                                className="h-3.5 w-3.5 accent-[#7C3AED] shrink-0"
                               />
                               <span className="truncate">{opt.label}</span>
                             </label>
@@ -2909,10 +2910,10 @@ export const CustomerCardStudioPage: React.FC = () => {
 
                 {customizeTab === 'shapes' && (
                   <div className="space-y-3.5">
-                    <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2.5">
+                    <div className="p-3 rounded-xl border border-[#E9E4F5] bg-[#FAF9FE]/70 space-y-2.5">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-[#0B1D3A] flex items-center gap-1.5">
-                          <Layers className="h-3.5 w-3.5 text-[#1D4ED8]" />
+                        <span className="text-xs font-bold text-[#18142C] flex items-center gap-1.5">
+                          <Layers className="h-3.5 w-3.5 text-[#7C3AED]" />
                           <span>Card Shapes &amp; Accents ({(currentSide.shapes || []).length})</span>
                         </span>
                       </div>
@@ -2976,7 +2977,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                                 }
                                 className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border ${
                                   active
-                                    ? 'bg-[#0B1D3A] text-white border-[#0B1D3A]'
+                                    ? 'bg-[#18142C] text-white border-[#18142C]'
                                     : 'bg-white text-slate-700 border-slate-300'
                                 }`}
                               >
@@ -2995,15 +2996,15 @@ export const CustomerCardStudioPage: React.FC = () => {
                     </div>
 
                     {selectedShape ? (
-                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                      <div className="p-4 rounded-xl bg-[#FAF9FE] border border-[#E9E4F5] space-y-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="text-xs font-bold text-[#0B1D3A]">Edit Selected Shape</span>
+                          <span className="text-xs font-bold text-[#18142C]">Edit Selected Shape</span>
                           <div className="flex flex-wrap items-center gap-1.5">
                             {renderElementHistoryButtons(activeSide, { kind: 'shape', id: selectedShape.id }, 'selected shape', true)}
                             <button
                               type="button"
                               onClick={duplicateSelectedShape}
-                              className="text-slate-600 hover:text-[#0B1D3A] text-[11px] font-semibold inline-flex items-center gap-0.5 px-1"
+                              className="text-slate-600 hover:text-[#18142C] text-[11px] font-semibold inline-flex items-center gap-0.5 px-1"
                             >
                               <Copy className="h-3 w-3" />
                               <span>Copy</span>
@@ -3142,15 +3143,15 @@ export const CustomerCardStudioPage: React.FC = () => {
                 {customizeTab === 'background' && (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-[#0B1D3A]">
-                        <ImageIcon className="h-3.5 w-3.5 text-[#1D4ED8]" />
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-[#18142C]">
+                        <ImageIcon className="h-3.5 w-3.5 text-[#7C3AED]" />
                         <span>Separate Front &amp; Back Backgrounds &amp; Card Borders</span>
                       </div>
                       <span
                         title="Recommended size: 1082 × 709 px (Landscape) or 709 × 1082 px (Vertical) at 300 DPI, max 5 MB."
                         className="inline-flex items-center gap-1 text-[11px] text-slate-500 cursor-help"
                       >
-                        <Info className="h-3.5 w-3.5 text-[#1D4ED8]" />
+                        <Info className="h-3.5 w-3.5 text-[#7C3AED]" />
                         <span>300 DPI guide</span>
                       </span>
                     </div>
@@ -3158,11 +3159,11 @@ export const CustomerCardStudioPage: React.FC = () => {
                     {/* Front Card Design / Background & Border Box */}
                     <div
                       className={`p-3.5 rounded-xl border space-y-3 ${
-                        activeSide === 'front' ? 'border-[#1D4ED8] bg-blue-50/40' : 'border-slate-200 bg-slate-50/60'
+                        activeSide === 'front' ? 'border-[#7C3AED] bg-[#F3EEFF]/40' : 'border-[#E9E4F5] bg-[#FAF9FE]/60'
                       }`}
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-xs font-bold text-[#0B1D3A]">Front Card Background &amp; Border</span>
+                        <span className="text-xs font-bold text-[#18142C]">Front Card Background &amp; Border</span>
                         <div className="flex items-center gap-1.5">
                           {frontDesign.backgroundImageUrl && (
                             <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
@@ -3181,7 +3182,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                         }
                       />
                       <div className="flex flex-wrap items-center gap-2">
-                        <label className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-[#1D4ED8] bg-white text-[#1D4ED8] rounded-lg text-xs font-semibold cursor-pointer hover:bg-blue-50">
+                        <label className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-[#7C3AED] bg-white text-[#7C3AED] rounded-lg text-xs font-semibold cursor-pointer hover:bg-[#F3EEFF]">
                           <Upload className="h-3.5 w-3.5" />
                           <span>{frontDesign.backgroundImageUrl ? 'Replace Front Image' : 'Upload Front Image'}</span>
                           <input
@@ -3202,7 +3203,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                           </button>
                         )}
                       </div>
-                      <div className="pt-2 border-t border-slate-200/80 space-y-2">
+                      <div className="pt-2 border-t border-[#E9E4F5]/80 space-y-2">
                         <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
                           <input
                             type="checkbox"
@@ -3218,9 +3219,9 @@ export const CustomerCardStudioPage: React.FC = () => {
                                 false
                               )
                             }
-                            className="h-4 w-4 accent-[#1D4ED8]"
+                            className="h-4 w-4 accent-[#7C3AED]"
                           />
-                          <Palette className="h-3.5 w-3.5 text-[#1D4ED8]" />
+                          <Palette className="h-3.5 w-3.5 text-[#7C3AED]" />
                           <span>Show Card Outer Border (Front)</span>
                         </label>
                         {frontDesign.showBorder && (
@@ -3256,11 +3257,11 @@ export const CustomerCardStudioPage: React.FC = () => {
                     {/* Back Card Design / Background & Border Box */}
                     <div
                       className={`p-3.5 rounded-xl border space-y-3 ${
-                        activeSide === 'back' ? 'border-emerald-600 bg-emerald-50/40' : 'border-slate-200 bg-slate-50/60'
+                        activeSide === 'back' ? 'border-emerald-600 bg-emerald-50/40' : 'border-[#E9E4F5] bg-[#FAF9FE]/60'
                       }`}
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-xs font-bold text-[#0B1D3A]">Back Card Background &amp; Border</span>
+                        <span className="text-xs font-bold text-[#18142C]">Back Card Background &amp; Border</span>
                         <div className="flex items-center gap-1.5">
                           {backDesign.backgroundImageUrl && (
                             <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
@@ -3300,7 +3301,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                           </button>
                         )}
                       </div>
-                      <div className="pt-2 border-t border-slate-200/80 space-y-2">
+                      <div className="pt-2 border-t border-[#E9E4F5]/80 space-y-2">
                         <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
                           <input
                             type="checkbox"
@@ -3356,10 +3357,10 @@ export const CustomerCardStudioPage: React.FC = () => {
                 {customizeTab === 'media' && (
                   <div className="space-y-3">
                     {/* Profile Photo Settings */}
-                    <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 space-y-3">
+                    <div className="p-3.5 rounded-xl border border-[#E9E4F5] bg-[#FAF9FE]/60 space-y-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="text-xs font-semibold text-[#0B1D3A] flex items-center gap-1.5">
-                          <UserCircle2 className="h-3.5 w-3.5 text-[#1D4ED8]" />
+                        <div className="text-xs font-semibold text-[#18142C] flex items-center gap-1.5">
+                          <UserCircle2 className="h-3.5 w-3.5 text-[#7C3AED]" />
                           <span>Profile Photo (Drag on Card)</span>
                         </div>
                         <div className="flex items-center gap-1.5">
@@ -3377,12 +3378,12 @@ export const CustomerCardStudioPage: React.FC = () => {
                                 showAvatar: true,
                               })
                             }
-                            className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium hover:bg-slate-50"
+                            className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium hover:bg-[#FAF9FE]"
                           >
                             Use Profile Photo
                           </button>
                         )}
-                        <label className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium cursor-pointer hover:bg-slate-50">
+                        <label className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium cursor-pointer hover:bg-[#FAF9FE]">
                           <Upload className="h-3.5 w-3.5" />
                           <span>Upload Photo</span>
                           <input type="file" accept="image/*" className="hidden" onChange={handleStudioPhotoUpload} />
@@ -3391,7 +3392,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => setPhotoCropSource(currentSide.avatarDataUrl || pi?.photoDataUrl || null)}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 border border-blue-200 text-[#1D4ED8] rounded-lg text-xs font-semibold hover:bg-blue-100"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-[#F3EEFF] border border-[#DDD6FE] text-[#7C3AED] rounded-lg text-xs font-semibold hover:bg-[#EAE3FF]"
                           >
                             <Crop className="h-3.5 w-3.5" />
                             <span>Crop / Resize Photo</span>
@@ -3406,7 +3407,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                               showAvatar: !currentSide.showAvatar,
                             })
                           }
-                          className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium hover:bg-slate-50"
+                          className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium hover:bg-[#FAF9FE]"
                         >
                           {currentSide.showAvatar ? 'Hide Photo Frame' : 'Show Photo Frame'}
                         </button>
@@ -3424,7 +3425,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                                   onClick={() => updateAvatarSide({ avatarShape: shp })}
                                   className={`px-2.5 py-1 rounded text-[11px] font-semibold capitalize ${
                                     (currentSide.avatarShape || 'square') === shp
-                                      ? 'bg-[#0B1D3A] text-white'
+                                      ? 'bg-[#18142C] text-white'
                                       : 'text-slate-600 hover:bg-slate-100'
                                   }`}
                                 >
@@ -3446,13 +3447,13 @@ export const CustomerCardStudioPage: React.FC = () => {
                               className="w-full"
                             />
                           </div>
-                          <div className="space-y-1.5 pt-1 border-t border-slate-200/70">
+                          <div className="space-y-1.5 pt-1 border-t border-[#E9E4F5]/70">
                             <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer">
                               <input
                                 type="checkbox"
                                 checked={Boolean(currentSide.showAvatarBorder)}
                                 onChange={(e) => updateAvatarSide({ showAvatarBorder: e.target.checked })}
-                                className="h-3.5 w-3.5 accent-[#1D4ED8]"
+                                className="h-3.5 w-3.5 accent-[#7C3AED]"
                               />
                               <span>Show Photo Frame Border (Uncheck for borderless transparent PNGs)</span>
                             </label>
@@ -3470,15 +3471,15 @@ export const CustomerCardStudioPage: React.FC = () => {
                     </div>
 
                     {/* Company / Brand Logo Settings */}
-                    <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 space-y-3">
+                    <div className="p-3.5 rounded-xl border border-[#E9E4F5] bg-[#FAF9FE]/60 space-y-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-xs font-semibold text-[#0B1D3A]">Company / Brand Logo</span>
+                        <span className="text-xs font-semibold text-[#18142C]">Company / Brand Logo</span>
                         <div className="flex items-center gap-1.5">
                           {renderElementHistoryButtons(activeSide, { kind: 'logo' }, 'company logo', true)}
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <label className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium cursor-pointer hover:bg-slate-50">
+                        <label className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium cursor-pointer hover:bg-[#FAF9FE]">
                           <Upload className="h-3.5 w-3.5" />
                           <span>{currentSide.logoDataUrl ? 'Replace Logo' : 'Upload Logo'}</span>
                           <input
@@ -3535,9 +3536,9 @@ export const CustomerCardStudioPage: React.FC = () => {
                 {customizeTab === 'qr' && (
                   <div className="space-y-3">
                     {/* QR Slot Placement & Size */}
-                    <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 space-y-2.5">
+                    <div className="p-3.5 rounded-xl border border-[#E9E4F5] bg-[#FAF9FE]/60 space-y-2.5">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-xs font-semibold text-[#0B1D3A]">Predefined QR Code Area</span>
+                        <span className="text-xs font-semibold text-[#18142C]">Predefined QR Code Area</span>
                         <div className="flex flex-wrap items-center gap-2">
                           {renderElementHistoryButtons(activeSide, { kind: 'qr' }, 'QR code slot', true)}
                           <label className="inline-flex items-center gap-1.5 text-xs cursor-pointer">
@@ -3590,15 +3591,15 @@ export const CustomerCardStudioPage: React.FC = () => {
                     </div>
 
                     {/* SMART Symbol Settings (Full Position & Size Control) */}
-                    <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 space-y-2.5">
+                    <div className="p-3.5 rounded-xl border border-[#E9E4F5] bg-[#FAF9FE]/60 space-y-2.5">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <label className="inline-flex items-center gap-2 text-xs font-semibold text-[#0B1D3A] cursor-pointer">
+                        <label className="inline-flex items-center gap-2 text-xs font-semibold text-[#18142C] cursor-pointer">
                           <input
                             type="checkbox"
                             checked={currentSide.showNfcIcon}
                             onChange={(e) => updateNfcSide({ showNfcIcon: e.target.checked })}
                           />
-                          <Wifi className="h-3.5 w-3.5 text-[#1D4ED8] rotate-90" />
+                          <Wifi className="h-3.5 w-3.5 text-[#7C3AED] rotate-90" />
                           <span>Show SMART Wave Icon (Draggable)</span>
                         </label>
                         <div className="flex items-center gap-1.5">
@@ -3660,12 +3661,12 @@ export const CustomerCardStudioPage: React.FC = () => {
             )}
 
             {/* Card Edition & Live Tiered Pricing Gate */}
-            <div className="pt-5 border-t border-slate-200 space-y-4">
+            <div className="pt-5 border-t border-[#E9E4F5] space-y-4">
               {studioPricing.pricingMode === 'fixed_pack' ? (
                 <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3.5 space-y-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-bold text-[#0B1D3A]">{studioPricing.editionLabel}</span>
-                    <span className="font-mono text-sm font-bold text-[#1D4ED8] tabular-nums">
+                    <span className="text-xs font-bold text-[#18142C]">{studioPricing.editionLabel}</span>
+                    <span className="font-mono text-sm font-bold text-[#7C3AED] tabular-nums">
                       ₹{studioPricing.unitPriceInr}
                     </span>
                   </div>
@@ -3674,12 +3675,12 @@ export const CustomerCardStudioPage: React.FC = () => {
                   </p>
                 </div>
               ) : (
-                <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 space-y-2.5">
+                <div className="rounded-xl border border-[#E9E4F5] bg-[#FAF9FE]/80 p-3.5 space-y-2.5">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-bold text-[#0B1D3A]">
+                    <span className="text-xs font-bold text-[#18142C]">
                       Select Card Technology ({studioPricing.designTier === 'minimal' ? 'Minimal' : 'Designer'} Series)
                     </span>
-                    <span className="font-mono text-xs font-bold text-[#1D4ED8] tabular-nums">
+                    <span className="font-mono text-xs font-bold text-[#7C3AED] tabular-nums">
                       ₹{studioPricing.unitPriceInr}
                     </span>
                   </div>
@@ -3689,13 +3690,13 @@ export const CustomerCardStudioPage: React.FC = () => {
                       onClick={() => handleSelectTechnology('qr_only')}
                       className={`p-2.5 rounded-lg border text-left transition-colors ${
                         cardTechnology === 'qr_only'
-                          ? 'border-[#1D4ED8] bg-white ring-1 ring-[#1D4ED8]'
-                          : 'border-slate-200 bg-white/70 hover:bg-white'
+                          ? 'border-[#7C3AED] bg-white ring-1 ring-[#7C3AED]'
+                          : 'border-[#E9E4F5] bg-white/70 hover:bg-white'
                       }`}
                     >
-                      <div className="flex items-center justify-between text-xs font-bold text-[#0B1D3A]">
+                      <div className="flex items-center justify-between text-xs font-bold text-[#18142C]">
                         <span>QR Code Only</span>
-                        <span className="font-mono text-[#1D4ED8]">₹{studioPricing.qrOnlyPriceInr}</span>
+                        <span className="font-mono text-[#7C3AED]">₹{studioPricing.qrOnlyPriceInr}</span>
                       </div>
                       <div className="text-[10.5px] text-slate-500 mt-0.5">
                         {studioPricing.designTier === 'minimal' ? 'Basic Minimal ₹499' : 'Designer QR ₹599'}
@@ -3706,13 +3707,13 @@ export const CustomerCardStudioPage: React.FC = () => {
                       onClick={() => handleSelectTechnology('qr_smart')}
                       className={`p-2.5 rounded-lg border text-left transition-colors ${
                         cardTechnology === 'qr_smart'
-                          ? 'border-[#1D4ED8] bg-white ring-1 ring-[#1D4ED8]'
-                          : 'border-slate-200 bg-white/70 hover:bg-white'
+                          ? 'border-[#7C3AED] bg-white ring-1 ring-[#7C3AED]'
+                          : 'border-[#E9E4F5] bg-white/70 hover:bg-white'
                       }`}
                     >
-                      <div className="flex items-center justify-between text-xs font-bold text-[#0B1D3A]">
+                      <div className="flex items-center justify-between text-xs font-bold text-[#18142C]">
                         <span>QR + Smart Card</span>
-                        <span className="font-mono text-[#1D4ED8]">₹{studioPricing.qrSmartPriceInr}</span>
+                        <span className="font-mono text-[#7C3AED]">₹{studioPricing.qrSmartPriceInr}</span>
                       </div>
                       <div className="text-[10.5px] text-slate-500 mt-0.5">
                         {studioPricing.designTier === 'minimal' ? 'Minimal Smart ₹999' : 'Designer Smart ₹1,499'}
@@ -3727,7 +3728,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                   type="checkbox"
                   checked={approvalChecked}
                   onChange={(e) => setApprovalChecked(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 accent-[#1D4ED8]"
+                  className="mt-0.5 h-4 w-4 accent-[#7C3AED]"
                 />
                 <span>
                   I approve this design and confirm that all details are correct.
@@ -3738,7 +3739,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setPreviewModalOpen(true)}
-                  className="sm:w-1/3 py-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold inline-flex items-center justify-center gap-1.5"
+                  className="sm:w-1/3 py-3 rounded-xl border border-slate-300 bg-white hover:bg-[#FAF9FE] text-slate-800 text-xs font-semibold inline-flex items-center justify-center gap-1.5"
                 >
                   <Eye className="h-3.5 w-3.5" />
                   <span>Preview</span>
@@ -3747,14 +3748,14 @@ export const CustomerCardStudioPage: React.FC = () => {
                   type="button"
                   disabled={saving || !approvalChecked}
                   onClick={handleApproveAndCheckout}
-                  className="flex-1 py-3 rounded-xl bg-[#0B1D3A] hover:bg-[#132A52] text-white text-sm font-semibold disabled:opacity-50 transition-colors"
+                  className="flex-1 py-3 rounded-xl bg-[#18142C] hover:bg-[#2A2048] text-white text-sm font-semibold disabled:opacity-50 transition-colors"
                 >
                   {saving ? 'Locking Approved Version...' : `Approve & Checkout · ₹${studioPricing.unitPriceInr}`}
                 </button>
               </div>
 
               {savedDesigns.length > 0 && (
-                <div className="pt-3 border-t border-slate-100">
+                <div className="pt-3 border-t border-[#F0ECF9]">
                   <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">
                     Saved Customized Designs ({savedDesigns.length})
                   </label>
@@ -3829,7 +3830,7 @@ export const CustomerCardStudioPage: React.FC = () => {
           aria-modal="true"
           aria-labelledby="reset-design-modal-title"
         >
-          <div className="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden">
+          <div className="w-full max-w-md bg-white rounded-2xl border border-[#E9E4F5] shadow-2xl overflow-hidden">
             <div className="px-5 py-4 bg-rose-50 border-b border-rose-200 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-rose-900">
                 <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
@@ -3860,7 +3861,7 @@ export const CustomerCardStudioPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setResetDesignModalOpen(false)}
-                  className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-[#FAF9FE]"
                 >
                   Cancel
                 </button>
@@ -4070,7 +4071,7 @@ export const CustomerCheckoutPage: React.FC = () => {
             email: shipping.email,
             contact: cleanPhone,
           },
-          theme: { color: '#0B1D3A' },
+          theme: { color: '#7C3AED' },
           handler: (response: {
             razorpay_order_id?: string;
             razorpay_payment_id: string;
@@ -4110,7 +4111,8 @@ export const CustomerCheckoutPage: React.FC = () => {
 
       const verifiedAmountInr = Math.round((verification.amountPaise || gwOrder.amountPaise) / 100);
       try {
-        await sendAndLogTransactionalEmail({
+        const emailRes = await sendAndLogTransactionalEmail({
+          orderId,
           uid: userRecord.uid,
           to: shipping.email,
           templateId: 'order_confirmation',
@@ -4120,6 +4122,15 @@ export const CustomerCheckoutPage: React.FC = () => {
             CUSTOMER_NAME: shipping.fullName,
           },
         });
+        if (!emailRes.delivered) {
+          const reason = formatEmailDeliveryFailureReason(emailRes);
+          console.warn('Order confirmation email not delivered:', reason || emailRes);
+          notify(
+            'Order confirmed — confirmation email pending',
+            reason || 'Your order is confirmed, but confirmation email delivery failed.',
+            'info'
+          );
+        }
       } catch (emailErr) {
         console.error('Order confirmation email failed after verified payment:', emailErr);
       }
@@ -4140,14 +4151,14 @@ export const CustomerCheckoutPage: React.FC = () => {
   if (!design || !profile) {
     return (
       <PortalLayout portal="customer" title="Checkout">
-        <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center">
-          <h2 className="font-display font-bold text-lg text-[#0B1D3A]">No Approved Card Design Found</h2>
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-8 text-center">
+          <h2 className="font-display font-bold text-lg text-[#18142C]">No Approved Card Design Found</h2>
           <p className="mt-2 text-sm text-slate-600">
             Please customize and approve your 85.6 × 54 mm business card in the Design Studio first.
           </p>
           <Link
             to="/dashboard/card-design"
-            className="mt-5 inline-block px-5 py-2.5 bg-[#0B1D3A] text-white text-sm font-semibold rounded-xl"
+            className="mt-5 inline-block px-5 py-2.5 bg-[#18142C] text-white text-sm font-semibold rounded-xl"
           >
             Open Design Studio
           </Link>
@@ -4159,9 +4170,9 @@ export const CustomerCheckoutPage: React.FC = () => {
   return (
     <PortalLayout portal="customer" title="Order Checkout & Payment">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <form onSubmit={handleCheckout} className="lg:col-span-7 bg-white border border-slate-200 rounded-2xl p-6 space-y-5">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <h2 className="font-display font-bold text-base text-[#0B1D3A]">Shipping Details (India)</h2>
+        <form onSubmit={handleCheckout} className="lg:col-span-7 bg-white border border-[#E9E4F5] rounded-2xl p-6 space-y-5">
+          <div className="flex items-center justify-between border-b border-[#F0ECF9] pb-3">
+            <h2 className="font-display font-bold text-base text-[#18142C]">Shipping Details (India)</h2>
             <span className="text-xs font-mono text-slate-500">10–15 Days Delivery</span>
           </div>
 
@@ -4256,15 +4267,15 @@ export const CustomerCheckoutPage: React.FC = () => {
                 type="text"
                 readOnly
                 value="India"
-                className="w-full px-3.5 py-2.5 border border-slate-200 bg-slate-50 rounded-lg text-sm text-slate-600"
+                className="w-full px-3.5 py-2.5 border border-[#E9E4F5] bg-[#FAF9FE] rounded-lg text-sm text-slate-600"
               />
             </div>
           </div>
 
           {/* Payment Method (Razorpay Only) */}
-          <div className="pt-4 border-t border-slate-200 space-y-3">
+          <div className="pt-4 border-t border-[#E9E4F5] space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="font-display font-bold text-sm text-[#0B1D3A]">Payment Method</h3>
+              <h3 className="font-display font-bold text-sm text-[#18142C]">Payment Method</h3>
               <span className="inline-flex items-center gap-1 text-xs text-emerald-700 font-medium">
                 <ShieldCheck className="h-4 w-4" />
                 <span>Server Verified</span>
@@ -4287,17 +4298,17 @@ export const CustomerCheckoutPage: React.FC = () => {
                       aria-disabled={!isRazorpay}
                       className={`p-3 rounded-xl border text-left transition-colors flex items-start justify-between gap-2 ${
                         isRazorpay
-                          ? 'border-[#1D4ED8] bg-blue-50/70 ring-1 ring-[#1D4ED8]'
-                          : 'border-slate-200 bg-slate-50 opacity-55 cursor-not-allowed'
+                          ? 'border-[#7C3AED] bg-[#F3EEFF]/80 ring-1 ring-[#7C3AED]'
+                          : 'border-[#E9E4F5] bg-[#FAF9FE] opacity-55 cursor-not-allowed'
                       }`}
                     >
                       <div className="min-w-0">
-                        <div className="font-display font-bold text-xs text-[#0B1D3A] flex flex-wrap items-center gap-1.5">
+                        <div className="font-display font-bold text-xs text-[#18142C] flex flex-wrap items-center gap-1.5">
                           <span>{gw.label}</span>
                           <span
                             className={`text-[10px] font-mono uppercase px-1.5 py-0.5 rounded ${
                               isRazorpay
-                                ? 'bg-blue-100 text-[#1D4ED8]'
+                                ? 'bg-[#F3EEFF] text-[#7C3AED]'
                                 : 'bg-slate-200 text-slate-600'
                             }`}
                           >
@@ -4310,7 +4321,7 @@ export const CustomerCheckoutPage: React.FC = () => {
                       </div>
                       <span
                         className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
-                          isRazorpay ? 'border-[#1D4ED8] bg-[#1D4ED8] text-white' : 'border-slate-300'
+                          isRazorpay ? 'border-[#7C3AED] bg-[#7C3AED] text-white' : 'border-slate-300'
                         }`}
                       >
                         {isRazorpay && <Check className="h-2.5 w-2.5" />}
@@ -4324,7 +4335,7 @@ export const CustomerCheckoutPage: React.FC = () => {
             <button
               type="submit"
               disabled={processing || !activeGatewayConfig}
-              className="w-full py-3.5 rounded-xl bg-[#0B1D3A] hover:bg-[#132A52] text-white text-sm font-semibold disabled:opacity-50"
+              className="w-full py-3.5 rounded-xl bg-[#18142C] hover:bg-[#2A2048] text-white text-sm font-semibold disabled:opacity-50"
             >
               {processing
                 ? 'Verifying Payment & Preparing Order...'
@@ -4337,22 +4348,22 @@ export const CustomerCheckoutPage: React.FC = () => {
 
         {/* Order Summary & Card Preview */}
         <div className="lg:col-span-5 space-y-5">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
+          <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="font-display font-bold text-base text-[#0B1D3A]">Approved Card Summary</h3>
+              <h3 className="font-display font-bold text-base text-[#18142C]">Approved Card Summary</h3>
               <div className="flex items-center gap-1.5">
                 <div className="flex p-0.5 bg-slate-100 rounded-lg text-[11px]">
                   <button
                     type="button"
                     onClick={() => setPreviewSide('front')}
-                    className={`px-2 py-1 rounded font-semibold ${previewSide === 'front' ? 'bg-white text-[#0B1D3A] shadow-xs' : 'text-slate-600'}`}
+                    className={`px-2 py-1 rounded font-semibold ${previewSide === 'front' ? 'bg-white text-[#18142C] shadow-xs' : 'text-slate-600'}`}
                   >
                     Front
                   </button>
                   <button
                     type="button"
                     onClick={() => setPreviewSide('back')}
-                    className={`px-2 py-1 rounded font-semibold ${previewSide === 'back' ? 'bg-white text-[#0B1D3A] shadow-xs' : 'text-slate-600'}`}
+                    className={`px-2 py-1 rounded font-semibold ${previewSide === 'back' ? 'bg-white text-[#18142C] shadow-xs' : 'text-slate-600'}`}
                   >
                     Back
                   </button>
@@ -4360,7 +4371,7 @@ export const CustomerCheckoutPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setCheckoutPreviewOpen(true)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 text-[11px] font-semibold text-[#1D4ED8] hover:bg-blue-50"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#E9E4F5] text-[11px] font-semibold text-[#7C3AED] hover:bg-[#F3EEFF]"
                 >
                   <Eye className="h-3 w-3" />
                   <span>Full Preview</span>
@@ -4372,7 +4383,7 @@ export const CustomerCheckoutPage: React.FC = () => {
               orientation={design.cardOrientation}
               personalInfo={buildEffectiveProfileInfo(profile, userRecord)}
             />
-            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-between pt-3 border-t border-[#F0ECF9]">
               <span className="text-sm text-slate-600">Quantity</span>
               <div className="flex items-center gap-2">
                 <button
@@ -4399,7 +4410,7 @@ export const CustomerCheckoutPage: React.FC = () => {
                 Order {pendingOrder.orderNumber} initialized. Complete Razorpay payment to confirm.
               </p>
             )}
-            <div className="space-y-2 text-sm border-t border-slate-100 pt-3">
+            <div className="space-y-2 text-sm border-t border-[#F0ECF9] pt-3">
               <div className="flex justify-between text-slate-600 gap-2">
                 <div>
                   <div>{template.name} ({checkoutPricing.editionLabel})</div>
@@ -4417,7 +4428,7 @@ export const CustomerCheckoutPage: React.FC = () => {
                 <span>Pan-India Shipping</span>
                 <span className="font-mono tabular-nums">₹{shippingFee}</span>
               </div>
-              <div className="flex justify-between font-display font-bold text-base text-[#0B1D3A] pt-2 border-t border-slate-200">
+              <div className="flex justify-between font-display font-bold text-base text-[#18142C] pt-2 border-t border-[#E9E4F5]">
                 <span>Total Payable</span>
                 <span className="font-mono tabular-nums">₹{total}</span>
               </div>
@@ -4500,7 +4511,7 @@ export const CustomerOrdersPage: React.FC<{ initialTab?: 'orders' | 'tracking' }
     (orderId ? selectedOrder : orders.find((o) => o.orderId === trackedOrderId) || orders[0]) || null;
 
   const OrdersTabsBar = (
-    <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-6 flex flex-wrap items-center justify-between gap-3">
+    <div className="bg-white border border-[#E9E4F5] rounded-2xl p-4 mb-6 flex flex-wrap items-center justify-between gap-3">
       <div className="flex gap-1.5 bg-slate-100 p-1 rounded-xl">
         <button
           type="button"
@@ -4510,7 +4521,7 @@ export const CustomerOrdersPage: React.FC<{ initialTab?: 'orders' | 'tracking' }
           }}
           className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
             activeTab === 'orders'
-              ? 'bg-[#0B1D3A] text-white shadow-xs'
+              ? 'bg-[#18142C] text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
@@ -4523,7 +4534,7 @@ export const CustomerOrdersPage: React.FC<{ initialTab?: 'orders' | 'tracking' }
           }}
           className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
             activeTab === 'tracking'
-              ? 'bg-[#0B1D3A] text-white shadow-xs'
+              ? 'bg-[#18142C] text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
@@ -4542,7 +4553,7 @@ export const CustomerOrdersPage: React.FC<{ initialTab?: 'orders' | 'tracking' }
               setTrackedOrderId(nextId);
               if (orderId) navigate(`/dashboard/orders/${nextId}`);
             }}
-            className="px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono font-semibold bg-white text-[#0B1D3A]"
+            className="px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono font-semibold bg-white text-[#18142C]"
           >
             {orders.map((o) => (
               <option key={o.orderId} value={o.orderId}>
@@ -4563,25 +4574,25 @@ export const CustomerOrdersPage: React.FC<{ initialTab?: 'orders' | 'tracking' }
         <div className="h-64 bg-slate-200 rounded-2xl animate-pulse" />
       ) : activeTab === 'tracking' ? (
         !activeTrackedOrder ? (
-          <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center space-y-3">
+          <div className="bg-white border border-[#E9E4F5] rounded-2xl p-10 text-center space-y-3">
             <Truck className="h-9 w-9 text-slate-400 mx-auto" />
-            <h2 className="font-display font-bold text-lg text-[#0B1D3A]">No Active Orders to Track</h2>
+            <h2 className="font-display font-bold text-lg text-[#18142C]">No Active Orders to Track</h2>
             <p className="text-sm text-slate-600">
               Once you approve your card design and place an order, its 12-stage fulfilment timeline &amp; courier tracking appear here.
             </p>
             <Link
               to="/dashboard/card-design"
-              className="mt-2 inline-block px-5 py-2.5 bg-[#0B1D3A] text-white text-sm font-semibold rounded-xl"
+              className="mt-2 inline-block px-5 py-2.5 bg-[#18142C] text-white text-sm font-semibold rounded-xl"
             >
               Design My Card
             </Link>
           </div>
         ) : (
           <div className="space-y-6">
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <div className="text-xs font-mono text-slate-500">{activeTrackedOrder.orderNumber}</div>
-                <h2 className="font-display text-xl font-bold text-[#0B1D3A] mt-0.5">
+                <h2 className="font-display text-xl font-bold text-[#18142C] mt-0.5">
                   {activeTrackedOrder.orderStatus}
                 </h2>
                 <p className="text-xs text-slate-600 mt-1">
@@ -4589,7 +4600,7 @@ export const CustomerOrdersPage: React.FC<{ initialTab?: 'orders' | 'tracking' }
                 </p>
               </div>
               <div className="text-right font-mono space-y-2">
-                <div className="text-lg font-bold text-[#0B1D3A] tabular-nums">₹{activeTrackedOrder.total}</div>
+                <div className="text-lg font-bold text-[#18142C] tabular-nums">₹{activeTrackedOrder.total}</div>
                 <div className="text-xs text-slate-500">
                   Qty: {activeTrackedOrder.quantity} · {activeTrackedOrder.cardType}
                 </div>
@@ -4601,9 +4612,9 @@ export const CustomerOrdersPage: React.FC<{ initialTab?: 'orders' | 'tracking' }
                   <button
                     type="button"
                     onClick={() => openOrderDesignPreview(activeTrackedOrder)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-sans font-semibold text-[#0B1D3A]"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E9E4F5] bg-[#FAF9FE] hover:bg-slate-100 text-xs font-sans font-semibold text-[#18142C]"
                   >
-                    <Eye className="h-3.5 w-3.5 text-[#1D4ED8]" />
+                    <Eye className="h-3.5 w-3.5 text-[#7C3AED]" />
                     <span>Preview Ordered Design</span>
                   </button>
                 )}
@@ -4611,20 +4622,20 @@ export const CustomerOrdersPage: React.FC<{ initialTab?: 'orders' | 'tracking' }
             </div>
 
             {activeTrackedOrder.shopItems && activeTrackedOrder.shopItems.length > 0 && (
-              <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3">
-                <h3 className="font-display font-bold text-sm text-[#0B1D3A]">Ordered Smart Tags &amp; Products</h3>
-                <div className="divide-y divide-slate-100">
+              <div className="bg-white border border-[#E9E4F5] rounded-2xl p-5 space-y-3">
+                <h3 className="font-display font-bold text-sm text-[#18142C]">Ordered Smart Tags &amp; Products</h3>
+                <div className="divide-y divide-[#F0ECF9]">
                   {activeTrackedOrder.shopItems.map((item) => (
                     <div key={item.productId} className="py-2.5 flex items-center justify-between gap-3 text-xs">
                       <div className="min-w-0">
-                        <div className="font-semibold text-[#0B1D3A]">{item.name}</div>
+                        <div className="font-semibold text-[#18142C]">{item.name}</div>
                         <div className="text-slate-500">
                           {[item.categoryName, item.cardType].filter(Boolean).join(' · ') || 'Smart Safety Tag'}
                         </div>
                       </div>
                       <div className="text-right font-mono tabular-nums shrink-0">
                         <div>{item.quantity} × ₹{item.priceInr}</div>
-                        <div className="font-semibold text-[#0B1D3A]">₹{item.lineTotal ?? item.priceInr * item.quantity}</div>
+                        <div className="font-semibold text-[#18142C]">₹{item.lineTotal ?? item.priceInr * item.quantity}</div>
                       </div>
                     </div>
                   ))}
@@ -4641,11 +4652,11 @@ export const CustomerOrdersPage: React.FC<{ initialTab?: 'orders' | 'tracking' }
             />
 
             {activeTrackedOrder.trackingNumber && (
-              <div className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-start gap-3">
-                  <Truck className="h-5 w-5 text-[#1D4ED8] mt-0.5" />
+                  <Truck className="h-5 w-5 text-[#7C3AED] mt-0.5" />
                   <div>
-                    <div className="font-display font-bold text-sm text-[#0B1D3A]">
+                    <div className="font-display font-bold text-sm text-[#18142C]">
                       Dispatched via {activeTrackedOrder.courierName}
                     </div>
                     <div className="text-xs font-mono text-slate-600 mt-0.5">
@@ -4658,7 +4669,7 @@ export const CustomerOrdersPage: React.FC<{ initialTab?: 'orders' | 'tracking' }
                     href={activeTrackedOrder.trackingUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-4 py-2 bg-[#0B1D3A] text-white text-xs font-semibold rounded-lg"
+                    className="px-4 py-2 bg-[#18142C] text-white text-xs font-semibold rounded-lg"
                   >
                     Track Shipment
                   </a>
@@ -4666,20 +4677,20 @@ export const CustomerOrdersPage: React.FC<{ initialTab?: 'orders' | 'tracking' }
               </div>
             )}
 
-            <div className="bg-white border border-slate-200 rounded-2xl p-6">
-              <div className="flex items-center gap-2 text-sm font-bold text-[#0B1D3A]">
-                <Lock className="h-4 w-4 text-[#1D4ED8]" />
+            <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6">
+              <div className="flex items-center gap-2 text-sm font-bold text-[#18142C]">
+                <Lock className="h-4 w-4 text-[#7C3AED]" />
                 <span>Production QR Code Access</span>
               </div>
               {appSettings.allowCustomerQrView && qrRecord?.pngDataUrl ? (
                 <div className="mt-4 flex items-center gap-4">
-                  <img src={qrRecord.pngDataUrl} alt="Order QR" className="w-28 h-28 border border-slate-200 rounded-lg" />
+                  <img src={qrRecord.pngDataUrl} alt="Order QR" className="w-28 h-28 border border-[#E9E4F5] rounded-lg" />
                   <div className="text-xs text-slate-600">
                     <div>Target URL: {qrRecord.targetUrl}</div>
                     <a
                       href={qrRecord.pngDataUrl}
                       download={`${activeTrackedOrder.orderNumber}-qr.png`}
-                      className="mt-2 inline-block px-3 py-1.5 bg-[#0B1D3A] text-white rounded text-xs font-semibold"
+                      className="mt-2 inline-block px-3 py-1.5 bg-[#18142C] text-white rounded text-xs font-semibold"
                     >
                       Download QR PNG
                     </a>
@@ -4694,17 +4705,17 @@ export const CustomerOrdersPage: React.FC<{ initialTab?: 'orders' | 'tracking' }
           </div>
         )
       ) : orders.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center">
-          <h2 className="font-display font-bold text-lg text-[#0B1D3A]">No Card Orders Yet</h2>
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-10 text-center">
+          <h2 className="font-display font-bold text-lg text-[#18142C]">No Card Orders Yet</h2>
           <p className="mt-2 text-sm text-slate-600">Design and approve your smart business card to place your first order.</p>
-          <Link to="/dashboard/card-design" className="mt-5 inline-block px-5 py-2.5 bg-[#0B1D3A] text-white text-sm font-semibold rounded-xl">
+          <Link to="/dashboard/card-design" className="mt-5 inline-block px-5 py-2.5 bg-[#18142C] text-white text-sm font-semibold rounded-xl">
             Design My Card
           </Link>
         </div>
       ) : (
-        <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500">
+            <thead className="bg-[#FAF9FE] border-b border-[#E9E4F5] text-xs text-slate-500">
               <tr>
                 <th className="py-3 px-4">Order</th>
                 <th className="py-3 px-4">Card Type</th>
@@ -4715,12 +4726,12 @@ export const CustomerOrdersPage: React.FC<{ initialTab?: 'orders' | 'tracking' }
                 <th className="py-3 px-4 text-right">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-[#F0ECF9]">
               {orders.map((ord) => {
                 const isShopOrder = ord.orderSource === 'shop' || ord.designId === 'shop_direct';
                 return (
-                <tr key={ord.orderId} className="hover:bg-slate-50/70">
-                  <td className="py-3 px-4 font-mono text-xs font-semibold text-[#0B1D3A]">{ord.orderNumber}</td>
+                <tr key={ord.orderId} className="hover:bg-[#FAF9FE]/70">
+                  <td className="py-3 px-4 font-mono text-xs font-semibold text-[#18142C]">{ord.orderNumber}</td>
                   <td className="py-3 px-4 text-slate-700">
                     <div>{ord.cardType}</div>
                     {isShopOrder && ord.shopItems && ord.shopItems.length > 0 && (
@@ -4732,13 +4743,13 @@ export const CustomerOrdersPage: React.FC<{ initialTab?: 'orders' | 'tracking' }
                   <td className="py-3 px-4 font-mono tabular-nums">{ord.quantity}</td>
                   <td className="py-3 px-4 font-mono tabular-nums font-semibold">₹{ord.total}</td>
                   <td className="py-3 px-4 text-xs">{ord.paymentStatus}</td>
-                  <td className="py-3 px-4 text-xs font-medium text-[#1D4ED8]">{ord.orderStatus}</td>
+                  <td className="py-3 px-4 text-xs font-medium text-[#7C3AED]">{ord.orderStatus}</td>
                   <td className="py-3 px-4 text-right space-x-3 whitespace-nowrap">
                     {!isShopOrder && (
                       <button
                         type="button"
                         onClick={() => openOrderDesignPreview(ord)}
-                        className="inline-flex items-center gap-1 text-xs font-semibold text-[#1D4ED8] hover:underline"
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-[#7C3AED] hover:underline"
                       >
                         <Eye className="h-3.5 w-3.5" />
                         <span>Preview Design</span>
@@ -4746,7 +4757,7 @@ export const CustomerOrdersPage: React.FC<{ initialTab?: 'orders' | 'tracking' }
                     )}
                     <Link
                       to={`/dashboard/orders/${ord.orderId}`}
-                      className="text-xs font-semibold text-[#0B1D3A] hover:underline"
+                      className="text-xs font-semibold text-[#18142C] hover:underline"
                     >
                       Track →
                     </Link>
@@ -4777,11 +4788,11 @@ export const CustomerOrdersPage: React.FC<{ initialTab?: 'orders' | 'tracking' }
 
 // Shared Account & Support Grouped Header
 const CustomerAccountSupportTabs: React.FC<{ active: 'settings' | 'support' }> = ({ active }) => (
-  <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-6 flex gap-1.5 bg-slate-100/70 w-fit">
+  <div className="bg-white border border-[#E9E4F5] rounded-2xl p-4 mb-6 flex gap-1.5 bg-slate-100/70 w-fit">
     <Link
       to="/dashboard/settings"
       className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${
-        active === 'settings' ? 'bg-[#0B1D3A] text-white shadow-xs' : 'text-slate-600 hover:bg-white'
+        active === 'settings' ? 'bg-[#18142C] text-white shadow-xs' : 'text-slate-600 hover:bg-white'
       }`}
     >
       Account Security
@@ -4789,7 +4800,7 @@ const CustomerAccountSupportTabs: React.FC<{ active: 'settings' | 'support' }> =
     <Link
       to="/dashboard/support"
       className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${
-        active === 'support' ? 'bg-[#0B1D3A] text-white shadow-xs' : 'text-slate-600 hover:bg-white'
+        active === 'support' ? 'bg-[#18142C] text-white shadow-xs' : 'text-slate-600 hover:bg-white'
       }`}
     >
       Help &amp; Support Tickets
@@ -4805,12 +4816,12 @@ export const CustomerSettingsPage: React.FC = () => {
   return (
     <PortalLayout portal="customer" title="Account & Support">
       <CustomerAccountSupportTabs active="settings" />
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-2xl space-y-5">
+      <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 max-w-2xl space-y-5">
         <div>
-          <h2 className="font-display font-bold text-base text-[#0B1D3A]">Account Information</h2>
+          <h2 className="font-display font-bold text-base text-[#18142C]">Account Information</h2>
           <p className="text-xs text-slate-500 mt-1">Manage your login security and verification status.</p>
         </div>
-        <div className="grid grid-cols-2 gap-4 text-sm border-t border-slate-100 pt-4">
+        <div className="grid grid-cols-2 gap-4 text-sm border-t border-[#F0ECF9] pt-4">
           <div>
             <span className="text-xs text-slate-500 block">Email</span>
             <span className="font-medium text-slate-900">{userRecord?.email}</span>
@@ -4820,7 +4831,7 @@ export const CustomerSettingsPage: React.FC = () => {
             <span className="font-medium text-slate-900">{userRecord?.role} · {userRecord?.status}</span>
           </div>
         </div>
-        <div className="pt-4 border-t border-slate-100">
+        <div className="pt-4 border-t border-[#F0ECF9]">
           <button
             type="button"
             onClick={async () => {
@@ -4828,7 +4839,7 @@ export const CustomerSettingsPage: React.FC = () => {
               await requestPasswordReset(userRecord.email);
               notify('Password reset sent', `Sent reset link to ${userRecord.email}.`, 'success');
             }}
-            className="px-4 py-2.5 bg-[#0B1D3A] text-white text-xs font-semibold rounded-lg"
+            className="px-4 py-2.5 bg-[#18142C] text-white text-xs font-semibold rounded-lg"
           >
             Send Password Reset Email
           </button>
@@ -4875,8 +4886,8 @@ export const CustomerSupportPage: React.FC = () => {
     <PortalLayout portal="customer" title="Account & Support">
       <CustomerAccountSupportTabs active="support" />
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <form onSubmit={handleCreate} className="lg:col-span-5 bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
-          <h2 className="font-display font-bold text-base text-[#0B1D3A]">Open Support or Design Revision Ticket</h2>
+        <form onSubmit={handleCreate} className="lg:col-span-5 bg-white border border-[#E9E4F5] rounded-2xl p-6 space-y-4">
+          <h2 className="font-display font-bold text-base text-[#18142C]">Open Support or Design Revision Ticket</h2>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Category</label>
             <select
@@ -4916,29 +4927,29 @@ export const CustomerSupportPage: React.FC = () => {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full inline-flex items-center justify-center gap-2 py-2.5 bg-[#0B1D3A] text-white rounded-xl text-sm font-semibold"
+            className="w-full inline-flex items-center justify-center gap-2 py-2.5 bg-[#18142C] text-white rounded-xl text-sm font-semibold"
           >
             <Send className="h-4 w-4" />
             <span>{submitting ? 'Submitting...' : 'Submit Ticket'}</span>
           </button>
         </form>
 
-        <div className="lg:col-span-7 bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
-          <h2 className="font-display font-bold text-base text-[#0B1D3A]">Your Tickets</h2>
+        <div className="lg:col-span-7 bg-white border border-[#E9E4F5] rounded-2xl p-6 space-y-4">
+          <h2 className="font-display font-bold text-base text-[#18142C]">Your Tickets</h2>
           {tickets.length === 0 ? (
             <p className="text-sm text-slate-500">No support tickets yet.</p>
           ) : (
             <div className="space-y-3">
               {tickets.map((t) => (
-                <div key={t.ticketId} className="p-4 rounded-xl border border-slate-200">
+                <div key={t.ticketId} className="p-4 rounded-xl border border-[#E9E4F5]">
                   <div className="flex items-center justify-between text-xs text-slate-500">
                     <span>{t.category}</span>
-                    <span className="font-semibold text-[#1D4ED8]">{t.status}</span>
+                    <span className="font-semibold text-[#7C3AED]">{t.status}</span>
                   </div>
-                  <div className="font-semibold text-sm text-[#0B1D3A] mt-1">{t.subject}</div>
+                  <div className="font-semibold text-sm text-[#18142C] mt-1">{t.subject}</div>
                   <p className="text-xs text-slate-600 mt-1">{t.message}</p>
                   {t.adminReply && (
-                    <div className="mt-2 p-2.5 bg-slate-50 rounded-lg text-xs text-slate-800 border border-slate-200">
+                    <div className="mt-2 p-2.5 bg-[#FAF9FE] rounded-lg text-xs text-slate-800 border border-[#E9E4F5]">
                       <strong>Admin Reply:</strong> {t.adminReply}
                     </div>
                   )}

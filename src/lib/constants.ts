@@ -2120,32 +2120,32 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplateRecord[] = [
     templateId: 'welcome',
     name: 'Welcome Email',
     subject: 'Welcome to TapNex Smart Business Cards',
-    htmlBody: '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;border:1px solid #e2e8f0;border-radius:12px;"><h2 style="color:#0B1D3A;">Welcome to TapNex</h2><p>Dear {{CUSTOMER_NAME}},</p><p>Your digital identity workspace is ready. Complete your profile and design your 85.6 × 54 mm SMART business card.</p></div>',
+    htmlBody: '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;border:1px solid #E9E4F5;border-radius:12px;"><h2 style="color:#18142C;">Welcome to TapNex</h2><p>Dear {{CUSTOMER_NAME}},</p><p>Your digital identity workspace is ready. Complete your profile and design your 85.6 × 54 mm SMART business card.</p></div>',
     updatedAt: new Date().toISOString(),
   },
   {
     templateId: 'email_verification',
     name: 'Email Verification',
     subject: 'Verify Your TapNex Account Email',
-    htmlBody: '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;"><h2 style="color:#0B1D3A;">Verify Your Email</h2><p>Please click the verification link sent by Firebase Authentication to activate your account.</p></div>',
+    htmlBody: '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;"><h2 style="color:#18142C;">Verify Your Email</h2><p>Please click the verification link sent by Firebase Authentication to activate your account.</p></div>',
     updatedAt: new Date().toISOString(),
   },
   {
     templateId: 'password_reset',
     name: 'Password Reset',
     subject: 'Reset Your TapNex Password',
-    htmlBody: '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;"><h2 style="color:#0B1D3A;">Password Reset Request</h2><p>Follow the secure reset link sent to your email address.</p></div>',
+    htmlBody: '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;"><h2 style="color:#18142C;">Password Reset Request</h2><p>Follow the secure reset link sent to your email address.</p></div>',
     updatedAt: new Date().toISOString(),
   },
   {
     templateId: 'order_confirmation',
     name: 'Order Confirmation',
     subject: 'Your Smart Business Card Order Is Confirmed!',
-    htmlBody: `<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:28px;border:1px solid #e2e8f0;border-radius:12px;background:#ffffff;">
-      <div style="border-bottom:2px solid #0B1D3A;padding-bottom:12px;margin-bottom:20px;">
-        <strong style="font-size:20px;color:#0B1D3A;">TapNex</strong>
+    htmlBody: `<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:28px;border:1px solid #E9E4F5;border-radius:12px;background:#ffffff;">
+      <div style="border-bottom:2px solid #7C3AED;padding-bottom:12px;margin-bottom:20px;">
+        <strong style="font-size:20px;color:#18142C;">TapNex</strong>
       </div>
-      <h2 style="color:#0B1D3A;margin:0 0 12px;">Your Smart Business Card Order Is Confirmed!</h2>
+      <h2 style="color:#18142C;margin:0 0 12px;">Your Smart Business Card Order Is Confirmed!</h2>
       <p>Dear Customer,</p>
       <p>Thank you for purchasing your SMART Business Card.</p>
       <p>Your personalized card (Order <strong>{{ORDER_NUMBER}}</strong>) is now being prepared for printing.</p>
@@ -2159,7 +2159,7 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplateRecord[] = [
     templateId: 'payment_success',
     name: 'Payment Success',
     subject: 'Payment Verified for Order {{ORDER_NUMBER}}',
-    htmlBody: '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;"><h2 style="color:#0B1D3A;">Payment Received</h2><p>We have verified payment of ₹{{AMOUNT}} for order {{ORDER_NUMBER}}.</p></div>',
+    htmlBody: '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;"><h2 style="color:#18142C;">Payment Received</h2><p>We have verified payment of ₹{{AMOUNT}} for order {{ORDER_NUMBER}}.</p></div>',
     updatedAt: new Date().toISOString(),
   },
   {
@@ -2173,56 +2173,79 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplateRecord[] = [
     templateId: 'design_approved',
     name: 'Design Approval Confirmation',
     subject: 'Card Design Locked & Approved ({{DESIGN_ID}})',
-    htmlBody: '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;"><h2 style="color:#0B1D3A;">Design Approved</h2><p>Your 85.6 × 54 mm card layout has been approved for production.</p></div>',
+    htmlBody: '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;"><h2 style="color:#18142C;">Design Approved</h2><p>Your 85.6 × 54 mm card layout has been approved for production.</p></div>',
     updatedAt: new Date().toISOString(),
   },
   {
     templateId: 'printer_assigned',
     name: 'Printer Assignment Notification',
     subject: 'New Print Job Assigned: {{ORDER_NUMBER}}',
-    htmlBody: '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;"><h2 style="color:#0B1D3A;">New Assigned Order</h2><p>Order {{ORDER_NUMBER}} is ready in your Printer Portal with 300 DPI print-ready PDF and verified QR code.</p></div>',
+    htmlBody: '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;"><h2 style="color:#18142C;">New Assigned Order</h2><p>Order {{ORDER_NUMBER}} is ready in your Printer Portal with 300 DPI print-ready PDF and verified QR code.</p></div>',
     updatedAt: new Date().toISOString(),
   },
   {
     templateId: 'printing_started',
     name: 'Printing Started Notification',
     subject: 'Your Smart Card Is Now Printing ({{ORDER_NUMBER}})',
-    htmlBody: '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;"><h2 style="color:#0B1D3A;">Printing In Progress</h2><p>Our print partner has started producing and encoding your SMART business card.</p></div>',
+    htmlBody: '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;"><h2 style="color:#18142C;">Printing In Progress</h2><p>Our print partner has started producing and encoding your SMART business card.</p></div>',
     updatedAt: new Date().toISOString(),
   },
   {
     templateId: 'dispatched',
     name: 'Dispatch Notification',
-    subject: 'Your Smart Card Has Been Dispatched ({{ORDER_NUMBER}})',
-    htmlBody: '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;"><h2 style="color:#0B1D3A;">Order Dispatched</h2><p>Courier: {{COURIER_NAME}}<br/>Tracking Number: {{TRACKING_NUMBER}}<br/>Expected delivery within 10–15 days within India.</p></div>',
+    subject: 'Your TapNex Order Has Been Dispatched!',
+    htmlBody: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:0 auto;padding:24px;background:#F7F5FD;">
+      <div style="background:#ffffff;border:1px solid #E9E4F5;border-radius:16px;overflow:hidden;">
+        <div style="background:linear-gradient(135deg,#18122B,#311B6B);padding:20px 24px;">
+          <div style="font-size:20px;font-weight:700;color:#ffffff;letter-spacing:0.2px;">TapNex</div>
+          <div style="font-size:12px;color:#D8CCFF;margin-top:4px;">Smart NFC &amp; QR Business Cards</div>
+        </div>
+        <div style="padding:24px;color:#18142C;font-size:14px;line-height:1.6;">
+          <h2 style="margin:0 0 12px;font-size:18px;color:#18142C;">Your TapNex Order Has Been Dispatched!</h2>
+          <p style="margin:0 0 12px;">Dear {{CUSTOMER_NAME}},</p>
+          <p style="margin:0 0 18px;">Great news! Your TapNex smart card order has been handed over to our courier partner and is now on its way.</p>
+          <table role="presentation" style="width:100%;border-collapse:collapse;background:#FAF9FE;border:1px solid #E9E4F5;border-radius:12px;margin-bottom:20px;">
+            <tr><td style="padding:10px 14px;font-size:13px;color:#64607D;border-bottom:1px solid #E9E4F5;">Order ID</td><td style="padding:10px 14px;font-size:13px;font-weight:600;color:#18142C;border-bottom:1px solid #E9E4F5;">{{ORDER_NUMBER}}</td></tr>
+            <tr><td style="padding:10px 14px;font-size:13px;color:#64607D;border-bottom:1px solid #E9E4F5;">Courier Partner</td><td style="padding:10px 14px;font-size:13px;font-weight:600;color:#18142C;border-bottom:1px solid #E9E4F5;">{{COURIER_NAME}}</td></tr>
+            <tr><td style="padding:10px 14px;font-size:13px;color:#64607D;border-bottom:1px solid #E9E4F5;">Tracking Number</td><td style="padding:10px 14px;font-size:13px;font-weight:600;font-family:monospace;color:#18142C;border-bottom:1px solid #E9E4F5;">{{TRACKING_NUMBER}}</td></tr>
+            <tr><td style="padding:10px 14px;font-size:13px;color:#64607D;">Dispatch Date</td><td style="padding:10px 14px;font-size:13px;font-weight:600;color:#18142C;">{{DISPATCH_DATE}}</td></tr>
+          </table>
+          {{TRACKING_CTA}}
+          <p style="margin:16px 0 0;font-size:13px;color:#64607D;">Expected delivery within 10–15 days across India. Once delivered, tap your smart card against any compatible smartphone or scan the QR code to share your digital profile.</p>
+        </div>
+        <div style="padding:16px 24px;background:#FAF9FE;font-size:12px;color:#64607D;border-top:1px solid #E9E4F5;">
+          TapNex Digital Identity Platform · Need help? Reply to this email or visit your TapNex portal.
+        </div>
+      </div>
+    </div>`,
     updatedAt: new Date().toISOString(),
   },
   {
     templateId: 'delivered',
     name: 'Delivery Notification',
     subject: 'Delivered: Your TapNex Smart Card ({{ORDER_NUMBER}})',
-    htmlBody: '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;"><h2 style="color:#16A34A;">Order Delivered</h2><p>Your SMART Business Card has been delivered. Tap it against any compatible smartphone to share your profile.</p></div>',
+    htmlBody: '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;"><h2 style="color:#059669;">Order Delivered</h2><p>Your SMART Business Card has been delivered. Tap it against any compatible smartphone to share your profile.</p></div>',
     updatedAt: new Date().toISOString(),
   },
   {
     templateId: 'order_cancelled',
     name: 'Order Cancellation',
     subject: 'Order Cancelled ({{ORDER_NUMBER}})',
-    htmlBody: '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;"><h2 style="color:#0B1D3A;">Order Cancelled</h2><p>Order {{ORDER_NUMBER}} has been cancelled as requested.</p></div>',
+    htmlBody: '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;"><h2 style="color:#18142C;">Order Cancelled</h2><p>Order {{ORDER_NUMBER}} has been cancelled as requested.</p></div>',
     updatedAt: new Date().toISOString(),
   },
   {
     templateId: 'refund_notification',
     name: 'Refund Notification',
     subject: 'Refund Initiated for Order {{ORDER_NUMBER}}',
-    htmlBody: '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;"><h2 style="color:#0B1D3A;">Refund Initiated</h2><p>A refund of ₹{{AMOUNT}} for order {{ORDER_NUMBER}} has been initiated via Razorpay.</p></div>',
+    htmlBody: '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;"><h2 style="color:#18142C;">Refund Initiated</h2><p>A refund of ₹{{AMOUNT}} for order {{ORDER_NUMBER}} has been initiated via Razorpay.</p></div>',
     updatedAt: new Date().toISOString(),
   },
   {
     templateId: 'admin_new_order',
     name: 'Admin New Order Alert',
     subject: 'New Paid Order Received: {{ORDER_NUMBER}}',
-    htmlBody: '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;"><h2 style="color:#0B1D3A;">New Verified Order</h2><p>Order {{ORDER_NUMBER}} (₹{{AMOUNT}}) is awaiting printer assignment in the Admin Portal.</p></div>',
+    htmlBody: '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;"><h2 style="color:#18142C;">New Verified Order</h2><p>Order {{ORDER_NUMBER}} (₹{{AMOUNT}}) is awaiting printer assignment in the Admin Portal.</p></div>',
     updatedAt: new Date().toISOString(),
   },
 ];

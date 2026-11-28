@@ -21,7 +21,7 @@ const SAMPLE_INFO = {
 export const HowItWorksPage: React.FC = () => (
   <PublicLayout>
     <section className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-      <h1 className="font-display text-3xl sm:text-4xl font-bold text-[#0B1D3A] tracking-tight">
+      <h1 className="font-display text-3xl sm:text-4xl font-bold text-[#18142C] tracking-tight">
         How TapNex Works
       </h1>
       <p className="mt-3 text-slate-600 max-w-2xl">
@@ -35,17 +35,17 @@ export const HowItWorksPage: React.FC = () => (
           { step: 'Step 4', title: 'Production, QR embedding & SMART encoding', text: 'After payment verification, our backend generates your unique QR code, exports a 300 DPI print-ready PDF with 3 mm bleed, and assigns a verified print partner to encode and ship your card within 10–15 days.' },
           { step: 'Step 5', title: 'Share via SMART tap or QR scan', text: 'Compatible smartphones read your profile URL from the embedded SMART chip, while any camera can scan the fallback QR code.' },
         ].map((s) => (
-          <div key={s.step} className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col sm:flex-row gap-4">
-            <span className="font-mono text-sm font-bold text-[#1D4ED8] shrink-0 w-20">{s.step}</span>
+          <div key={s.step} className="bg-white border border-[#E9E4F5] rounded-2xl p-6 flex flex-col sm:flex-row gap-4">
+            <span className="font-mono text-sm font-bold text-[#7C3AED] shrink-0 w-20">{s.step}</span>
             <div>
-              <h2 className="font-display text-lg font-bold text-[#0B1D3A]">{s.title}</h2>
+              <h2 className="font-display text-lg font-bold text-[#18142C]">{s.title}</h2>
               <p className="mt-1.5 text-sm text-slate-600 leading-relaxed">{s.text}</p>
             </div>
           </div>
         ))}
       </div>
       <div className="mt-10">
-        <SmartCardLink className="inline-flex items-center gap-2 px-6 py-3 bg-[#0B1D3A] text-white rounded-xl text-sm font-semibold">
+        <SmartCardLink className="inline-flex items-center gap-2 px-6 py-3 bg-[#7C3AED] hover:bg-[#6D28D9] text-white rounded-xl text-sm font-semibold">
           <span>Get Your Smart Card</span>
           <ArrowRight className="h-4 w-4" />
         </SmartCardLink>
@@ -57,7 +57,7 @@ export const HowItWorksPage: React.FC = () => (
 export const FeaturesPage: React.FC = () => (
   <PublicLayout>
     <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-      <h1 className="font-display text-3xl sm:text-4xl font-bold text-[#0B1D3A] tracking-tight">
+      <h1 className="font-display text-3xl sm:text-4xl font-bold text-[#18142C] tracking-tight">
         Platform Features
       </h1>
       <p className="mt-3 text-slate-600 max-w-2xl">
@@ -72,8 +72,8 @@ export const FeaturesPage: React.FC = () => (
           { title: '300 DPI Print Studio', desc: 'Exact 85.6 × 54 mm trim size, 3 mm bleed, safe margins, and crop marks.' },
           { title: 'Live Instant Edits', desc: 'Change designations, links, or phone numbers anytime without reprinting physical cards.' },
         ].map((f) => (
-          <div key={f.title} className="bg-white border border-slate-200 rounded-xl p-6">
-            <h2 className="font-display text-lg font-bold text-[#0B1D3A]">{f.title}</h2>
+          <div key={f.title} className="bg-white border border-[#E9E4F5] rounded-xl p-6">
+            <h2 className="font-display text-lg font-bold text-[#18142C]">{f.title}</h2>
             <p className="mt-2 text-sm text-slate-600 leading-relaxed">{f.desc}</p>
           </div>
         ))}
@@ -95,33 +95,33 @@ export const CardDesignsPage: React.FC = () => {
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10">
           <div>
-            <h1 className="font-display text-3xl sm:text-4xl font-bold text-[#0B1D3A] tracking-tight">
+            <h1 className="font-display text-3xl sm:text-4xl font-bold text-[#18142C] tracking-tight">
               Card Design Templates
             </h1>
             <p className="mt-2 text-slate-600">
               All designs adhere to ISO/IEC 7810 ID-1 (85.6 × 54 mm) with 3 mm print bleed.
             </p>
           </div>
-          <SmartCardLink className="px-5 py-2.5 bg-[#0B1D3A] text-white rounded-xl text-sm font-semibold whitespace-nowrap">
+          <SmartCardLink className="px-5 py-2.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white rounded-xl text-sm font-semibold whitespace-nowrap">
             Customize in Studio
           </SmartCardLink>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {templates.map((tpl) => (
-            <div key={tpl.templateId} className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between">
+            <div key={tpl.templateId} className="bg-white border border-[#E9E4F5] rounded-2xl p-5 flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h2 className="font-display font-bold text-[#0B1D3A]">{tpl.name}</h2>
+                    <h2 className="font-display font-bold text-[#18142C]">{tpl.name}</h2>
                     <p className="text-xs text-slate-500">{tpl.cardType || tpl.category}</p>
                   </div>
-                  <span className="font-mono font-bold text-sm text-[#1D4ED8] tabular-nums">₹{tpl.priceInr}</span>
+                  <span className="font-mono font-bold text-sm text-[#7C3AED] tabular-nums">₹{tpl.priceInr}</span>
                 </div>
                 <CardCanvasPreview side={tpl.frontSpec} orientation="landscape" personalInfo={SAMPLE_INFO} />
               </div>
               <SmartCardLink
-                className="mt-5 block text-center py-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-sm font-semibold text-[#0B1D3A]"
+                className="mt-5 block text-center py-2.5 rounded-lg border border-[#E9E4F5] hover:bg-[#F3EEFF] text-sm font-semibold text-[#18142C]"
               >
                 Use This Template
               </SmartCardLink>
@@ -136,7 +136,7 @@ export const CardDesignsPage: React.FC = () => {
 export const PricingPage: React.FC = () => (
   <PublicLayout>
     <section className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-      <h1 className="font-display text-3xl sm:text-4xl font-bold text-[#0B1D3A] tracking-tight">
+      <h1 className="font-display text-3xl sm:text-4xl font-bold text-[#18142C] tracking-tight">
         Simple, Transparent Pricing
       </h1>
       <p className="mt-3 text-slate-600">
@@ -181,10 +181,10 @@ export const PricingPage: React.FC = () => (
             items: ['Includes 2 weatherproof QR stickers', '1 sticker for Helmet + 1 sticker for Bike', 'Shows Blood Group & SOS emergency contacts'],
           },
         ].map((p) => (
-          <div key={p.tier} className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col justify-between">
+          <div key={p.tier} className="bg-white border border-[#E9E4F5] rounded-2xl p-6 flex flex-col justify-between">
             <div>
-              <h2 className="font-display text-lg font-bold text-[#0B1D3A]">{p.tier}</h2>
-              <div className="mt-2 font-display text-3xl font-bold text-[#1D4ED8] tabular-nums">{p.price}</div>
+              <h2 className="font-display text-lg font-bold text-[#18142C]">{p.tier}</h2>
+              <div className="mt-2 font-display text-3xl font-bold text-[#7C3AED] tabular-nums">{p.price}</div>
               <p className="mt-2 text-sm text-slate-600">{p.desc}</p>
               <ul className="mt-5 space-y-2 text-sm text-slate-700">
                 {p.items.map((it) => (
@@ -195,7 +195,7 @@ export const PricingPage: React.FC = () => (
                 ))}
               </ul>
             </div>
-            <SmartCardLink className="mt-6 block text-center py-2.5 bg-[#0B1D3A] text-white rounded-xl text-sm font-semibold">
+            <SmartCardLink className="mt-6 block text-center py-2.5 bg-[#18142C] hover:bg-[#2A2048] text-white rounded-xl text-sm font-semibold">
               Order Now
             </SmartCardLink>
           </div>
@@ -208,7 +208,7 @@ export const PricingPage: React.FC = () => (
 export const FaqPage: React.FC = () => (
   <PublicLayout>
     <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-      <h1 className="font-display text-3xl font-bold text-[#0B1D3A]">Frequently Asked Questions</h1>
+      <h1 className="font-display text-3xl font-bold text-[#18142C]">Frequently Asked Questions</h1>
       <div className="mt-8 space-y-4">
         {[
           { q: 'Does every smartphone support SMART tapping?', a: 'Most modern iPhones (XS and newer) and Android phones with contactless tap enabled support tap-to-open. For older or tap-disabled phones, the printed QR code provides universal access.' },
@@ -216,8 +216,8 @@ export const FaqPage: React.FC = () => (
           { q: 'Can I edit my card design after payment?', a: 'Once payment is verified, your design is locked for printing accuracy. If you need post-purchase changes, submit a Design Revision ticket in Help & Support.' },
           { q: 'What is the delivery timeline?', a: 'Standard delivery across India takes 10–15 days from payment verification.' },
         ].map((item) => (
-          <div key={item.q} className="bg-white border border-slate-200 rounded-xl p-6">
-            <h2 className="font-display font-bold text-[#0B1D3A]">{item.q}</h2>
+          <div key={item.q} className="bg-white border border-[#E9E4F5] rounded-xl p-6">
+            <h2 className="font-display font-bold text-[#18142C]">{item.q}</h2>
             <p className="mt-2 text-sm text-slate-600 leading-relaxed">{item.a}</p>
           </div>
         ))}
@@ -230,22 +230,22 @@ export const NfcGuidePage: React.FC = () => (
   <PublicLayout>
     <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 space-y-8">
       <div>
-        <h1 className="font-display text-3xl font-bold text-[#0B1D3A]">Smartcard Compatibility & Testing Guide</h1>
+        <h1 className="font-display text-3xl font-bold text-[#18142C]">Smartcard Compatibility & Testing Guide</h1>
         <p className="mt-2 text-slate-600">
           Understanding how SMART tap and QR fallback work across iPhone and Android devices.
         </p>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white border border-slate-200 rounded-xl p-6">
-          <Smartphone className="h-6 w-6 text-[#1D4ED8] mb-3" />
-          <h2 className="font-display font-bold text-[#0B1D3A]">Apple iPhone</h2>
+        <div className="bg-white border border-[#E9E4F5] rounded-xl p-6">
+          <Smartphone className="h-6 w-6 text-[#7C3AED] mb-3" />
+          <h2 className="font-display font-bold text-[#18142C]">Apple iPhone</h2>
           <p className="mt-2 text-sm text-slate-600 leading-relaxed">
             iPhone XS / XR and newer support background SMART card reading automatically—tap the card near the top edge of the phone. Older iPhones can scan the fallback QR code with the native Camera app.
           </p>
         </div>
-        <div className="bg-white border border-slate-200 rounded-xl p-6">
-          <Shield className="h-6 w-6 text-[#1D4ED8] mb-3" />
-          <h2 className="font-display font-bold text-[#0B1D3A]">Android Smartphones</h2>
+        <div className="bg-white border border-[#E9E4F5] rounded-xl p-6">
+          <Shield className="h-6 w-6 text-[#7C3AED] mb-3" />
+          <h2 className="font-display font-bold text-[#18142C]">Android Smartphones</h2>
           <p className="mt-2 text-sm text-slate-600 leading-relaxed">
             Ensure contactless tap / SMART reading is turned on in Settings → Connected Devices. Hold the card steady against the upper-middle back of the phone. If tap reading is unavailable or disabled on a device, use the QR code fallback.
           </p>
@@ -275,7 +275,7 @@ export const ContactPage: React.FC = () => {
   return (
     <PublicLayout>
       <section className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <h1 className="font-display text-3xl font-bold text-[#0B1D3A]">Contact TapNex</h1>
+        <h1 className="font-display text-3xl font-bold text-[#18142C]">Contact TapNex</h1>
         <p className="mt-2 text-slate-600">Questions about corporate bulk cards, print partnerships, or order support?</p>
         {sent ? (
           <div className="mt-8 bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-emerald-900">
@@ -283,7 +283,7 @@ export const ContactPage: React.FC = () => {
             <p className="mt-1 text-sm">We have logged your message for {email}. Support email: support@tapnex.in.</p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="mt-8 bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
+          <form onSubmit={handleSubmit} className="mt-8 bg-white border border-[#E9E4F5] rounded-2xl p-6 space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
               <input
@@ -317,7 +317,7 @@ export const ContactPage: React.FC = () => {
                 placeholder="Tell us about your team size or inquiry..."
               />
             </div>
-            <button type="submit" className="px-6 py-2.5 bg-[#0B1D3A] text-white text-sm font-semibold rounded-lg">
+            <button type="submit" className="px-6 py-2.5 bg-[#18142C] hover:bg-[#2A2048] text-white text-sm font-semibold rounded-lg">
               Send Message
             </button>
           </form>
@@ -338,8 +338,8 @@ export const LegalDocPage: React.FC<{ type: 'privacy' | 'terms' | 'refund' }> = 
   return (
     <PublicLayout>
       <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 space-y-6">
-        <h1 className="font-display text-3xl font-bold text-[#0B1D3A]">{title}</h1>
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-4 text-sm text-slate-600 leading-relaxed">
+        <h1 className="font-display text-3xl font-bold text-[#18142C]">{title}</h1>
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 sm:p-8 space-y-4 text-sm text-slate-600 leading-relaxed">
           {type === 'privacy' && (
             <>
               <p>TapNex isolates private customer account data from public business profiles. Only fields explicitly checked in your Public Profile Visibility Settings are published to your public URL or included in generated vCard (.vcf) downloads.</p>
@@ -356,7 +356,7 @@ export const LegalDocPage: React.FC<{ type: 'privacy' | 'terms' | 'refund' }> = 
             <>
               <p>Orders may be cancelled for a full refund before printer production starts. Customized SMART cards already printed or dispatched cannot be cancelled unless damaged or defective upon delivery.</p>
               <p className="flex items-center gap-2 font-medium text-slate-800">
-                <Truck className="h-4 w-4 text-[#1D4ED8]" />
+                <Truck className="h-4 w-4 text-[#7C3AED]" />
                 <span>Standard delivery across India takes 10–15 days from payment verification.</span>
               </p>
             </>

@@ -326,11 +326,16 @@
       "type": "object",
       "properties": {
         "notificationId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "orderId": { "type": "string", "maxLength": 128 },
         "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "recipientEmail": { "type": "string", "maxLength": 254 },
+        "templateId": { "type": "string", "maxLength": 128 },
         "title": { "type": "string", "maxLength": 160 },
         "message": { "type": "string", "maxLength": 1000 },
         "channel": { "type": "string", "enum": ["in_app", "email"] },
-        "deliveryStatus": { "type": "string", "enum": ["Queued", "Sent", "ConfigRequired", "Read"] },
+        "deliveryStatus": { "type": "string", "enum": ["Queued", "Sent", "ConfigRequired", "Failed", "Read"] },
+        "resendMessageId": { "type": "string", "maxLength": 200 },
+        "error": { "type": "string", "maxLength": 500 },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["notificationId", "uid", "title", "message", "channel", "deliveryStatus", "createdAt"]

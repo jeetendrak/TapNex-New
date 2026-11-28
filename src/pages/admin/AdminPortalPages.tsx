@@ -36,6 +36,7 @@ import {
   Eye,
   ShieldCheck,
   CreditCard,
+  Mail,
   Star,
   CheckSquare,
 } from 'lucide-react';
@@ -66,10 +67,12 @@ import {
   getAuditLogs,
   getCardDesignById,
   getCardTemplates,
+  getEmailNotifications,
   getEmailTemplates,
   getOrderById,
   getProfileById,
   getQrCodeById,
+  getResendSenderConfig,
   getSupportTickets,
   getUserById,
   getUserProfiles,
@@ -77,13 +80,16 @@ import {
   saveCardTemplate,
   saveEmailTemplate,
   savePrinterRecord,
+  saveResendSenderConfig,
   sendAndLogTransactionalEmail,
+  sendTestTransactionalEmail,
   setBulkCardTemplatesVisibility,
   setDefaultCardTemplate,
   updateOrderWorkflow,
   updateSupportTicket,
   updateUserRoleAndStatus,
   type AuditLogPreset,
+  type ResendSenderConfig,
 } from '../../lib/firestoreService';
 import {
   adminEnsureOrderQr,
@@ -99,8 +105,13 @@ import { formatFirestoreErrorMessage } from '../../lib/cardDesignSize';
 import {
   ADMIN_MANUAL_ORDER_STATUS_OPTIONS,
   executeTimelineStatusUpdate,
-  sanitizeTimelineErrorMessage,
 } from '../../lib/timelineFeedback';
+import {
+  buildDispatchedEmailVariables,
+  executeDispatchWithNotification,
+  executeRetryDispatchEmail,
+  formatEmailDeliveryFailureReason,
+} from '../../lib/dispatchEmailFeedback';
 import { sanitizeRichBioHtml } from '../../lib/richText';
 import { exportRowsToCsv, exportRowsToExcel } from '../../lib/exportUtils';
 import { downloadBlob, generateCardSidePngBlob, generatePrintReadyPdfBlob } from '../../lib/printPdf';
@@ -117,6 +128,7 @@ import type {
   CardDesignRecord,
   CardTemplateRecord,
   EmailTemplateRecord,
+  NotificationRecord,
   OrderRecord,
   OrderStatus,
   PaymentRecord,
@@ -136,12 +148,12 @@ import type {
 
 const PAYMENT_STATUS_OPTIONS: PaymentStatus[] = ['Pending', 'Completed', 'Verified', 'Rejected', 'Failed', 'Refunded'];
 
-const CHART_COLORS = ['#0B1D3A', '#1D4ED8', '#06B6D4', '#16A34A', '#D97706', '#64748B'];
+const CHART_COLORS = ['#18142C', '#7C3AED', '#A78BFA', '#059669', '#D97706', '#64607D'];
 
 const AdminHubTabBar: React.FC<{ tabs: { label: string; to: string }[] }> = ({ tabs }) => {
   const location = useLocation();
   return (
-    <div className="mb-5 flex flex-wrap gap-2 bg-white border border-slate-200 rounded-2xl p-2">
+    <div className="mb-5 flex flex-wrap gap-2 bg-white border border-[#E9E4F5] rounded-2xl p-2">
       {tabs.map((tab) => {
         const active =
           location.pathname === tab.to ||
@@ -153,8 +165,8 @@ const AdminHubTabBar: React.FC<{ tabs: { label: string; to: string }[] }> = ({ t
             to={tab.to}
             className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors ${
               active
-                ? 'bg-[#0B1D3A] text-white shadow-xs'
-                : 'text-slate-600 hover:bg-slate-100 hover:text-[#0B1D3A]'
+                ? 'bg-[#18142C] text-white shadow-xs'
+                : 'text-[#64607D] hover:bg-[#F3EEFF] hover:text-[#18142C]'
             }`}
           >
             {tab.label}
@@ -293,10 +305,10 @@ const AdminProfileInspectorModal: React.FC<{
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden my-auto">
-        <div className="px-6 py-4 bg-[#0B1D3A] text-white flex items-center justify-between">
+      <div className="bg-white border border-[#E9E4F5] rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden my-auto">
+        <div className="px-6 py-4 bg-[#18142C] text-white flex items-center justify-between">
           <div className="min-w-0">
-            <div className="text-[11px] font-mono text-cyan-300">/p/{profile.slug}</div>
+            <div className="text-[11px] font-mono text-[#C4B5FD]">/p/{profile.slug}</div>
             <h3 className="font-display font-bold text-base truncate">
               {info.fullName || profile.profileLabel || profile.slug}
             </h3>
@@ -311,21 +323,21 @@ const AdminProfileInspectorModal: React.FC<{
         </div>
 
         <div className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
-          <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl bg-slate-50 border border-slate-200">
+          <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl bg-[#FAF9FE] border border-[#E9E4F5]">
             <div className="flex items-center gap-3">
               {info.photoDataUrl ? (
                 <img
                   src={info.photoDataUrl}
                   alt={info.fullName || profile.slug}
-                  className="w-14 h-14 rounded-full object-cover border border-slate-200"
+                  className="w-14 h-14 rounded-full object-cover border border-[#E9E4F5]"
                 />
               ) : (
-                <div className="w-14 h-14 rounded-full bg-[#0B1D3A] text-white flex items-center justify-center font-bold text-lg">
+                <div className="w-14 h-14 rounded-full bg-[#18142C] text-white flex items-center justify-center font-bold text-lg">
                   {(info.fullName || profile.slug || 'U').slice(0, 1).toUpperCase()}
                 </div>
               )}
               <div>
-                <div className="text-sm font-bold text-[#0B1D3A]">
+                <div className="text-sm font-bold text-[#18142C]">
                   {profile.profileLabel || 'Digital Profile'}
                 </div>
                 <div className="text-xs text-slate-500">
@@ -345,7 +357,7 @@ const AdminProfileInspectorModal: React.FC<{
                   <span
                     className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
                       profile.adminApproved
-                        ? 'bg-blue-100 text-blue-800'
+                        ? 'bg-[#F3EEFF] text-[#6D28D9]'
                         : 'bg-slate-200 text-slate-700'
                     }`}
                   >
@@ -373,7 +385,7 @@ const AdminProfileInspectorModal: React.FC<{
                 href={`/p/${profile.slug}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#0B1D3A] text-white text-xs font-semibold rounded-lg"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#18142C] text-white text-xs font-semibold rounded-lg"
               >
                 <ExternalLink className="h-3.5 w-3.5" />
                 <span>Open Public Profile</span>
@@ -392,7 +404,7 @@ const AdminProfileInspectorModal: React.FC<{
                 className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg disabled:opacity-50 ${
                   profile.paymentConfirmed
                     ? 'border border-amber-300 bg-amber-50 text-amber-900'
-                    : 'bg-[#1D4ED8] hover:bg-blue-700 text-white'
+                    : 'bg-[#7C3AED] hover:bg-[#6D28D9] text-white'
                 }`}
               >
                 <CreditCard className="h-3.5 w-3.5" />
@@ -446,8 +458,8 @@ const AdminProfileInspectorModal: React.FC<{
           </div>
 
           {info.shortBio && (
-            <div className="p-3.5 rounded-xl border border-slate-200 text-xs text-slate-700">
-              <div className="font-semibold text-[#0B1D3A] mb-1">
+            <div className="p-3.5 rounded-xl border border-[#E9E4F5] text-xs text-slate-700">
+              <div className="font-semibold text-[#18142C] mb-1">
                 Short Bio ({vis.shortBio ? 'Visible publicly' : 'Hidden from public'})
               </div>
               <div
@@ -459,14 +471,14 @@ const AdminProfileInspectorModal: React.FC<{
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {detailRows.map((row) => (
-              <div key={row.label} className="p-3 rounded-xl border border-slate-200 text-xs">
+              <div key={row.label} className="p-3 rounded-xl border border-[#E9E4F5] text-xs">
                 <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500">
                   <span>{row.label}</span>
                   <span className={row.visible ? 'text-emerald-700 font-semibold' : 'text-slate-400'}>
                     {row.visible ? 'Public' : 'Private'}
                   </span>
                 </div>
-                <div className="mt-1 font-medium text-[#0B1D3A] break-words">
+                <div className="mt-1 font-medium text-[#18142C] break-words">
                   {row.value || '—'}
                 </div>
               </div>
@@ -474,8 +486,8 @@ const AdminProfileInspectorModal: React.FC<{
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="p-4 rounded-xl border border-slate-200 space-y-2">
-              <div className="text-xs font-bold text-[#0B1D3A]">
+            <div className="p-4 rounded-xl border border-[#E9E4F5] space-y-2">
+              <div className="text-xs font-bold text-[#18142C]">
                 Social Links ({(profile.socialLinks || []).length})
               </div>
               {(profile.socialLinks || []).length === 0 ? (
@@ -492,8 +504,8 @@ const AdminProfileInspectorModal: React.FC<{
               )}
             </div>
 
-            <div className="p-4 rounded-xl border border-slate-200 space-y-2">
-              <div className="text-xs font-bold text-[#0B1D3A]">
+            <div className="p-4 rounded-xl border border-[#E9E4F5] space-y-2">
+              <div className="text-xs font-bold text-[#18142C]">
                 Custom Fields ({(profile.customFields || []).length})
               </div>
               {(profile.customFields || []).length === 0 ? (
@@ -573,9 +585,9 @@ export const AdminDashboardPage: React.FC = () => {
       <div className="space-y-6">
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
           {metrics.map((m) => (
-            <div key={m.label} className="bg-white border border-slate-200 rounded-xl p-4">
+            <div key={m.label} className="bg-white border border-[#E9E4F5] rounded-xl p-4">
               <div className="text-xs text-slate-500">{m.label}</div>
-              <div className="mt-1.5 font-display text-xl font-bold text-[#0B1D3A] tabular-nums">
+              <div className="mt-1.5 font-display text-xl font-bold text-[#18142C] tabular-nums">
                 {loading ? '—' : m.value}
               </div>
             </div>
@@ -583,8 +595,8 @@ export const AdminDashboardPage: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6">
-            <h2 className="font-display font-bold text-sm text-[#0B1D3A] mb-4">Revenue by Card Finish (INR)</h2>
+          <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6">
+            <h2 className="font-display font-bold text-sm text-[#18142C] mb-4">Revenue by Card Finish (INR)</h2>
             <div className="h-64">
               {revenueByCardType.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-xs text-slate-400">No order revenue yet</div>
@@ -594,15 +606,15 @@ export const AdminDashboardPage: React.FC = () => {
                     <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} />
                     <Tooltip />
-                    <Bar dataKey="revenue" fill="#1D4ED8" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="revenue" fill="#7C3AED" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
             </div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-2xl p-6">
-            <h2 className="font-display font-bold text-sm text-[#0B1D3A] mb-4">Order Status Distribution</h2>
+          <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6">
+            <h2 className="font-display font-bold text-sm text-[#18142C] mb-4">Order Status Distribution</h2>
             <div className="h-64">
               {statusCounts.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-xs text-slate-400">No orders yet</div>
@@ -622,16 +634,16 @@ export const AdminDashboardPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl p-6">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display font-bold text-sm text-[#0B1D3A]">Recent Orders</h2>
-            <Link to="/admin/orders" className="text-xs font-semibold text-[#1D4ED8] hover:underline">
+            <h2 className="font-display font-bold text-sm text-[#18142C]">Recent Orders</h2>
+            <Link to="/admin/orders" className="text-xs font-semibold text-[#7C3AED] hover:underline">
               View All Orders →
             </Link>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
+              <thead className="bg-[#FAF9FE] text-slate-500 border-b border-[#E9E4F5]">
                 <tr>
                   <th className="py-2.5 px-3">Order #</th>
                   <th className="py-2.5 px-3">Customer</th>
@@ -640,14 +652,14 @@ export const AdminDashboardPage: React.FC = () => {
                   <th className="py-2.5 px-3">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-[#F0ECF9]">
                 {orders.slice(0, 6).map((o) => (
                   <tr key={o.orderId}>
                     <td className="py-2.5 px-3 font-mono font-semibold">{o.orderNumber}</td>
                     <td className="py-2.5 px-3">{o.shippingAddress.fullName}</td>
                     <td className="py-2.5 px-3 font-mono tabular-nums">₹{o.total}</td>
                     <td className="py-2.5 px-3">{o.paymentStatus}</td>
-                    <td className="py-2.5 px-3 font-semibold text-[#1D4ED8]">{o.orderStatus}</td>
+                    <td className="py-2.5 px-3 font-semibold text-[#7C3AED]">{o.orderStatus}</td>
                   </tr>
                 ))}
               </tbody>
@@ -744,7 +756,7 @@ export const AdminUsersPage: React.FC = () => {
     <PortalLayout portal="admin" title="Users & Customers">
       <AdminUsersHubTabs />
       <div className="space-y-6">
-        <form onSubmit={handleCreate} className="bg-white border border-slate-200 rounded-2xl p-5 grid grid-cols-1 sm:grid-cols-5 gap-3 items-end">
+        <form onSubmit={handleCreate} className="bg-white border border-[#E9E4F5] rounded-2xl p-5 grid grid-cols-1 sm:grid-cols-5 gap-3 items-end">
           <div>
             <label className="block text-xs text-slate-600 mb-1">Firebase UID (Optional)</label>
             <input
@@ -788,13 +800,13 @@ export const AdminUsersPage: React.FC = () => {
               {userRecord?.role === 'SUPERADMIN' && <option value="SUPERADMIN">SUPERADMIN</option>}
             </select>
           </div>
-          <button type="submit" className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-[#0B1D3A] text-white rounded-lg text-xs font-semibold">
+          <button type="submit" className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-[#18142C] text-white rounded-lg text-xs font-semibold">
             <Plus className="h-3.5 w-3.5" />
             <span>Add User</span>
           </button>
         </form>
 
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2.5 flex-1">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="h-4 w-4 text-slate-400 absolute left-3 top-2.5" />
@@ -831,7 +843,7 @@ export const AdminUsersPage: React.FC = () => {
                   filtered.map((u) => ({ uid: u.uid, email: u.email, name: u.displayName || '', role: u.role, status: u.status }))
                 )
               }
-              className="inline-flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold hover:bg-slate-50"
+              className="inline-flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold hover:bg-[#FAF9FE]"
             >
               <Download className="h-3.5 w-3.5" />
               <span>CSV</span>
@@ -845,7 +857,7 @@ export const AdminUsersPage: React.FC = () => {
                   filtered.map((u) => ({ uid: u.uid, email: u.email, name: u.displayName || '', role: u.role, status: u.status }))
                 )
               }
-              className="inline-flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold hover:bg-slate-50"
+              className="inline-flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold hover:bg-[#FAF9FE]"
             >
               <Download className="h-3.5 w-3.5" />
               <span>Excel</span>
@@ -853,9 +865,9 @@ export const AdminUsersPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
+            <thead className="bg-[#FAF9FE] border-b border-[#E9E4F5] text-slate-500">
               <tr>
                 <th className="py-3 px-4">User</th>
                 <th className="py-3 px-4">Role</th>
@@ -863,11 +875,11 @@ export const AdminUsersPage: React.FC = () => {
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-[#F0ECF9]">
               {filtered.map((u) => (
                 <tr key={u.uid}>
                   <td className="py-3 px-4">
-                    <Link to={`/admin/users/${u.uid}`} className="font-semibold text-[#0B1D3A] hover:underline">
+                    <Link to={`/admin/users/${u.uid}`} className="font-semibold text-[#18142C] hover:underline">
                       {u.displayName || u.username || u.email}
                     </Link>
                     <div className="text-slate-500">{u.email}</div>
@@ -898,7 +910,7 @@ export const AdminUsersPage: React.FC = () => {
                     </select>
                   </td>
                   <td className="py-3 px-4 text-right">
-                    <Link to={`/admin/users/${u.uid}`} className="text-[#1D4ED8] font-semibold hover:underline">
+                    <Link to={`/admin/users/${u.uid}`} className="text-[#7C3AED] font-semibold hover:underline">
                       Inspect
                     </Link>
                   </td>
@@ -1011,11 +1023,11 @@ export const AdminUserDetailPage: React.FC = () => {
     <PortalLayout portal="admin" title="User Account Detail">
       <AdminUsersHubTabs />
       {!user ? (
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 text-sm text-slate-500">Loading user...</div>
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 text-sm text-slate-500">Loading user...</div>
       ) : (
         <div className="space-y-6 max-w-4xl">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
-            <h2 className="font-display text-xl font-bold text-[#0B1D3A]">{user.displayName || user.email}</h2>
+          <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 space-y-4">
+            <h2 className="font-display text-xl font-bold text-[#18142C]">{user.displayName || user.email}</h2>
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div><span className="text-xs text-slate-500 block">UID</span><span className="font-mono text-xs">{user.uid}</span></div>
               <div><span className="text-xs text-slate-500 block">Email</span><span>{user.email}</span></div>
@@ -1028,14 +1040,14 @@ export const AdminUserDetailPage: React.FC = () => {
                 await requestPasswordReset(user.email);
                 notify('Password reset triggered', `Sent Firebase password reset email to ${user.email}.`, 'success');
               }}
-              className="px-4 py-2 bg-[#0B1D3A] text-white text-xs font-semibold rounded-lg"
+              className="px-4 py-2 bg-[#18142C] text-white text-xs font-semibold rounded-lg"
             >
               Send Secure Password Reset Email
             </button>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
-            <h3 className="font-display font-bold text-base text-[#0B1D3A]">User Digital Profiles ({profiles.length})</h3>
+          <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 space-y-4">
+            <h3 className="font-display font-bold text-base text-[#18142C]">User Digital Profiles ({profiles.length})</h3>
             {profiles.length === 0 ? (
               <p className="text-xs text-slate-500">No digital profiles created by this user.</p>
             ) : (
@@ -1045,9 +1057,9 @@ export const AdminUserDetailPage: React.FC = () => {
                     Boolean(p.paymentConfirmed) ||
                     isOrderPaymentConfirmed(orders, p.profileId, p.slug);
                   return (
-                    <div key={p.profileId} className="p-4 border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div key={p.profileId} className="p-4 border border-[#E9E4F5] rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div>
-                        <div className="font-semibold text-sm text-[#0B1D3A]">
+                        <div className="font-semibold text-sm text-[#18142C]">
                           {p.profileLabel || p.personalInformation.fullName || p.slug}
                         </div>
                         <div className="text-xs font-mono text-slate-500">
@@ -1059,7 +1071,7 @@ export const AdminUserDetailPage: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setInspectedProfile(p)}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 border border-[#1D4ED8]/30 bg-blue-50/70 text-[#1D4ED8] rounded-lg text-xs font-semibold hover:bg-blue-100"
+                          className="inline-flex items-center gap-1 px-3 py-1.5 border border-[#7C3AED]/30 bg-[#F3EEFF]/80 text-[#7C3AED] rounded-lg text-xs font-semibold hover:bg-[#EAE3FF]"
                         >
                           <Eye className="h-3.5 w-3.5" />
                           <span>Inspect Profile</span>
@@ -1068,7 +1080,7 @@ export const AdminUserDetailPage: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => handleMarkPaymentCompleted(p, true)}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#1D4ED8] hover:bg-blue-700 text-white text-xs font-semibold"
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold"
                           >
                             <CreditCard className="h-3.5 w-3.5" />
                             <span>Mark Paid</span>
@@ -1090,7 +1102,7 @@ export const AdminUserDetailPage: React.FC = () => {
                           href={`/p/${p.slug}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          className="inline-flex items-center gap-1 px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 hover:bg-[#FAF9FE]"
                         >
                           <ExternalLink className="h-3.5 w-3.5" />
                           <span>Public View</span>
@@ -1098,7 +1110,7 @@ export const AdminUserDetailPage: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => handleTogglePublic(p)}
-                          className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold hover:bg-slate-50"
+                          className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold hover:bg-[#FAF9FE]"
                         >
                           {p.isPublic && !p.adminDisabled ? 'Disable Link' : 'Enable Link'}
                         </button>
@@ -1204,7 +1216,7 @@ export const AdminPrintersPage: React.FC = () => {
     <PortalLayout portal="admin" title="Print Partners Management">
       <AdminUsersHubTabs />
       <div className="space-y-6">
-        <form onSubmit={handleAddPrinter} className="bg-white border border-slate-200 rounded-2xl p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+        <form onSubmit={handleAddPrinter} className="bg-white border border-[#E9E4F5] rounded-2xl p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
           <div>
             <label className="block text-[11px] font-medium text-slate-500 mb-1">
               Print Auth ID (Auto-Generated)
@@ -1216,7 +1228,7 @@ export const AdminPrintersPage: React.FC = () => {
                 value={uidInput}
                 onChange={(e) => setUidInput(e.target.value)}
                 placeholder="prt_auto_id"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono bg-slate-50"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono bg-[#FAF9FE]"
               />
               <button
                 type="button"
@@ -1240,12 +1252,12 @@ export const AdminPrintersPage: React.FC = () => {
             <label className="block text-[11px] font-medium text-slate-500 mb-1">Email *</label>
             <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email *" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs" />
           </div>
-          <button type="submit" className="px-4 py-2 bg-[#0B1D3A] hover:bg-[#132A52] text-white rounded-lg text-xs font-semibold h-[34px]">Add Printer</button>
+          <button type="submit" className="px-4 py-2 bg-[#18142C] hover:bg-[#2A2048] text-white rounded-lg text-xs font-semibold h-[34px]">Add Printer</button>
         </form>
 
-        <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
+            <thead className="bg-[#FAF9FE] border-b border-[#E9E4F5] text-slate-500">
               <tr>
                 <th className="py-3 px-4">Facility</th>
                 <th className="py-3 px-4">Contact</th>
@@ -1256,7 +1268,7 @@ export const AdminPrintersPage: React.FC = () => {
                 <th className="py-3 px-4 text-right">Toggle</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-[#F0ECF9]">
               {printers.map((p) => {
                 const pOrders = orders.filter((o) => o.printerId === p.printerId);
                 const done = pOrders.filter((o) => ['Dispatched', 'In Transit', 'Delivered'].includes(o.orderStatus)).length;
@@ -1276,7 +1288,7 @@ export const AdminPrintersPage: React.FC = () => {
                   : undefined;
                 return (
                   <tr key={p.printerId}>
-                    <td className="py-3 px-4 font-semibold text-[#0B1D3A]">{p.businessName}<div className="font-mono text-[11px] text-slate-400">{p.printerId}</div></td>
+                    <td className="py-3 px-4 font-semibold text-[#18142C]">{p.businessName}<div className="font-mono text-[11px] text-slate-400">{p.printerId}</div></td>
                     <td className="py-3 px-4">{p.contactPerson}<div className="text-slate-500">{p.email}</div></td>
                     <td className="py-3 px-4">
                       {p.uid !== p.printerId ? (
@@ -1299,7 +1311,7 @@ export const AdminPrintersPage: React.FC = () => {
                               setLinkingPrinterId(null);
                             }
                           }}
-                          className="px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-xs font-semibold disabled:opacity-50"
+                          className="px-3 py-1.5 bg-[#F3EEFF] text-[#6D28D9] border border-[#DDD6FE] rounded text-xs font-semibold disabled:opacity-50"
                         >
                           {linkingPrinterId === p.printerId ? 'Linking...' : 'Link Login'}
                         </button>
@@ -1321,7 +1333,7 @@ export const AdminPrintersPage: React.FC = () => {
                           );
                           load();
                         }}
-                        className="px-3 py-1 border border-slate-300 rounded text-xs font-medium hover:bg-slate-50"
+                        className="px-3 py-1 border border-slate-300 rounded text-xs font-medium hover:bg-[#FAF9FE]"
                       >
                         {p.status === 'Active' ? 'Block' : 'Activate'}
                       </button>
@@ -1374,27 +1386,27 @@ export const AdminOrdersPage: React.FC = () => {
       <div className="space-y-5">
         {/* Payment & Order KPIs */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white border border-slate-200 rounded-xl p-4">
+          <div className="bg-white border border-[#E9E4F5] rounded-xl p-4">
             <div className="text-xs text-slate-500">Total Orders</div>
-            <div className="mt-1 font-display text-xl font-bold text-[#0B1D3A] tabular-nums">{orders.length}</div>
+            <div className="mt-1 font-display text-xl font-bold text-[#18142C] tabular-nums">{orders.length}</div>
           </div>
-          <div className="bg-white border border-slate-200 rounded-xl p-4">
+          <div className="bg-white border border-[#E9E4F5] rounded-xl p-4">
             <div className="text-xs text-slate-500">Payment Pending</div>
             <div className="mt-1 font-display text-xl font-bold text-amber-600 tabular-nums">{pendingPayCount}</div>
           </div>
-          <div className="bg-white border border-slate-200 rounded-xl p-4">
+          <div className="bg-white border border-[#E9E4F5] rounded-xl p-4">
             <div className="text-xs text-slate-500">Completed / Verified</div>
             <div className="mt-1 font-display text-xl font-bold text-emerald-700 tabular-nums">
               {completedPayCount} (₹{confirmedRev.toLocaleString('en-IN')})
             </div>
           </div>
-          <div className="bg-white border border-slate-200 rounded-xl p-4">
+          <div className="bg-white border border-[#E9E4F5] rounded-xl p-4">
             <div className="text-xs text-slate-500">Rejected / Failed / Refunded</div>
             <div className="mt-1 font-display text-xl font-bold text-rose-700 tabular-nums">{rejectedPayCount}</div>
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-wrap gap-3 items-center justify-between">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-4 flex flex-wrap gap-3 items-center justify-between">
           <div className="flex flex-wrap gap-2.5 flex-1">
             <input
               type="text"
@@ -1440,9 +1452,9 @@ export const AdminOrdersPage: React.FC = () => {
           </button>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
+            <thead className="bg-[#FAF9FE] border-b border-[#E9E4F5] text-slate-500">
               <tr>
                 <th className="py-3 px-4">Order #</th>
                 <th className="py-3 px-4">Customer</th>
@@ -1453,14 +1465,14 @@ export const AdminOrdersPage: React.FC = () => {
                 <th className="py-3 px-4 text-right">Manage</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-[#F0ECF9]">
               {filtered.map((o) => (
                 <tr key={o.orderId}>
-                  <td className="py-3 px-4 font-mono font-semibold text-[#0B1D3A]">
+                  <td className="py-3 px-4 font-mono font-semibold text-[#18142C]">
                     {o.orderNumber}
                     {o.profileSlug && <div className="text-[11px] font-normal text-slate-400">/p/{o.profileSlug}</div>}
                     {(o.orderSource === 'shop' || o.shopItems?.length) && (
-                      <div className="text-[10px] font-sans font-semibold text-[#1D4ED8]">
+                      <div className="text-[10px] font-sans font-semibold text-[#7C3AED]">
                         Shop ({o.shopItems?.reduce((acc, it) => acc + it.quantity, 0) || o.quantity} items)
                       </div>
                     )}
@@ -1518,6 +1530,39 @@ export const AdminOrdersPage: React.FC = () => {
                           } else {
                             notify('Payment reconciled', `${o.orderNumber} -> ${nextPay}`, 'success');
                           }
+                          const payTemplate =
+                            nextPay === 'Verified' || nextPay === 'Completed'
+                              ? 'payment_success'
+                              : nextPay === 'Refunded'
+                                ? 'refund_notification'
+                                : nextPay === 'Rejected' || nextPay === 'Failed'
+                                  ? 'payment_failure'
+                                  : null;
+                          if (payTemplate && o.shippingAddress?.email) {
+                            try {
+                              const emailRes = await sendAndLogTransactionalEmail({
+                                orderId: o.orderId,
+                                uid: o.uid,
+                                to: o.shippingAddress.email,
+                                templateId: payTemplate,
+                                variables: {
+                                  ORDER_NUMBER: o.orderNumber,
+                                  CUSTOMER_NAME: o.shippingAddress.fullName || 'Valued Customer',
+                                  AMOUNT: String(o.total || ''),
+                                },
+                              });
+                              if (!emailRes.delivered) {
+                                const reason = formatEmailDeliveryFailureReason(emailRes);
+                                notify(
+                                  'Customer email attention needed',
+                                  reason || `Payment updated to ${nextPay}, but email could not be sent.`,
+                                  'info'
+                                );
+                              }
+                            } catch {
+                              // Non-blocking after payment reconciliation
+                            }
+                          }
                           load();
                         } catch (err) {
                           notify(
@@ -1540,7 +1585,7 @@ export const AdminOrdersPage: React.FC = () => {
                       : o.printerId || 'Unassigned'}
                   </td>
                   <td className="py-3 px-4">
-                    <div className="font-semibold text-[#1D4ED8]">{o.orderStatus}</div>
+                    <div className="font-semibold text-[#7C3AED]">{o.orderStatus}</div>
                     {ORDER_STATUS_FLOW.includes(o.orderStatus) && (
                       <div className="text-[10px] font-mono text-slate-400">
                         Step {ORDER_STATUS_FLOW.indexOf(o.orderStatus) + 1}/{ORDER_STATUS_FLOW.length}
@@ -1548,7 +1593,7 @@ export const AdminOrdersPage: React.FC = () => {
                     )}
                   </td>
                   <td className="py-3 px-4 text-right whitespace-nowrap">
-                    <Link to={`/admin/orders/${o.orderId}`} className="inline-flex items-center gap-1 px-3 py-1.5 bg-[#0B1D3A] hover:bg-[#132A52] text-white rounded-lg text-xs font-semibold">
+                    <Link to={`/admin/orders/${o.orderId}`} className="inline-flex items-center gap-1 px-3 py-1.5 bg-[#18142C] hover:bg-[#2A2048] text-white rounded-lg text-xs font-semibold">
                       <span>Fulfil / Timeline</span>
                     </Link>
                   </td>
@@ -1577,6 +1622,8 @@ export const AdminOrderDetailPage: React.FC = () => {
   const [pendingWorkflowStatus, setPendingWorkflowStatus] = useState<OrderStatus | null>(null);
   const [timelineError, setTimelineError] = useState<string | null>(null);
   const [timelineSuccess, setTimelineSuccess] = useState<string | null>(null);
+  const [dispatchEmailWarning, setDispatchEmailWarning] = useState<string | null>(null);
+  const [retryingDispatchEmail, setRetryingDispatchEmail] = useState(false);
   const [preparingPrint, setPreparingPrint] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
 
@@ -1615,7 +1662,7 @@ export const AdminOrderDetailPage: React.FC = () => {
   if (!order) {
     return (
       <PortalLayout portal="admin" title="Order Detail">
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 text-sm text-slate-500">Loading order...</div>
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 text-sm text-slate-500">Loading order...</div>
       </PortalLayout>
     );
   }
@@ -1660,31 +1707,64 @@ export const AdminOrderDetailPage: React.FC = () => {
         setOrder((prev) => (prev ? { ...prev, orderStatus: target } : prev));
       },
       onSuccess: async (target) => {
-        if (target === 'Printing in Progress') {
+        let emailWarningMsg: string | null = null;
+        const emailTemplate =
+          target === 'Printing in Progress'
+            ? 'printing_started'
+            : target === 'Delivered'
+              ? 'delivered'
+              : target === 'Cancelled'
+                ? 'order_cancelled'
+                : target === 'Dispatched' && order.trackingNumber
+                  ? 'dispatched'
+                  : null;
+
+        if (emailTemplate && order.shippingAddress?.email) {
           try {
-            await sendAndLogTransactionalEmail({
+            const emailRes = await sendAndLogTransactionalEmail({
+              orderId: order.orderId,
               uid: order.uid,
               to: order.shippingAddress.email,
-              templateId: 'printing_started',
-              variables: { ORDER_NUMBER: order.orderNumber },
+              templateId: emailTemplate,
+              variables:
+                emailTemplate === 'dispatched'
+                  ? buildDispatchedEmailVariables({
+                      orderNumber: order.orderNumber,
+                      orderId: order.orderId,
+                      customerName: order.shippingAddress?.fullName || 'Valued Customer',
+                      courierName: order.courierName || '',
+                      trackingNumber: order.trackingNumber || '',
+                      trackingUrl: order.trackingUrl || '',
+                      dispatchDate: order.dispatchDate || new Date().toISOString().slice(0, 10),
+                    })
+                  : {
+                      ORDER_NUMBER: order.orderNumber,
+                      CUSTOMER_NAME: order.shippingAddress?.fullName || 'Valued Customer',
+                    },
             });
-          } catch {
-            // Email notification is non-blocking once order status updates
-          }
-        } else if (target === 'Delivered') {
-          try {
-            await sendAndLogTransactionalEmail({
-              uid: order.uid,
-              to: order.shippingAddress.email,
-              templateId: 'delivered',
-              variables: { ORDER_NUMBER: order.orderNumber },
-            });
-          } catch {
-            // Email notification is non-blocking once order status updates
+            if (!emailRes.delivered) {
+              const reason = formatEmailDeliveryFailureReason(emailRes);
+              emailWarningMsg = reason
+                ? `Status updated to "${target}", but customer email failed: ${reason}`
+                : `Status updated to "${target}", but customer email could not be sent.`;
+            }
+          } catch (err) {
+            emailWarningMsg =
+              err instanceof Error
+                ? `Status updated to "${target}", but customer email failed: ${err.message}`
+                : `Status updated to "${target}", but customer email could not be sent.`;
           }
         }
-        setTimelineSuccess(`${order.orderNumber} updated to "${target}".`);
-        notify('Fulfilment updated', `${order.orderNumber} → ${target}`, 'success');
+
+        if (emailWarningMsg) {
+          setDispatchEmailWarning(emailWarningMsg);
+          setTimelineSuccess(null);
+          notify('Status updated; email attention needed', emailWarningMsg, 'info');
+        } else {
+          setDispatchEmailWarning(null);
+          setTimelineSuccess(`${order.orderNumber} updated to "${target}".`);
+          notify('Fulfilment updated', `${order.orderNumber} → ${target}`, 'success');
+        }
         await load().catch(() => null);
       },
       onError: (friendlyMessage) => {
@@ -1780,51 +1860,70 @@ export const AdminOrderDetailPage: React.FC = () => {
     setPendingWorkflowStatus('Dispatched');
     setTimelineError(null);
     setTimelineSuccess(null);
+    setDispatchEmailWarning(null);
     try {
-      await createServerShippingRecord({
-        orderId: order.orderId,
-        courierName: courierName.trim(),
-        trackingNumber: trackingNumber.trim(),
-        trackingUrl: trackingUrl.trim(),
-        dispatchDate,
+      await executeDispatchWithNotification({
+        order,
+        input: {
+          orderId: order.orderId,
+          courierName,
+          trackingNumber,
+          trackingUrl,
+          dispatchDate,
+        },
+        createShippingRecordFn: createServerShippingRecord,
+        sendEmailFn: sendAndLogTransactionalEmail,
+        onDispatchSaved: (updatedOrder) => {
+          setOrder(updatedOrder);
+          setShowDispatchForm(false);
+        },
+        onEmailSuccess: (message) => {
+          setDispatchEmailWarning(null);
+          setTimelineSuccess(message);
+          notify('Order dispatched', message, 'success');
+        },
+        onEmailFailure: (message, emailResult) => {
+          const reason = formatEmailDeliveryFailureReason(emailResult);
+          const fullMsg = reason ? `${message} Reason: ${reason}` : message;
+          setTimelineSuccess(null);
+          setDispatchEmailWarning(fullMsg);
+          notify('Dispatch saved; email failed', fullMsg, 'info');
+        },
+        onSaveFailure: (message) => {
+          setTimelineError(message);
+          notify('Dispatch failed', message, 'error');
+        },
       });
-      setOrder((prev) =>
-        prev
-          ? {
-              ...prev,
-              orderStatus: 'Dispatched',
-              courierName: courierName.trim(),
-              trackingNumber: trackingNumber.trim(),
-              trackingUrl: trackingUrl.trim(),
-              dispatchDate,
-            }
-          : prev
-      );
-      try {
-        await sendAndLogTransactionalEmail({
-          uid: order.uid,
-          to: order.shippingAddress.email,
-          templateId: 'dispatched',
-          variables: {
-            ORDER_NUMBER: order.orderNumber,
-            COURIER_NAME: courierName.trim(),
-            TRACKING_NUMBER: trackingNumber.trim(),
-          },
-        });
-      } catch {
-        // Email notification is non-blocking once dispatch is recorded
-      }
-      setShowDispatchForm(false);
-      setTimelineSuccess(`Order marked Dispatched via ${courierName.trim()} (${trackingNumber.trim()}).`);
-      notify('Order dispatched', `Courier ${courierName.trim()} (${trackingNumber.trim()}) recorded and customer notified.`, 'success');
       await load().catch(() => null);
-    } catch (err) {
-      const friendlyMessage = sanitizeTimelineErrorMessage(err, 'Unable to dispatch order.');
-      setTimelineError(friendlyMessage);
-      notify('Dispatch failed', friendlyMessage, 'error');
     } finally {
       setUpdatingWorkflow(false);
       setPendingWorkflowStatus(null);
+    }
+  };
+
+  const handleRetryDispatchEmail = async () => {
+    if (!userRecord || !order || retryingDispatchEmail) return;
+    setRetryingDispatchEmail(true);
+    setTimelineError(null);
+    try {
+      await executeRetryDispatchEmail({
+        order,
+        sendEmailFn: sendAndLogTransactionalEmail,
+        onEmailSuccess: (message) => {
+          setDispatchEmailWarning(null);
+          setTimelineSuccess(message);
+          notify('Customer email sent', message, 'success');
+        },
+        onEmailFailure: (message, emailResult) => {
+          const reason = formatEmailDeliveryFailureReason(emailResult);
+          const fullMsg = reason ? `${message} Reason: ${reason}` : message;
+          setTimelineSuccess(null);
+          setDispatchEmailWarning(fullMsg);
+          notify('Email retry failed', fullMsg, 'error');
+        },
+      });
+    } finally {
+      setRetryingDispatchEmail(false);
     }
   };
 
@@ -1832,7 +1931,7 @@ export const AdminOrderDetailPage: React.FC = () => {
     <PortalLayout portal="admin" title={`Order ${order.orderNumber}`}>
       <div className="space-y-6">
         {/* Top Summary + Instant 300 DPI Print Actions */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2 text-xs font-mono text-slate-500">
               <span>{order.orderNumber}</span>
@@ -1841,9 +1940,9 @@ export const AdminOrderDetailPage: React.FC = () => {
               <span>·</span>
               <span>{order.cardType}</span>
               <span>·</span>
-              <span className="font-semibold text-[#0B1D3A]">₹{order.total}</span>
+              <span className="font-semibold text-[#18142C]">₹{order.total}</span>
             </div>
-            <h2 className="font-display text-xl font-bold text-[#0B1D3A]">
+            <h2 className="font-display text-xl font-bold text-[#18142C]">
               {order.shippingAddress.fullName}
             </h2>
             <p className="text-xs text-slate-600">
@@ -1854,7 +1953,7 @@ export const AdminOrderDetailPage: React.FC = () => {
                 href={`/p/${order.profileSlug}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs font-mono text-[#1D4ED8] hover:underline pt-0.5"
+                className="inline-flex items-center gap-1 text-xs font-mono text-[#7C3AED] hover:underline pt-0.5"
               >
                 <span>Public Profile: /p/{order.profileSlug}</span>
                 <ExternalLink className="h-3 w-3" />
@@ -1867,7 +1966,7 @@ export const AdminOrderDetailPage: React.FC = () => {
               type="button"
               disabled={generatingPdf || preparingPrint}
               onClick={() => handleDownloadPdf(false)}
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-[#0B1D3A] hover:bg-[#132A52] text-white rounded-xl text-xs font-semibold disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-[#18142C] hover:bg-[#2A2048] text-white rounded-xl text-xs font-semibold disabled:opacity-50"
             >
               <PrinterIcon className="h-4 w-4" />
               <span>{generatingPdf ? 'Building...' : 'Download PDF'}</span>
@@ -1876,16 +1975,16 @@ export const AdminOrderDetailPage: React.FC = () => {
               type="button"
               disabled={generatingPdf || preparingPrint}
               onClick={() => handleDownloadSidePng('front')}
-              className="inline-flex items-center gap-1.5 px-3 py-2.5 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-2.5 border border-slate-300 hover:bg-[#FAF9FE] text-slate-700 rounded-xl text-xs font-semibold disabled:opacity-50"
             >
-              <ImageIcon className="h-4 w-4 text-[#1D4ED8]" />
+              <ImageIcon className="h-4 w-4 text-[#7C3AED]" />
               <span>Front PNG</span>
             </button>
             <button
               type="button"
               disabled={generatingPdf || preparingPrint}
               onClick={() => handleDownloadSidePng('back')}
-              className="inline-flex items-center gap-1.5 px-3 py-2.5 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-2.5 border border-slate-300 hover:bg-[#FAF9FE] text-slate-700 rounded-xl text-xs font-semibold disabled:opacity-50"
             >
               <ImageIcon className="h-4 w-4 text-emerald-600" />
               <span>Back PNG</span>
@@ -1894,7 +1993,7 @@ export const AdminOrderDetailPage: React.FC = () => {
               type="button"
               disabled={generatingPdf || preparingPrint}
               onClick={() => handleDownloadPdf(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 border border-slate-300 hover:bg-[#FAF9FE] text-slate-700 rounded-xl text-xs font-semibold disabled:opacity-50"
             >
               <FileText className="h-4 w-4" />
               <span>Proof w/ Guides</span>
@@ -1902,7 +2001,7 @@ export const AdminOrderDetailPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setShowDispatchForm((prev) => !prev)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 border border-[#1D4ED8] text-[#1D4ED8] bg-blue-50/70 hover:bg-blue-100 rounded-xl text-xs font-semibold"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 border border-[#7C3AED] text-[#7C3AED] bg-[#F3EEFF]/80 hover:bg-[#EAE3FF] rounded-xl text-xs font-semibold"
             >
               <Truck className="h-4 w-4" />
               <span>{order.trackingNumber ? 'Update Courier / AWB' : 'Dispatch Order'}</span>
@@ -1917,8 +2016,13 @@ export const AdminOrderDetailPage: React.FC = () => {
           updating={updatingWorkflow}
           pendingStatus={pendingWorkflowStatus}
           errorMessage={timelineError}
+          warningMessage={dispatchEmailWarning}
           successMessage={timelineSuccess}
+          retryActionLabel="Retry Dispatch Email"
+          retryingAction={retryingDispatchEmail}
+          onRetryAction={handleRetryDispatchEmail}
           onDismissError={() => setTimelineError(null)}
+          onDismissWarning={() => setDispatchEmailWarning(null)}
           onDismissSuccess={() => setTimelineSuccess(null)}
           printerLabel={printerLabel}
           courierName={order.courierName}
@@ -1935,10 +2039,10 @@ export const AdminOrderDetailPage: React.FC = () => {
 
         {/* In-House / Admin Courier Dispatch Panel */}
         {showDispatchForm && (
-          <form onSubmit={handleAdminDispatch} className="bg-white border border-blue-200 rounded-2xl p-6 space-y-4">
+          <form onSubmit={handleAdminDispatch} className="bg-white border border-[#DDD6FE] rounded-2xl p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 font-display font-bold text-sm text-[#0B1D3A]">
-                <Truck className="h-4 w-4 text-[#1D4ED8]" />
+              <div className="flex items-center gap-2 font-display font-bold text-sm text-[#18142C]">
+                <Truck className="h-4 w-4 text-[#7C3AED]" />
                 <span>Courier Dispatch & Tracking (Sets Status to Dispatched)</span>
               </div>
               <button
@@ -2005,8 +2109,8 @@ export const AdminOrderDetailPage: React.FC = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Printer Assignment, Payment & Notes */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
-            <h2 className="font-display font-bold text-base text-[#0B1D3A]">Print Routing, Payment & Notes</h2>
+          <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 space-y-4">
+            <h2 className="font-display font-bold text-base text-[#18142C]">Print Routing, Payment & Notes</h2>
 
             <div className="space-y-2">
               <label className="block text-xs font-medium text-slate-600">Assign Print Facility / In-House Press</label>
@@ -2027,6 +2131,29 @@ export const AdminOrderDetailPage: React.FC = () => {
                     if (!userRecord || !selectedPrinter) return;
                     try {
                       await assignOrderPrinter(order.orderId, selectedPrinter);
+                      if (selectedPrinter !== 'admin_inhouse') {
+                        const targetPrinter = printers.find((p) => p.printerId === selectedPrinter);
+                        if (targetPrinter?.email) {
+                          const pRes = await sendAndLogTransactionalEmail({
+                            orderId: order.orderId,
+                            uid: order.uid,
+                            to: targetPrinter.email,
+                            templateId: 'printer_assigned',
+                            variables: {
+                              ORDER_NUMBER: order.orderNumber,
+                              CUSTOMER_NAME: targetPrinter.contactPerson || targetPrinter.businessName || 'Print Partner',
+                            },
+                          });
+                          if (!pRes.delivered) {
+                            const reason = formatEmailDeliveryFailureReason(pRes);
+                            notify(
+                              'Printer email attention needed',
+                              reason || 'Printer assigned, but notification email could not be sent.',
+                              'info'
+                            );
+                          }
+                        }
+                      }
                       notify('Print destination updated', `Routed to ${selectedPrinter === 'admin_inhouse' ? 'In-House Press' : selectedPrinter}.`, 'success');
                       load();
                     } catch (err) {
@@ -2037,16 +2164,16 @@ export const AdminOrderDetailPage: React.FC = () => {
                       );
                     }
                   }}
-                  className="px-4 py-2 bg-[#1D4ED8] text-white text-xs font-semibold rounded-lg"
+                  className="px-4 py-2 bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold rounded-lg cursor-pointer transition-colors"
                 >
                   Assign
                 </button>
               </div>
             </div>
 
-            <div className="pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="pt-3 border-t border-[#F0ECF9] grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2">
-                <label className="block text-xs font-medium text-slate-600">Change Payment Status</label>
+                <label className="block text-xs font-medium text-[#64607D]">Change Payment Status</label>
                 <select
                   value={order.paymentStatus}
                   onChange={async (e) => {
@@ -2085,6 +2212,39 @@ export const AdminOrderDetailPage: React.FC = () => {
                         }
                       } else {
                         notify('Payment reconciled', nextPay, 'success');
+                      }
+                      const payTemplate =
+                        nextPay === 'Verified' || nextPay === 'Completed'
+                          ? 'payment_success'
+                          : nextPay === 'Refunded'
+                            ? 'refund_notification'
+                            : nextPay === 'Rejected' || nextPay === 'Failed'
+                              ? 'payment_failure'
+                              : null;
+                      if (payTemplate && order.shippingAddress?.email) {
+                        try {
+                          const emailRes = await sendAndLogTransactionalEmail({
+                            orderId: order.orderId,
+                            uid: order.uid,
+                            to: order.shippingAddress.email,
+                            templateId: payTemplate,
+                            variables: {
+                              ORDER_NUMBER: order.orderNumber,
+                              CUSTOMER_NAME: order.shippingAddress.fullName || 'Valued Customer',
+                              AMOUNT: String(order.total || ''),
+                            },
+                          });
+                          if (!emailRes.delivered) {
+                            const reason = formatEmailDeliveryFailureReason(emailRes);
+                            setDispatchEmailWarning(
+                              reason
+                                ? `Payment updated to ${nextPay}, but customer email failed: ${reason}`
+                                : `Payment updated to ${nextPay}, but customer email could not be sent.`
+                            );
+                          }
+                        } catch {
+                          // Non-blocking after payment update
+                        }
                       }
                       load();
                     } catch (err) {
@@ -2128,7 +2288,7 @@ export const AdminOrderDetailPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="pt-3 border-t border-slate-100 space-y-2">
+            <div className="pt-3 border-t border-[#F0ECF9] space-y-2">
               <label className="block text-xs font-medium text-slate-600">Internal Admin Notes</label>
               <textarea
                 rows={3}
@@ -2158,7 +2318,7 @@ export const AdminOrderDetailPage: React.FC = () => {
                       );
                     }
                   }}
-                  className="px-4 py-2 bg-[#0B1D3A] text-white text-xs font-semibold rounded-lg"
+                  className="px-4 py-2 bg-[#18142C] text-white text-xs font-semibold rounded-lg"
                 >
                   Save Notes
                 </button>
@@ -2180,13 +2340,28 @@ export const AdminOrderDetailPage: React.FC = () => {
                         orderStatus: 'Refunded',
                         reason: `Admin initiated refund and cancellation for ${order.orderNumber}`,
                       });
-                      await sendAndLogTransactionalEmail({
+                      const refundEmailRes = await sendAndLogTransactionalEmail({
+                        orderId: order.orderId,
                         uid: order.uid,
                         to: order.shippingAddress.email,
                         templateId: 'refund_notification',
-                        variables: { ORDER_NUMBER: order.orderNumber, AMOUNT: String(order.total) },
+                        variables: {
+                          ORDER_NUMBER: order.orderNumber,
+                          CUSTOMER_NAME: order.shippingAddress.fullName || 'Valued Customer',
+                          AMOUNT: String(order.total),
+                        },
                       });
-                      notify('Order refunded', `${order.orderNumber} marked Refunded via server.`, 'success');
+                      if (!refundEmailRes.delivered) {
+                        const reason = formatEmailDeliveryFailureReason(refundEmailRes);
+                        setDispatchEmailWarning(
+                          reason
+                            ? `Order marked Refunded, but customer refund email failed: ${reason}`
+                            : 'Order marked Refunded, but customer refund email could not be sent.'
+                        );
+                        notify('Order refunded; email failed', reason || 'Check email configuration.', 'info');
+                      } else {
+                        notify('Order refunded', `${order.orderNumber} marked Refunded & email sent.`, 'success');
+                      }
                       load();
                     } catch (err) {
                       notify(
@@ -2205,24 +2380,24 @@ export const AdminOrderDetailPage: React.FC = () => {
           </div>
 
           {/* QR Artwork & Print File Readiness / Shop Items */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
+          <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 space-y-4">
             {order.shopItems && order.shopItems.length > 0 && (
-              <div className="space-y-3 pb-4 border-b border-slate-100">
-                <h2 className="font-display font-bold text-base text-[#0B1D3A]">
+              <div className="space-y-3 pb-4 border-b border-[#F0ECF9]">
+                <h2 className="font-display font-bold text-base text-[#18142C]">
                   Ordered Shop Smart Tags ({order.shopItems.reduce((a, b) => a + b.quantity, 0)} items)
                 </h2>
-                <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                <div className="divide-y divide-[#F0ECF9] border border-[#E9E4F5] rounded-xl overflow-hidden">
                   {order.shopItems.map((it) => (
-                    <div key={it.productId} className="p-3 bg-slate-50/70 flex items-center justify-between gap-3 text-xs">
+                    <div key={it.productId} className="p-3 bg-[#FAF9FE]/70 flex items-center justify-between gap-3 text-xs">
                       <div className="min-w-0">
-                        <div className="font-semibold text-[#0B1D3A]">{it.name}</div>
+                        <div className="font-semibold text-[#18142C]">{it.name}</div>
                         <div className="text-[11px] text-slate-500">
                           {[it.categoryName, it.cardType].filter(Boolean).join(' · ') || 'Smart Safety Tag'}
                         </div>
                       </div>
                       <div className="text-right font-mono tabular-nums shrink-0">
                         <div className="text-slate-600">{it.quantity} × ₹{it.priceInr}</div>
-                        <div className="font-bold text-[#0B1D3A]">₹{it.lineTotal ?? it.priceInr * it.quantity}</div>
+                        <div className="font-bold text-[#18142C]">₹{it.lineTotal ?? it.priceInr * it.quantity}</div>
                       </div>
                     </div>
                   ))}
@@ -2230,10 +2405,10 @@ export const AdminOrderDetailPage: React.FC = () => {
               </div>
             )}
 
-            <h2 className="font-display font-bold text-base text-[#0B1D3A]">Verified QR Code &amp; Print Files</h2>
+            <h2 className="font-display font-bold text-base text-[#18142C]">Verified QR Code &amp; Print Files</h2>
             {qr?.pngDataUrl ? (
               <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                <img src={qr.pngDataUrl} alt="Order QR" className="w-28 h-28 border border-slate-200 rounded-xl shrink-0" />
+                <img src={qr.pngDataUrl} alt="Order QR" className="w-28 h-28 border border-[#E9E4F5] rounded-xl shrink-0" />
                 <div className="space-y-2.5 text-xs min-w-0 flex-1">
                   <div className="font-mono text-slate-600 break-all">{qr.targetUrl}</div>
                   <div className="flex flex-wrap gap-2">
@@ -2241,7 +2416,7 @@ export const AdminOrderDetailPage: React.FC = () => {
                       type="button"
                       disabled={generatingPdf}
                       onClick={() => handleDownloadPdf(false)}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#0B1D3A] text-white rounded-lg font-semibold disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#18142C] text-white rounded-lg font-semibold disabled:opacity-50"
                     >
                       <PrinterIcon className="h-3.5 w-3.5" />
                       <span>Download PDF</span>
@@ -2250,16 +2425,16 @@ export const AdminOrderDetailPage: React.FC = () => {
                       type="button"
                       disabled={generatingPdf}
                       onClick={() => handleDownloadSidePng('front')}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-lg font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-lg font-semibold text-slate-700 hover:bg-[#FAF9FE] disabled:opacity-50"
                     >
-                      <ImageIcon className="h-3.5 w-3.5 text-[#1D4ED8]" />
+                      <ImageIcon className="h-3.5 w-3.5 text-[#7C3AED]" />
                       <span>Front PNG</span>
                     </button>
                     <button
                       type="button"
                       disabled={generatingPdf}
                       onClick={() => handleDownloadSidePng('back')}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-lg font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-lg font-semibold text-slate-700 hover:bg-[#FAF9FE] disabled:opacity-50"
                     >
                       <ImageIcon className="h-3.5 w-3.5 text-emerald-600" />
                       <span>Back PNG</span>
@@ -2267,7 +2442,7 @@ export const AdminOrderDetailPage: React.FC = () => {
                     <a
                       href={qr.pngDataUrl}
                       download={`${order.orderNumber}-qr.png`}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-lg font-semibold text-slate-700 hover:bg-slate-50"
+                      className="inline-flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-lg font-semibold text-slate-700 hover:bg-[#FAF9FE]"
                     >
                       <Download className="h-3.5 w-3.5" />
                       <span>QR PNG</span>
@@ -2276,7 +2451,7 @@ export const AdminOrderDetailPage: React.FC = () => {
                 </div>
               </div>
             ) : (
-              <div className="p-4 rounded-xl bg-slate-50 border border-dashed border-slate-300 space-y-3">
+              <div className="p-4 rounded-xl bg-[#FAF9FE] border border-dashed border-slate-300 space-y-3">
                 <p className="text-xs text-slate-600">
                   {order.designId === 'shop_direct'
                     ? 'Direct Shop product order. Generate a printable pack/tag QR reference if needed for fulfilment.'
@@ -2286,7 +2461,7 @@ export const AdminOrderDetailPage: React.FC = () => {
                   type="button"
                   disabled={preparingPrint}
                   onClick={handlePrepareQrAndPrint}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#1D4ED8] hover:bg-[#1E40AF] text-white rounded-lg text-xs font-semibold disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#7C3AED] hover:bg-[#6D28D9] text-white rounded-lg text-xs font-semibold disabled:opacity-50"
                 >
                   <QrCode className="h-3.5 w-3.5" />
                   <span>{preparingPrint ? 'Generating Print QR...' : 'Generate Print QR & Prepare Files'}</span>
@@ -2295,8 +2470,8 @@ export const AdminOrderDetailPage: React.FC = () => {
             )}
 
             {design && (
-              <div className="pt-4 border-t border-slate-100 space-y-3">
-                <div className="text-xs font-semibold text-[#0B1D3A]">
+              <div className="pt-4 border-t border-[#F0ECF9] space-y-3">
+                <div className="text-xs font-semibold text-[#18142C]">
                   Card Artwork Proof ({design.dimensions} · {design.cardOrientation})
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -2337,9 +2512,9 @@ export const AdminPaymentsPage: React.FC = () => {
   return (
     <PortalLayout portal="admin" title="Payment Transactions">
       <AdminOrdersHubTabs />
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
+      <div className="bg-white border border-[#E9E4F5] rounded-2xl overflow-x-auto">
         <table className="w-full text-left text-xs">
-          <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
+          <thead className="bg-[#FAF9FE] border-b border-[#E9E4F5] text-slate-500">
             <tr>
               <th className="py-3 px-4">Order ID</th>
               <th className="py-3 px-4">Gateway</th>
@@ -2349,7 +2524,7 @@ export const AdminPaymentsPage: React.FC = () => {
               <th className="py-3 px-4">Status</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-[#F0ECF9]">
             {payments.map((p) => (
               <tr key={p.paymentId}>
                 <td className="py-3 px-4 font-mono">{p.orderId}</td>
@@ -2543,17 +2718,17 @@ export const AdminCardTemplatesPage: React.FC = () => {
       <AdminCardsHubTabs />
       <div className="space-y-6">
         {/* Catalog Visibility & Default Summary Bar */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <CheckSquare className="h-4 w-4 text-[#1D4ED8]" />
-              <h2 className="font-display font-bold text-sm sm:text-base text-[#0B1D3A]">
+              <CheckSquare className="h-4 w-4 text-[#7C3AED]" />
+              <h2 className="font-display font-bold text-sm sm:text-base text-[#18142C]">
                 Customer Template Visibility &amp; Default Selection
               </h2>
             </div>
             <p className="text-xs text-slate-600">
               Check the templates below to make them visible in Customer Design Studio. Only checked templates ({' '}
-              <strong className="text-[#0B1D3A]">
+              <strong className="text-[#18142C]">
                 {enabledCount} of {templates.length}
               </strong>{' '}
               ) are shown to users. Current Default:{' '}
@@ -2573,7 +2748,7 @@ export const AdminCardTemplatesPage: React.FC = () => {
               type="button"
               disabled={busyId === '__bulk__'}
               onClick={() => handleBulkVisibility(false)}
-              className="px-3 py-1.5 rounded-lg border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold disabled:opacity-50"
+              className="px-3 py-1.5 rounded-lg border border-slate-300 bg-[#FAF9FE] hover:bg-slate-100 text-slate-700 text-xs font-semibold disabled:opacity-50"
             >
               Uncheck All
             </button>
@@ -2581,9 +2756,9 @@ export const AdminCardTemplatesPage: React.FC = () => {
         </div>
 
         {/* Add New Template Form */}
-        <form onSubmit={handleQuickAdd} className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4">
+        <form onSubmit={handleQuickAdd} className="bg-white border border-[#E9E4F5] rounded-2xl p-5 space-y-4">
           <div className="flex items-center justify-between gap-2">
-            <h3 className="font-display font-bold text-sm text-[#0B1D3A]">Add New Card Template</h3>
+            <h3 className="font-display font-bold text-sm text-[#18142C]">Add New Card Template</h3>
             <span className="text-[11px] text-slate-500">Upload custom artwork or design layout &amp; set default</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
@@ -2653,8 +2828,8 @@ export const AdminCardTemplatesPage: React.FC = () => {
               />
             </div>
             <div className="lg:col-span-4 flex flex-wrap items-center gap-2">
-              <label className="inline-flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50 cursor-pointer">
-                <Upload className="h-3.5 w-3.5 text-[#1D4ED8]" />
+              <label className="inline-flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-[#FAF9FE] cursor-pointer">
+                <Upload className="h-3.5 w-3.5 text-[#7C3AED]" />
                 <span>{draftFrontBgImage ? 'Change Front BG' : 'Front BG Image'}</span>
                 <input
                   type="file"
@@ -2674,7 +2849,7 @@ export const AdminCardTemplatesPage: React.FC = () => {
                   }}
                 />
               </label>
-              <label className="inline-flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50 cursor-pointer">
+              <label className="inline-flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-[#FAF9FE] cursor-pointer">
                 <Upload className="h-3.5 w-3.5 text-emerald-700" />
                 <span>{draftBackBgImage ? 'Change Back BG' : 'Back BG Image'}</span>
                 <input
@@ -2712,18 +2887,18 @@ export const AdminCardTemplatesPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setModalState({ template: buildNewTemplateDraft(), isNew: true })}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 border border-[#1D4ED8] text-[#1D4ED8] bg-blue-50/70 hover:bg-blue-100 rounded-lg text-xs font-semibold"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 border border-[#7C3AED] text-[#7C3AED] bg-[#F3EEFF]/80 hover:bg-[#EAE3FF] rounded-lg text-xs font-semibold"
               >
                 <Sparkles className="h-3.5 w-3.5" />
                 <span>Customize Layout Before Saving</span>
               </button>
-              <button type="submit" className="px-4 py-2 bg-[#0B1D3A] hover:bg-[#132A52] text-white rounded-lg text-xs font-semibold">
+              <button type="submit" className="px-4 py-2 bg-[#18142C] hover:bg-[#2A2048] text-white rounded-lg text-xs font-semibold">
                 Add Card Template
               </button>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-slate-100">
+          <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-[#F0ECF9]">
             <div className="flex flex-wrap items-center gap-5">
               <label className="inline-flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                 <input
@@ -2731,11 +2906,11 @@ export const AdminCardTemplatesPage: React.FC = () => {
                   checked={newIsDefault ? true : newActive}
                   disabled={newIsDefault}
                   onChange={(e) => setNewActive(e.target.checked)}
-                  className="h-4 w-4 accent-[#1D4ED8]"
+                  className="h-4 w-4 accent-[#7C3AED]"
                 />
                 <span>Enable immediately for users</span>
               </label>
-              <label className="inline-flex items-center gap-2 text-xs font-semibold text-[#0B1D3A] cursor-pointer">
+              <label className="inline-flex items-center gap-2 text-xs font-semibold text-[#18142C] cursor-pointer">
                 <input
                   type="checkbox"
                   checked={newIsDefault}
@@ -2783,7 +2958,7 @@ export const AdminCardTemplatesPage: React.FC = () => {
         </form>
 
         {/* Template Type Filter Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-2 bg-white border border-slate-200 rounded-2xl p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-white border border-[#E9E4F5] rounded-2xl p-3">
           <span className="text-xs font-semibold text-slate-600 px-1">Filter by Profile Type:</span>
           <div className="flex flex-wrap gap-1.5">
             {(
@@ -2802,8 +2977,8 @@ export const AdminCardTemplatesPage: React.FC = () => {
                 onClick={() => setTypeFilter(f.id)}
                 className={`px-3 py-1 rounded-lg text-xs font-semibold border transition-colors ${
                   typeFilter === f.id
-                    ? 'bg-[#0B1D3A] text-white border-[#0B1D3A]'
-                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                    ? 'bg-[#18142C] text-white border-[#18142C]'
+                    : 'bg-[#FAF9FE] text-slate-600 border-[#E9E4F5] hover:bg-slate-100'
                 }`}
               >
                 {f.label}
@@ -2820,20 +2995,20 @@ export const AdminCardTemplatesPage: React.FC = () => {
                 t.isDefault
                   ? 'border-amber-400 ring-1 ring-amber-200'
                   : t.active
-                  ? 'border-slate-200'
-                  : 'border-slate-200 bg-slate-50/70 opacity-85'
+                  ? 'border-[#E9E4F5]'
+                  : 'border-[#E9E4F5] bg-[#FAF9FE]/70 opacity-85'
               }`}
             >
               <div className="space-y-3">
                 {/* Top Checkbox + Default Indicator */}
-                <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                <div className="flex items-center justify-between gap-2 pb-2 border-b border-[#F0ECF9]">
                   <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-800 cursor-pointer select-none">
                     <input
                       type="checkbox"
                       checked={t.active}
                       disabled={busyId === t.templateId}
                       onChange={(e) => handleToggleVisible(t, e.target.checked)}
-                      className="h-4 w-4 accent-[#1D4ED8] rounded"
+                      className="h-4 w-4 accent-[#7C3AED] rounded"
                     />
                     <span>{t.active ? 'Visible to Users' : 'Hidden from Users'}</span>
                   </label>
@@ -2848,7 +3023,7 @@ export const AdminCardTemplatesPage: React.FC = () => {
                       type="button"
                       disabled={busyId === t.templateId}
                       onClick={() => handleSetDefault(t)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 hover:border-amber-400 hover:bg-amber-50 text-[11px] font-semibold text-slate-700 hover:text-amber-800 disabled:opacity-50"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#E9E4F5] hover:border-amber-400 hover:bg-amber-50 text-[11px] font-semibold text-slate-700 hover:text-amber-800 disabled:opacity-50"
                     >
                       <Star className="h-3 w-3" />
                       <span>Set as Default</span>
@@ -2857,7 +3032,7 @@ export const AdminCardTemplatesPage: React.FC = () => {
                 </div>
 
                 {/* Live Card Miniature Preview */}
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5">
+                <div className="bg-[#FAF9FE] border border-[#E9E4F5] rounded-xl p-2.5">
                   <CardCanvasPreview
                     side={t.frontSpec}
                     orientation="landscape"
@@ -2874,14 +3049,14 @@ export const AdminCardTemplatesPage: React.FC = () => {
 
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <h3 className="font-display font-bold text-sm text-[#0B1D3A] truncate">{t.name}</h3>
+                    <h3 className="font-display font-bold text-sm text-[#18142C] truncate">{t.name}</h3>
                     <p className="text-xs text-slate-500">
                       {t.cardType} · {t.category || 'Standard'}
                       {t.profileType && t.profileType !== 'all' ? ` · ${t.profileType.toUpperCase()}` : ''}
                     </p>
                   </div>
                   <div className="text-right shrink-0">
-                    <span className="font-mono text-xs font-bold text-[#1D4ED8] block">
+                    <span className="font-mono text-xs font-bold text-[#7C3AED] block">
                       {t.pricingMode === 'fixed_pack'
                         ? `₹${resolveCardPricing(t).unitPriceInr}`
                         : `₹${resolveCardPricing(t, 'qr_only').unitPriceInr} / ₹${resolveCardPricing(t, 'qr_smart').unitPriceInr}`}
@@ -2902,17 +3077,17 @@ export const AdminCardTemplatesPage: React.FC = () => {
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center justify-between pt-3 border-t border-slate-100 gap-2">
+              <div className="flex flex-wrap items-center justify-between pt-3 border-t border-[#F0ECF9] gap-2">
                 <div className="flex flex-wrap items-center gap-3">
                   <button
                     type="button"
                     onClick={() => setModalState({ template: JSON.parse(JSON.stringify(t)) as CardTemplateRecord, isNew: false })}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-[#0B1D3A] hover:text-[#1D4ED8]"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-[#18142C] hover:text-[#7C3AED]"
                   >
                     <Pencil className="h-3.5 w-3.5" />
                     <span>Edit &amp; Design</span>
                   </button>
-                  <label className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-[#1D4ED8] cursor-pointer">
+                  <label className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-[#7C3AED] cursor-pointer">
                     <ImageIcon className="h-3.5 w-3.5" />
                     <span>{t.frontSpec.backgroundImageUrl ? 'Change BG' : 'Add BG'}</span>
                     <input
@@ -2977,20 +3152,20 @@ export const AdminQrManagementPage: React.FC = () => {
       <AdminOpsHubTabs />
       <div className="space-y-4">
         <div className="flex justify-end">
-          <Link to="/superadmin/qr-generator" className="px-4 py-2 bg-[#0B1D3A] text-white text-xs font-semibold rounded-lg">
+          <Link to="/superadmin/qr-generator" className="px-4 py-2 bg-[#18142C] text-white text-xs font-semibold rounded-lg">
             Open SuperAdmin URL QR Generator
           </Link>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {qrs.map((q) => (
-            <div key={q.qrCodeId} className="bg-white border border-slate-200 rounded-xl p-4 flex items-center gap-4">
-              {q.pngDataUrl && <img src={q.pngDataUrl} alt={q.qrCodeId} className="w-20 h-20 border border-slate-200 rounded" />}
+            <div key={q.qrCodeId} className="bg-white border border-[#E9E4F5] rounded-xl p-4 flex items-center gap-4">
+              {q.pngDataUrl && <img src={q.pngDataUrl} alt={q.qrCodeId} className="w-20 h-20 border border-[#E9E4F5] rounded" />}
               <div className="min-w-0 flex-1 text-xs space-y-1">
-                <div className="font-semibold text-[#0B1D3A]">{q.qrType}</div>
+                <div className="font-semibold text-[#18142C]">{q.qrType}</div>
                 <div className="font-mono text-slate-500 truncate">{q.targetUrl}</div>
                 <div className="flex gap-2 pt-1">
                   {q.pngDataUrl && (
-                    <a href={q.pngDataUrl} download={`${q.qrCodeId}.png`} className="text-[#1D4ED8] font-semibold hover:underline">
+                    <a href={q.pngDataUrl} download={`${q.qrCodeId}.png`} className="text-[#7C3AED] font-semibold hover:underline">
                       PNG
                     </a>
                   )}
@@ -3000,7 +3175,7 @@ export const AdminQrManagementPage: React.FC = () => {
                       const blob = new Blob([q.svgContent], { type: 'image/svg+xml' });
                       downloadBlob(blob, `${q.qrCodeId}.svg`);
                     }}
-                    className="text-[#1D4ED8] font-semibold hover:underline"
+                    className="text-[#7C3AED] font-semibold hover:underline"
                   >
                     SVG
                   </button>
@@ -3020,9 +3195,9 @@ export const AdminShippingPage: React.FC = () => {
   return (
     <PortalLayout portal="admin" title="Shipping & Dispatch Tracking">
       <AdminOrdersHubTabs />
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
+      <div className="bg-white border border-[#E9E4F5] rounded-2xl overflow-x-auto">
         <table className="w-full text-left text-xs">
-          <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
+          <thead className="bg-[#FAF9FE] border-b border-[#E9E4F5] text-slate-500">
             <tr>
               <th className="py-3 px-4">Order ID</th>
               <th className="py-3 px-4">Courier</th>
@@ -3030,7 +3205,7 @@ export const AdminShippingPage: React.FC = () => {
               <th className="py-3 px-4">Dispatch Date</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-[#F0ECF9]">
             {records.map((r) => (
               <tr key={r.shippingId}>
                 <td className="py-3 px-4 font-mono">{r.orderId}</td>
@@ -3054,8 +3229,8 @@ export const AdminReportsPage: React.FC = () => {
   return (
     <PortalLayout portal="admin" title="Reports & Analytics Export">
       <AdminOpsHubTabs />
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-5">
-        <h2 className="font-display font-bold text-base text-[#0B1D3A]">Export Platform Reports (CSV / Excel)</h2>
+      <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 space-y-5">
+        <h2 className="font-display font-bold text-base text-[#18142C]">Export Platform Reports (CSV / Excel)</h2>
         <div className="flex flex-wrap gap-3">
           <button
             type="button"
@@ -3077,7 +3252,7 @@ export const AdminReportsPage: React.FC = () => {
                 }))
               )
             }
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#0B1D3A] text-white text-xs font-semibold rounded-xl"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#18142C] text-white text-xs font-semibold rounded-xl"
           >
             <Download className="h-4 w-4" />
             <span>Export Sales & Revenue (.xlsx)</span>
@@ -3105,17 +3280,56 @@ export const AdminSettingsAndTicketsPage: React.FC = () => {
   const { userRecord } = useAuth();
   const { notify } = useToast();
   const location = useLocation();
-  const initialSubTab =
-    new URLSearchParams(location.search).get('tab') === 'tickets' ? 'tickets' : 'gateways';
-  const [subTab, setSubTab] = useState<'gateways' | 'tickets'>(initialSubTab);
+  const resolveTabFromSearch = (search: string): 'gateways' | 'tickets' | 'email' => {
+    const param = new URLSearchParams(search).get('tab');
+    if (param === 'tickets') return 'tickets';
+    if (param === 'email') return 'email';
+    return 'gateways';
+  };
+  const [subTab, setSubTab] = useState<'gateways' | 'tickets' | 'email'>(() =>
+    resolveTabFromSearch(location.search)
+  );
   const [tickets, setTickets] = useState<SupportTicketRecord[]>([]);
   const [templates, setTemplates] = useState<EmailTemplateRecord[]>([]);
   const [selectedTpl, setSelectedTpl] = useState<EmailTemplateRecord | null>(null);
+  const [emailLogs, setEmailLogs] = useState<NotificationRecord[]>([]);
+  const [loadingEmailLogs, setLoadingEmailLogs] = useState(false);
+  const [senderConfig, setSenderConfig] = useState<ResendSenderConfig>({
+    fromName: 'TapNex',
+    fromEmail: 'orders@tapnex.in',
+  });
+  const [savingSenderConfig, setSavingSenderConfig] = useState(false);
+  const [testEmailTarget, setTestEmailTarget] = useState('');
+  const [sendingTestEmail, setSendingTestEmail] = useState(false);
+  const [testEmailStatus, setTestEmailStatus] = useState<{
+    ok: boolean;
+    text: string;
+  } | null>(null);
 
   useEffect(() => {
     const param = new URLSearchParams(location.search).get('tab');
-    if (param === 'tickets' || param === 'gateways') setSubTab(param);
+    if (param === 'tickets' || param === 'gateways' || param === 'email') setSubTab(param);
   }, [location.search]);
+
+  useEffect(() => {
+    if (userRecord?.email && !testEmailTarget) {
+      setTestEmailTarget(userRecord.email);
+    }
+  }, [userRecord?.email]);
+
+  const loadEmailDiagnostics = async () => {
+    setLoadingEmailLogs(true);
+    try {
+      const [logs, cfg] = await Promise.all([
+        getEmailNotifications(100),
+        getResendSenderConfig(),
+      ]);
+      setEmailLogs(logs);
+      setSenderConfig(cfg);
+    } finally {
+      setLoadingEmailLogs(false);
+    }
+  };
 
   const load = () => {
     getSupportTickets().then(setTickets);
@@ -3123,8 +3337,57 @@ export const AdminSettingsAndTicketsPage: React.FC = () => {
       setTemplates(list);
       setSelectedTpl(list[0] || null);
     });
+    void loadEmailDiagnostics();
   };
   useEffect(() => { load(); }, []);
+
+  const handleSaveSenderConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userRecord || userRecord.role !== 'SUPERADMIN') return;
+    setSavingSenderConfig(true);
+    try {
+      await saveResendSenderConfig(senderConfig, {
+        uid: userRecord.uid,
+        email: userRecord.email,
+        role: userRecord.role,
+      });
+      notify('Sender configuration saved', `${senderConfig.fromName} <${senderConfig.fromEmail}>`, 'success');
+    } catch (err) {
+      notify('Save failed', err instanceof Error ? err.message : 'Unable to save sender config.', 'error');
+    } finally {
+      setSavingSenderConfig(false);
+    }
+  };
+
+  const handleSendTestEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userRecord || !testEmailTarget.trim()) return;
+    setSendingTestEmail(true);
+    setTestEmailStatus(null);
+    try {
+      const res = await sendTestTransactionalEmail({
+        uid: userRecord.uid,
+        to: testEmailTarget.trim(),
+        recipientName: userRecord.displayName || userRecord.email,
+      });
+      if (res.delivered) {
+        const msg = `Test email accepted by Resend${res.resendMessageId ? ` (ID: ${res.resendMessageId})` : ''}. Check ${testEmailTarget.trim()} inbox/spam.`;
+        setTestEmailStatus({ ok: true, text: msg });
+        notify('Test email sent', msg, 'success');
+      } else {
+        const reason = formatEmailDeliveryFailureReason(res) || 'Resend rejected or skipped the email.';
+        setTestEmailStatus({ ok: false, text: reason });
+        notify('Test email failed', reason, 'error');
+      }
+      await loadEmailDiagnostics();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unable to invoke test email.';
+      setTestEmailStatus({ ok: false, text: msg });
+      notify('Test email failed', msg, 'error');
+    } finally {
+      setSendingTestEmail(false);
+    }
+  };
 
   return (
     <PortalLayout portal="admin" title="Payment Gateways, Support & Email">
@@ -3134,10 +3397,10 @@ export const AdminSettingsAndTicketsPage: React.FC = () => {
         <button
           type="button"
           onClick={() => setSubTab('gateways')}
-          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold border transition-colors ${
+          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
             subTab === 'gateways'
-              ? 'bg-[#1D4ED8] text-white border-[#1D4ED8]'
-              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+              ? 'bg-[#7C3AED] text-white border-[#7C3AED]'
+              : 'bg-white text-[#18142C] border-[#E9E4F5] hover:bg-[#FAF9FE]'
           }`}
         >
           <CreditCard className="h-3.5 w-3.5" />
@@ -3145,35 +3408,218 @@ export const AdminSettingsAndTicketsPage: React.FC = () => {
         </button>
         <button
           type="button"
-          onClick={() => setSubTab('tickets')}
-          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold border transition-colors ${
-            subTab === 'tickets'
-              ? 'bg-[#1D4ED8] text-white border-[#1D4ED8]'
-              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+          onClick={() => setSubTab('email')}
+          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
+            subTab === 'email'
+              ? 'bg-[#7C3AED] text-white border-[#7C3AED]'
+              : 'bg-white text-[#18142C] border-[#E9E4F5] hover:bg-[#FAF9FE]'
           }`}
         >
-          <span>Support Tickets & Email Templates ({tickets.length})</span>
+          <Mail className="h-3.5 w-3.5" />
+          <span>Email Delivery &amp; Resend ({emailLogs.length})</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setSubTab('tickets')}
+          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
+            subTab === 'tickets'
+              ? 'bg-[#7C3AED] text-white border-[#7C3AED]'
+              : 'bg-white text-[#18142C] border-[#E9E4F5] hover:bg-[#FAF9FE]'
+          }`}
+        >
+          <span>Support Tickets &amp; Email Templates ({tickets.length})</span>
         </button>
       </div>
 
       {subTab === 'gateways' ? (
         <PaymentGatewaySettingsPanel />
+      ) : subTab === 'email' ? (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Live Test Email */}
+            <form onSubmit={handleSendTestEmail} className="bg-white border border-[#E9E4F5] rounded-2xl p-6 space-y-4">
+              <div>
+                <h2 className="font-display font-bold text-base text-[#18142C]">Test Live Resend Email Delivery</h2>
+                <p className="text-xs text-[#64607D] mt-1">
+                  Sends a real email through the <span className="font-mono">sendTransactionalEmail</span> Cloud Function and surfaces the exact Resend API or secret error.
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2.5">
+                <input
+                  type="email"
+                  required
+                  value={testEmailTarget}
+                  onChange={(e) => setTestEmailTarget(e.target.value)}
+                  placeholder="Recipient email address"
+                  className="flex-1 px-3.5 py-2.5 border border-[#DDD6FE] rounded-xl text-xs text-[#18142C]"
+                />
+                <button
+                  type="submit"
+                  disabled={sendingTestEmail}
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold rounded-xl cursor-pointer disabled:opacity-50"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  <span>{sendingTestEmail ? 'Sending...' : 'Send Test Email'}</span>
+                </button>
+              </div>
+              {testEmailStatus && (
+                <div
+                  className={`p-3.5 rounded-xl border text-xs leading-relaxed ${
+                    testEmailStatus.ok
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                      : 'bg-rose-50 border-rose-200 text-rose-900'
+                  }`}
+                >
+                  <strong className="block mb-0.5">{testEmailStatus.ok ? 'Delivery Succeeded' : 'Delivery Error'}</strong>
+                  <span>{testEmailStatus.text}</span>
+                </div>
+              )}
+              <div className="p-3.5 rounded-xl bg-[#FAF9FE] border border-[#E9E4F5] text-[11px] text-[#64607D] space-y-1">
+                <div className="font-semibold text-[#18142C]">Required Cloud Functions Configuration</div>
+                <p>1. Store your Resend API key in Firebase Secret Manager: <span className="font-mono text-[#6D28D9]">firebase functions:secrets:set RESEND_API_KEY</span></p>
+                <p>2. Verify your sending domain in Resend (e.g. <span className="font-mono text-[#6D28D9]">tapnex.in</span>) and configure a matching sender email below (or <span className="font-mono">RESEND_FROM_EMAIL</span>).</p>
+              </div>
+            </form>
+
+            {/* Sender From Config */}
+            <form onSubmit={handleSaveSenderConfig} className="bg-white border border-[#E9E4F5] rounded-2xl p-6 space-y-4">
+              <div>
+                <h2 className="font-display font-bold text-base text-[#18142C]">Resend Sender Identity</h2>
+                <p className="text-xs text-[#64607D] mt-1">
+                  Used as the default sender when <span className="font-mono">RESEND_FROM_EMAIL</span> is not pinned in environment variables. Domain must be verified in Resend.
+                </p>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-[#64607D] mb-1">Sender Display Name</label>
+                  <input
+                    type="text"
+                    required
+                    disabled={userRecord?.role !== 'SUPERADMIN'}
+                    value={senderConfig.fromName}
+                    onChange={(e) => setSenderConfig({ ...senderConfig, fromName: e.target.value })}
+                    placeholder="TapNex"
+                    className="w-full px-3.5 py-2 border border-[#DDD6FE] rounded-xl text-xs text-[#18142C] disabled:bg-[#FAF9FE]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-[#64607D] mb-1">Verified Sender Email</label>
+                  <input
+                    type="email"
+                    required
+                    disabled={userRecord?.role !== 'SUPERADMIN'}
+                    value={senderConfig.fromEmail}
+                    onChange={(e) => setSenderConfig({ ...senderConfig, fromEmail: e.target.value })}
+                    placeholder="orders@tapnex.in"
+                    className="w-full px-3.5 py-2 border border-[#DDD6FE] rounded-xl text-xs font-mono text-[#18142C] disabled:bg-[#FAF9FE]"
+                  />
+                </div>
+              </div>
+              {userRecord?.role === 'SUPERADMIN' ? (
+                <button
+                  type="submit"
+                  disabled={savingSenderConfig}
+                  className="px-4 py-2.5 bg-[#18142C] hover:bg-[#2A2048] text-white text-xs font-semibold rounded-xl cursor-pointer disabled:opacity-50"
+                >
+                  {savingSenderConfig ? 'Saving...' : 'Save Sender Config'}
+                </button>
+              ) : (
+                <p className="text-[11px] text-[#64607D]">Only SuperAdmin can edit the sender identity.</p>
+              )}
+            </form>
+          </div>
+
+          {/* Email Delivery Logs */}
+          <div className="bg-white border border-[#E9E4F5] rounded-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-[#E9E4F5] flex items-center justify-between gap-3">
+              <div>
+                <h2 className="font-display font-bold text-base text-[#18142C]">Recent Customer Email Delivery Logs</h2>
+                <p className="text-xs text-[#64607D]">Live delivery attempts logged by <span className="font-mono">sendTransactionalEmail</span>.</p>
+              </div>
+              <button
+                type="button"
+                disabled={loadingEmailLogs}
+                onClick={() => void loadEmailDiagnostics()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-[#DDD6FE] rounded-lg text-xs font-semibold text-[#18142C] hover:bg-[#FAF9FE] cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${loadingEmailLogs ? 'animate-spin' : ''}`} />
+                <span>Refresh</span>
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-[#FAF9FE] border-b border-[#E9E4F5] text-[#64607D]">
+                  <tr>
+                    <th className="py-3 px-4">Time</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Recipient</th>
+                    <th className="py-3 px-4">Template</th>
+                    <th className="py-3 px-4">Order</th>
+                    <th className="py-3 px-4">Details / Error</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#F0ECF9]">
+                  {emailLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-[#64607D]">
+                        No email delivery attempts logged yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    emailLogs.map((log) => (
+                      <tr key={log.notificationId} className="hover:bg-[#FAF9FE]">
+                        <td className="py-3 px-4 font-mono text-[11px] text-[#64607D] whitespace-nowrap">
+                          {formatTimestampDate(log.createdAt)}
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
+                              log.deliveryStatus === 'Sent'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : log.deliveryStatus === 'ConfigRequired'
+                                  ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                                  : 'bg-rose-50 text-rose-700 border border-rose-200'
+                            }`}
+                          >
+                            {log.deliveryStatus}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-[#18142C]">{log.recipientEmail || '—'}</td>
+                        <td className="py-3 px-4 font-mono text-[#6D28D9]">{log.templateId || '—'}</td>
+                        <td className="py-3 px-4 font-mono text-[11px] text-[#64607D]">{log.orderId || '—'}</td>
+                        <td className="py-3 px-4 text-[#64607D] max-w-md break-words">
+                          {log.error ? (
+                            <span className="text-rose-700 font-medium">{log.error}</span>
+                          ) : log.resendMessageId ? (
+                            <span className="font-mono text-emerald-700">Resend ID: {log.resendMessageId}</span>
+                          ) : (
+                            log.message
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       ) : (
         <div className="space-y-6">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
-            <h2 className="font-display font-bold text-base text-[#0B1D3A]">Customer Support Tickets</h2>
+          <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 space-y-4">
+            <h2 className="font-display font-bold text-base text-[#18142C]">Customer Support Tickets</h2>
             {tickets.length === 0 ? (
-              <p className="text-xs text-slate-500">No support tickets logged.</p>
+              <p className="text-xs text-[#64607D]">No support tickets logged.</p>
             ) : (
               <div className="space-y-3">
                 {tickets.map((t) => (
-                  <div key={t.ticketId} className="p-4 border border-slate-200 rounded-xl space-y-2">
-                    <div className="flex justify-between text-xs text-slate-500">
+                  <div key={t.ticketId} className="p-4 border border-[#E9E4F5] rounded-xl space-y-2">
+                    <div className="flex justify-between text-xs text-[#64607D]">
                       <span>{t.category} · UID: {t.uid.slice(0, 8)}</span>
-                      <span className="font-semibold text-[#1D4ED8]">{t.status}</span>
+                      <span className="font-semibold text-[#7C3AED]">{t.status}</span>
                     </div>
-                    <div className="font-semibold text-sm text-[#0B1D3A]">{t.subject}</div>
-                    <p className="text-xs text-slate-600">{t.message}</p>
+                    <div className="font-semibold text-sm text-[#18142C]">{t.subject}</div>
+                    <p className="text-xs text-[#64607D]">{t.message}</p>
                     <div className="flex gap-2">
                       <button
                         type="button"
@@ -3182,7 +3628,7 @@ export const AdminSettingsAndTicketsPage: React.FC = () => {
                           notify('Ticket resolved', t.subject, 'success');
                           load();
                         }}
-                        className="px-3 py-1.5 bg-[#0B1D3A] text-white text-xs font-semibold rounded-lg"
+                        className="px-3 py-1.5 bg-[#18142C] hover:bg-[#2A2048] text-white text-xs font-semibold rounded-lg cursor-pointer"
                       >
                         Mark Resolved
                       </button>
@@ -3194,12 +3640,12 @@ export const AdminSettingsAndTicketsPage: React.FC = () => {
           </div>
 
           {selectedTpl && (
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
-              <h2 className="font-display font-bold text-base text-[#0B1D3A]">Transactional Email Templates</h2>
+            <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 space-y-4">
+              <h2 className="font-display font-bold text-base text-[#18142C]">Transactional Email Templates</h2>
               <select
                 value={selectedTpl.templateId}
                 onChange={(e) => setSelectedTpl(templates.find((t) => t.templateId === e.target.value) || null)}
-                className="px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white"
+                className="px-3 py-2 border border-[#DDD6FE] rounded-lg text-xs bg-white text-[#18142C]"
               >
                 {templates.map((t) => (
                   <option key={t.templateId} value={t.templateId}>{t.name}</option>
@@ -3209,13 +3655,13 @@ export const AdminSettingsAndTicketsPage: React.FC = () => {
                 type="text"
                 value={selectedTpl.subject}
                 onChange={(e) => setSelectedTpl({ ...selectedTpl, subject: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
+                className="w-full px-3 py-2 border border-[#DDD6FE] rounded-lg text-xs text-[#18142C]"
               />
               <textarea
                 rows={6}
                 value={selectedTpl.htmlBody}
                 onChange={(e) => setSelectedTpl({ ...selectedTpl, htmlBody: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono"
+                className="w-full px-3 py-2 border border-[#DDD6FE] rounded-lg text-xs font-mono text-[#18142C]"
               />
               {userRecord?.role === 'SUPERADMIN' && (
                 <button
@@ -3224,7 +3670,7 @@ export const AdminSettingsAndTicketsPage: React.FC = () => {
                     await saveEmailTemplate(selectedTpl, { uid: userRecord.uid, email: userRecord.email, role: userRecord.role });
                     notify('Email template saved', selectedTpl.name, 'success');
                   }}
-                  className="px-4 py-2 bg-[#0B1D3A] text-white text-xs font-semibold rounded-lg"
+                  className="px-4 py-2 bg-[#18142C] hover:bg-[#2A2048] text-white text-xs font-semibold rounded-lg cursor-pointer"
                 >
                   Save Email Template
                 </button>
@@ -3336,10 +3782,10 @@ export const AdminAuditLogsPage: React.FC = () => {
     <PortalLayout portal="admin" title="Security & Administrative Audit Logs">
       <AdminOpsHubTabs />
       <div className="space-y-5">
-        <form onSubmit={handleApplySubmit} className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4">
+        <form onSubmit={handleApplySubmit} className="bg-white border border-[#E9E4F5] rounded-2xl p-5 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-sm font-display font-bold text-[#0B1D3A]">
-              <Filter className="h-4 w-4 text-[#1D4ED8]" />
+            <div className="flex items-center gap-2 text-sm font-display font-bold text-[#18142C]">
+              <Filter className="h-4 w-4 text-[#7C3AED]" />
               <span>Filter Audit Logs</span>
             </div>
             {hasAppliedFilter && (
@@ -3442,7 +3888,7 @@ export const AdminAuditLogsPage: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0B1D3A] hover:bg-[#132A52] text-white text-xs font-semibold rounded-lg disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#18142C] hover:bg-[#2A2048] text-white text-xs font-semibold rounded-lg disabled:opacity-50"
             >
               <Filter className="h-3.5 w-3.5" />
               <span>{loading ? 'Loading Logs...' : 'Apply Filter & Show Logs'}</span>
@@ -3450,7 +3896,7 @@ export const AdminAuditLogsPage: React.FC = () => {
             <button
               type="button"
               onClick={handleReset}
-              className="inline-flex items-center gap-1.5 px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold rounded-lg"
+              className="inline-flex items-center gap-1.5 px-4 py-2 border border-slate-300 text-slate-700 hover:bg-[#FAF9FE] text-xs font-semibold rounded-lg"
             >
               <RotateCcw className="h-3.5 w-3.5" />
               <span>Reset / Hide Logs</span>
@@ -3467,7 +3913,7 @@ export const AdminAuditLogsPage: React.FC = () => {
                     setLoading(false);
                   }
                 }}
-                className="text-xs font-semibold text-[#1D4ED8] hover:underline ml-auto"
+                className="text-xs font-semibold text-[#7C3AED] hover:underline ml-auto"
               >
                 Refresh Logs
               </button>
@@ -3478,7 +3924,7 @@ export const AdminAuditLogsPage: React.FC = () => {
         {!hasAppliedFilter ? (
           <div className="bg-white border border-dashed border-slate-300 rounded-2xl p-10 text-center space-y-2">
             <Filter className="h-7 w-7 text-slate-400 mx-auto" />
-            <div className="font-display font-bold text-sm text-[#0B1D3A]">
+            <div className="font-display font-bold text-sm text-[#18142C]">
               Audit logs are hidden until you select a filter
             </div>
             <p className="text-xs text-slate-500 max-w-md mx-auto">
@@ -3486,9 +3932,9 @@ export const AdminAuditLogsPage: React.FC = () => {
             </p>
           </div>
         ) : (
-          <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
+          <div className="bg-white border border-[#E9E4F5] rounded-2xl overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
+              <thead className="bg-[#FAF9FE] border-b border-[#E9E4F5] text-slate-500">
                 <tr>
                   <th className="py-3 px-4">Timestamp</th>
                   <th className="py-3 px-4">Action</th>
@@ -3497,7 +3943,7 @@ export const AdminAuditLogsPage: React.FC = () => {
                   <th className="py-3 px-4">Details</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-[#F0ECF9]">
                 {loading ? (
                   <tr>
                     <td colSpan={5} className="py-8 text-center text-slate-400">
@@ -3516,7 +3962,7 @@ export const AdminAuditLogsPage: React.FC = () => {
                       <td className="py-3 px-4 font-mono text-[11px] text-slate-500 whitespace-nowrap">
                         {formatTimestampDate(l.createdAt)}
                       </td>
-                      <td className="py-3 px-4 font-mono font-semibold text-[#0B1D3A] whitespace-nowrap">{l.action}</td>
+                      <td className="py-3 px-4 font-mono font-semibold text-[#18142C] whitespace-nowrap">{l.action}</td>
                       <td className="py-3 px-4 whitespace-nowrap">{l.actorEmail || l.actorUid} ({l.actorRole})</td>
                       <td className="py-3 px-4 font-mono whitespace-nowrap">{l.targetCollection}/{l.targetId}</td>
                       <td className="py-3 px-4 text-slate-600">{l.details || '—'}</td>
@@ -3663,7 +4109,7 @@ export const AdminProfilesPage: React.FC = () => {
     <PortalLayout portal="admin" title="Digital Profiles Control">
       <AdminUsersHubTabs />
       <div className="space-y-5">
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-wrap gap-3 items-center justify-between">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-4 flex flex-wrap gap-3 items-center justify-between">
           <div className="flex flex-wrap gap-2.5 flex-1">
             <div className="relative flex-1 min-w-[220px]">
               <Search className="h-4 w-4 text-slate-400 absolute left-3 top-2.5" />
@@ -3691,9 +4137,9 @@ export const AdminProfilesPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
+            <thead className="bg-[#FAF9FE] border-b border-[#E9E4F5] text-slate-500">
               <tr>
                 <th className="py-3 px-4">Profile / Owner</th>
                 <th className="py-3 px-4">Public Slug</th>
@@ -3702,7 +4148,7 @@ export const AdminProfilesPage: React.FC = () => {
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-[#F0ECF9]">
               {loading ? (
                 <tr>
                   <td colSpan={5} className="py-8 text-center text-slate-400">Loading digital profiles...</td>
@@ -3720,7 +4166,7 @@ export const AdminProfilesPage: React.FC = () => {
                   return (
                     <tr key={p.profileId}>
                       <td className="py-3 px-4">
-                        <div className="font-semibold text-[#0B1D3A] flex items-center gap-1.5">
+                        <div className="font-semibold text-[#18142C] flex items-center gap-1.5">
                           <span>{p.personalInformation.fullName || p.profileLabel || p.slug}</span>
                           {p.profileType && p.profileType !== 'adult' && (
                             <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200 text-[10px] font-semibold uppercase">
@@ -3735,7 +4181,7 @@ export const AdminProfilesPage: React.FC = () => {
                           href={`/p/${p.slug}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-[#1D4ED8] hover:underline"
+                          className="inline-flex items-center gap-1 text-[#7C3AED] hover:underline"
                         >
                           <span>/p/{p.slug}</span>
                           <ExternalLink className="h-3 w-3" />
@@ -3746,7 +4192,7 @@ export const AdminProfilesPage: React.FC = () => {
                           {paid ? 'Payment: Confirmed' : 'Payment: Pending'}
                         </div>
                         {p.adminApproved && (
-                          <div className="inline-block px-2 py-0.5 rounded bg-blue-50 text-[#1D4ED8] border border-blue-200 text-[10px] font-semibold">
+                          <div className="inline-block px-2 py-0.5 rounded bg-[#F3EEFF] text-[#7C3AED] border border-[#DDD6FE] text-[10px] font-semibold">
                             Admin Approved
                           </div>
                         )}
@@ -3760,7 +4206,7 @@ export const AdminProfilesPage: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setInspectedProfile(p)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-[#1D4ED8]/30 bg-blue-50/70 text-[#1D4ED8] rounded-lg text-xs font-semibold hover:bg-blue-100"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-[#7C3AED]/30 bg-[#F3EEFF]/80 text-[#7C3AED] rounded-lg text-xs font-semibold hover:bg-[#EAE3FF]"
                         >
                           <Eye className="h-3.5 w-3.5" />
                           <span>Inspect Profile</span>
@@ -3769,7 +4215,7 @@ export const AdminProfilesPage: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => handleMarkPaymentCompleted(p, true)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#1D4ED8] hover:bg-blue-700 text-white text-xs font-semibold"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold"
                           >
                             <CreditCard className="h-3.5 w-3.5" />
                             <span>Mark Paid</span>
@@ -3790,7 +4236,7 @@ export const AdminProfilesPage: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => handleToggleActive(p)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold hover:bg-slate-50"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold hover:bg-[#FAF9FE]"
                         >
                           <Power className="h-3.5 w-3.5" />
                           <span>{p.isPublic && !p.adminDisabled ? 'Disable Link' : 'Enable Link'}</span>
@@ -4035,12 +4481,47 @@ export const AdminApprovedDesignsPage: React.FC = () => {
       if (printPrinterId && printPrinterId !== 'admin_inhouse') {
         const printerObj = printers.find((p) => p.printerId === printPrinterId);
         if (printerObj?.email) {
-          await sendAndLogTransactionalEmail({
+          const pRes = await sendAndLogTransactionalEmail({
+            orderId: res.orderId,
             uid: printTarget.design.uid,
             to: printerObj.email,
             templateId: 'printer_assigned',
-            variables: { ORDER_NUMBER: res.orderNumber },
+            variables: {
+              ORDER_NUMBER: res.orderNumber,
+              CUSTOMER_NAME: printerObj.contactPerson || printerObj.businessName || 'Print Partner',
+            },
           });
+          if (!pRes.delivered) {
+            const reason = formatEmailDeliveryFailureReason(pRes);
+            notify(
+              'Printer email attention needed',
+              reason || 'Print job assigned, but printer notification email failed.',
+              'info'
+            );
+          }
+        }
+      }
+
+      const customerEmail = (printShipping.email || printTarget.owner?.email || '').trim();
+      if (customerEmail) {
+        const custRes = await sendAndLogTransactionalEmail({
+          orderId: res.orderId,
+          uid: printTarget.design.uid,
+          to: customerEmail,
+          templateId: printInitialStatus === 'Printing in Progress' ? 'printing_started' : 'design_approved',
+          variables: {
+            ORDER_NUMBER: res.orderNumber,
+            CUSTOMER_NAME: printShipping.fullName || printTarget.owner?.displayName || 'Valued Customer',
+            DESIGN_ID: printTarget.design.designId,
+          },
+        });
+        if (!custRes.delivered) {
+          const reason = formatEmailDeliveryFailureReason(custRes);
+          notify(
+            'Customer email attention needed',
+            reason || 'Order sent to print, but customer notification email could not be sent.',
+            'info'
+          );
         }
       }
 
@@ -4148,7 +4629,7 @@ export const AdminApprovedDesignsPage: React.FC = () => {
     <PortalLayout portal="admin" title="Approved Designs & Direct Print">
       <AdminCardsHubTabs />
       <div className="space-y-5">
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
           <div className="relative flex-1 min-w-[220px]">
             <Search className="h-4 w-4 text-slate-400 absolute left-3 top-2.5" />
             <input
@@ -4171,7 +4652,7 @@ export const AdminApprovedDesignsPage: React.FC = () => {
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center text-sm text-slate-500">
+          <div className="bg-white border border-[#E9E4F5] rounded-2xl p-10 text-center text-sm text-slate-500">
             No customer-approved card designs found yet.
           </div>
         ) : (
@@ -4187,10 +4668,10 @@ export const AdminApprovedDesignsPage: React.FC = () => {
                 linkedOrder?.paymentStatus === 'Verified' || linkedOrder?.paymentStatus === 'Completed';
 
               return (
-                <div key={d.designId} className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-3">
+                <div key={d.designId} className="bg-white border border-[#E9E4F5] rounded-2xl p-5 space-y-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#F0ECF9] pb-3">
                     <div>
-                      <div className="font-display font-bold text-base text-[#0B1D3A]">
+                      <div className="font-display font-bold text-base text-[#18142C]">
                         {ownerLabel}
                       </div>
                       <div className="text-xs text-slate-500">
@@ -4198,9 +4679,9 @@ export const AdminApprovedDesignsPage: React.FC = () => {
                       </div>
                       {linkedOrder && (
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] font-mono text-slate-600">
-                          <span className="font-semibold text-[#0B1D3A]">{linkedOrder.orderNumber}</span>
+                          <span className="font-semibold text-[#18142C]">{linkedOrder.orderNumber}</span>
                           <span>·</span>
-                          <span className="text-[#1D4ED8] font-semibold">{linkedOrder.orderStatus}</span>
+                          <span className="text-[#7C3AED] font-semibold">{linkedOrder.orderStatus}</span>
                         </div>
                       )}
                     </div>
@@ -4219,7 +4700,7 @@ export const AdminApprovedDesignsPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => openSendToPrintModal(d, owner, prof || null, linkedOrder)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1D4ED8] hover:bg-[#1E40AF] text-white rounded-lg text-xs font-semibold transition-colors"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white rounded-lg text-xs font-semibold transition-colors"
                       >
                         <Send className="h-3.5 w-3.5" />
                         <span>{linkedOrder ? 'Print / Reassign' : 'Send to Print'}</span>
@@ -4238,7 +4719,7 @@ export const AdminApprovedDesignsPage: React.FC = () => {
                             type="button"
                             onClick={() => handleQuickDownloadExistingOrderPdf(d, linkedOrder, prof)}
                             title="Download PDF"
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg text-xs font-semibold"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-slate-300 text-slate-700 hover:bg-[#FAF9FE] rounded-lg text-xs font-semibold"
                           >
                             <Download className="h-3.5 w-3.5" />
                             <span>Download PDF</span>
@@ -4247,16 +4728,16 @@ export const AdminApprovedDesignsPage: React.FC = () => {
                             type="button"
                             onClick={() => handleQuickDownloadExistingOrderPng(d, linkedOrder, prof, 'front')}
                             title="Download Front PNG"
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg text-xs font-semibold"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-slate-300 text-slate-700 hover:bg-[#FAF9FE] rounded-lg text-xs font-semibold"
                           >
-                            <ImageIcon className="h-3.5 w-3.5 text-[#1D4ED8]" />
+                            <ImageIcon className="h-3.5 w-3.5 text-[#7C3AED]" />
                             <span>Front PNG</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => handleQuickDownloadExistingOrderPng(d, linkedOrder, prof, 'back')}
                             title="Download Back PNG"
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg text-xs font-semibold"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-slate-300 text-slate-700 hover:bg-[#FAF9FE] rounded-lg text-xs font-semibold"
                           >
                             <ImageIcon className="h-3.5 w-3.5 text-emerald-600" />
                             <span>Back PNG</span>
@@ -4269,7 +4750,7 @@ export const AdminApprovedDesignsPage: React.FC = () => {
                           href={`/p/${prof.slug}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-[#0B1D3A] text-white rounded-lg text-xs font-semibold hover:bg-[#132A52]"
+                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-[#18142C] text-white rounded-lg text-xs font-semibold hover:bg-[#2A2048]"
                         >
                           <span>/p/{prof.slug}</span>
                           <ExternalLink className="h-3 w-3" />
@@ -4315,10 +4796,10 @@ export const AdminApprovedDesignsPage: React.FC = () => {
       {/* Direct Send-to-Print & Fulfilment Modal */}
       {printTarget && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden my-auto">
-            <div className="px-6 py-4 bg-[#0B1D3A] text-white flex items-center justify-between">
+          <div className="bg-white border border-[#E9E4F5] rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden my-auto">
+            <div className="px-6 py-4 bg-[#18142C] text-white flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <PrinterIcon className="h-5 w-5 text-cyan-300" />
+                <PrinterIcon className="h-5 w-5 text-[#C4B5FD]" />
                 <div>
                   <div className="font-display font-bold text-base">
                     {printResult ? `Print Job Created: ${printResult.orderNumber}` : 'Send Approved Card Directly to Print'}
@@ -4355,16 +4836,16 @@ export const AdminApprovedDesignsPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-4 p-4 rounded-xl border border-slate-200 bg-slate-50">
+                <div className="flex flex-wrap items-center gap-4 p-4 rounded-xl border border-[#E9E4F5] bg-[#FAF9FE]">
                   {printResult.qrRecord.pngDataUrl && (
                     <img
                       src={printResult.qrRecord.pngDataUrl}
                       alt="Order QR"
-                      className="w-20 h-20 border border-slate-200 rounded-lg bg-white"
+                      className="w-20 h-20 border border-[#E9E4F5] rounded-lg bg-white"
                     />
                   )}
                   <div className="space-y-1 text-xs min-w-0 flex-1">
-                    <div className="font-semibold text-[#0B1D3A]">Verified SMART / QR Target</div>
+                    <div className="font-semibold text-[#18142C]">Verified SMART / QR Target</div>
                     <div className="font-mono text-slate-600 break-all">{printResult.qrRecord.targetUrl}</div>
                   </div>
                 </div>
@@ -4381,7 +4862,7 @@ export const AdminApprovedDesignsPage: React.FC = () => {
                       });
                       downloadBlob(pdf.blob, `${printResult.orderNumber}-300dpi-print.pdf`);
                     }}
-                    className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-[#0B1D3A] hover:bg-[#132A52] text-white text-xs font-semibold rounded-xl"
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-[#18142C] hover:bg-[#2A2048] text-white text-xs font-semibold rounded-xl"
                   >
                     <Download className="h-4 w-4" />
                     <span>Download PDF</span>
@@ -4398,9 +4879,9 @@ export const AdminApprovedDesignsPage: React.FC = () => {
                       });
                       downloadBlob(png.blob, `${printResult.orderNumber}-front.png`);
                     }}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold rounded-xl"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 border border-slate-300 text-slate-700 hover:bg-[#FAF9FE] text-xs font-semibold rounded-xl"
                   >
-                    <ImageIcon className="h-4 w-4 text-[#1D4ED8]" />
+                    <ImageIcon className="h-4 w-4 text-[#7C3AED]" />
                     <span>Front PNG</span>
                   </button>
                   <button
@@ -4415,7 +4896,7 @@ export const AdminApprovedDesignsPage: React.FC = () => {
                       });
                       downloadBlob(png.blob, `${printResult.orderNumber}-back.png`);
                     }}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold rounded-xl"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 border border-slate-300 text-slate-700 hover:bg-[#FAF9FE] text-xs font-semibold rounded-xl"
                   >
                     <ImageIcon className="h-4 w-4 text-emerald-600" />
                     <span>Back PNG</span>
@@ -4432,7 +4913,7 @@ export const AdminApprovedDesignsPage: React.FC = () => {
                       });
                       downloadBlob(pdf.blob, `${printResult.orderNumber}-proof.pdf`);
                     }}
-                    className="inline-flex items-center gap-1.5 px-4 py-2.5 border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold rounded-xl"
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 border border-slate-300 text-slate-700 hover:bg-[#FAF9FE] text-xs font-semibold rounded-xl"
                   >
                     <FileText className="h-4 w-4" />
                     <span>Download Proof w/ Guides</span>
@@ -4443,7 +4924,7 @@ export const AdminApprovedDesignsPage: React.FC = () => {
                       setPrintTarget(null);
                       setPrintResult(null);
                     }}
-                    className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-[#1D4ED8] hover:bg-[#1E40AF] text-white text-xs font-semibold rounded-xl"
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold rounded-xl"
                   >
                     <span>Open Fulfilment Timeline</span>
                     <ArrowRight className="h-4 w-4" />
@@ -4514,7 +4995,7 @@ export const AdminApprovedDesignsPage: React.FC = () => {
                     </div>
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-600 mb-1">Server Unit Price</label>
-                      <div className="w-full px-3 py-2 border border-slate-200 bg-slate-50 rounded-lg text-xs font-mono text-slate-700">
+                      <div className="w-full px-3 py-2 border border-[#E9E4F5] bg-[#FAF9FE] rounded-lg text-xs font-mono text-slate-700">
                         INR {printEstimatedUnitPrice}
                       </div>
                     </div>
@@ -4545,9 +5026,9 @@ export const AdminApprovedDesignsPage: React.FC = () => {
                         type="checkbox"
                         checked={printComplimentary}
                         onChange={(e) => setPrintComplimentary(e.target.checked)}
-                        className="mt-0.5 rounded border-amber-400 text-[#1D4ED8]"
+                        className="mt-0.5 rounded border-amber-400 text-[#7C3AED]"
                       />
-                      <span className="font-semibold text-[#0B1D3A]">
+                      <span className="font-semibold text-[#18142C]">
                         Send as Complimentary / Unpaid Print Run
                       </span>
                     </label>
@@ -4570,8 +5051,8 @@ export const AdminApprovedDesignsPage: React.FC = () => {
                   </div>
                 )}
 
-                <div className="pt-2 border-t border-slate-100 space-y-2.5">
-                  <div className="text-xs font-semibold text-[#0B1D3A]">Recipient & Delivery Details</div>
+                <div className="pt-2 border-t border-[#F0ECF9] space-y-2.5">
+                  <div className="text-xs font-semibold text-[#18142C]">Recipient & Delivery Details</div>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                     <input
                       type="text"
@@ -4640,11 +5121,11 @@ export const AdminApprovedDesignsPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#F0ECF9]">
                   <button
                     type="button"
                     onClick={() => setPrintTarget(null)}
-                    className="px-4 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    className="px-4 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-[#FAF9FE]"
                   >
                     Cancel
                   </button>
@@ -4658,7 +5139,7 @@ export const AdminApprovedDesignsPage: React.FC = () => {
                       ) &&
                         (!printComplimentary || printComplimentaryReason.trim().length < 3))
                     }
-                    className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-[#0B1D3A] hover:bg-[#132A52] text-white rounded-xl text-xs font-semibold disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-[#18142C] hover:bg-[#2A2048] text-white rounded-xl text-xs font-semibold disabled:opacity-50"
                   >
                     <Send className="h-3.5 w-3.5" />
                     <span>{submittingPrint ? 'Generating Print QR & Order...' : 'Confirm & Send to Print'}</span>

@@ -90,7 +90,7 @@ export const ColorPaletteField: React.FC<ColorPaletteFieldProps> = ({
           }}
           placeholder="#0B1D3A"
           aria-label={label ? `${label} hex code` : 'Hex color code'}
-          className="flex-1 min-w-0 px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-mono bg-white uppercase focus:outline-none focus:border-[#1D4ED8]"
+          className="flex-1 min-w-0 px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-mono bg-white uppercase focus:outline-none focus:border-[#7C3AED]"
         />
         <button
           type="button"
@@ -114,7 +114,7 @@ export const ColorPaletteField: React.FC<ColorPaletteFieldProps> = ({
               title={`Apply saved color ${swatch}`}
               style={{ backgroundColor: swatch }}
               className={`h-4 w-4 rounded-sm border transition-transform hover:scale-110 ${
-                active ? 'ring-2 ring-[#1D4ED8] ring-offset-1 border-slate-900' : 'border-slate-300'
+                active ? 'ring-2 ring-[#7C3AED] ring-offset-1 border-slate-900' : 'border-slate-300'
               }`}
             />
           );
@@ -126,7 +126,7 @@ export const ColorPaletteField: React.FC<ColorPaletteFieldProps> = ({
             title="Transparent fill"
             className={`px-1.5 py-0.5 rounded border text-[9px] font-semibold ${
               value === 'transparent'
-                ? 'border-[#1D4ED8] bg-blue-50 text-[#1D4ED8]'
+                ? 'border-[#7C3AED] bg-[#F3EEFF] text-[#7C3AED]'
                 : 'border-slate-300 bg-white text-slate-600'
             }`}
           >

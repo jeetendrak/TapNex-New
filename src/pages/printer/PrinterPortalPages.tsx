@@ -18,7 +18,13 @@ import {
 } from '../../lib/firestoreService';
 import { createServerShippingRecord, updateServerOrderStatus } from '../../lib/paymentApi';
 import { formatFirestoreErrorMessage } from '../../lib/cardDesignSize';
-import { executeTimelineStatusUpdate, sanitizeTimelineErrorMessage } from '../../lib/timelineFeedback';
+import { executeTimelineStatusUpdate } from '../../lib/timelineFeedback';
+import {
+  buildDispatchedEmailVariables,
+  executeDispatchWithNotification,
+  executeRetryDispatchEmail,
+  formatEmailDeliveryFailureReason,
+} from '../../lib/dispatchEmailFeedback';
 import { downloadBlob, generateCardSidePngBlob, generatePrintReadyPdfBlob } from '../../lib/printPdf';
 import type {
   CardDesignRecord,
@@ -56,9 +62,9 @@ export const PrinterDashboardPage: React.FC = () => {
       <div className="space-y-6">
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           {stats.map((s) => (
-            <div key={s.label} className="bg-white border border-slate-200 rounded-xl p-5">
-              <div className="text-xs text-slate-500">{s.label}</div>
-              <div className="mt-2 font-display text-2xl font-bold text-[#0B1D3A] tabular-nums">
+            <div key={s.label} className="bg-white border border-[#E9E4F5] rounded-xl p-5">
+              <div className="text-xs text-[#64607D]">{s.label}</div>
+              <div className="mt-2 font-display text-2xl font-bold text-[#18142C] tabular-nums">
                 {loading ? '—' : s.value}
               </div>
             </div>
@@ -66,12 +72,12 @@ export const PrinterDashboardPage: React.FC = () => {
         </div>
 
         {/* SMART Encoding & Production Spec Sheet */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-3">
-          <div className="flex items-center gap-2 font-display font-bold text-base text-[#0B1D3A]">
-            <Wifi className="h-5 w-5 text-[#1D4ED8]" />
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 space-y-3">
+          <div className="flex items-center gap-2 font-display font-bold text-base text-[#18142C]">
+            <Wifi className="h-5 w-5 text-[#7C3AED]" />
             <span>Printer SMART Encoding & 300 DPI Quality Checklist</span>
           </div>
-          <ul className="text-sm text-slate-600 space-y-1.5 list-disc pl-5">
+          <ul className="text-sm text-[#64607D] space-y-1.5 list-disc pl-5">
             <li>Verify trim dimensions are exactly <strong>85.6 × 54.0 mm</strong> with <strong>3.0 mm bleed</strong> (91.6 × 60.0 mm PDF page).</li>
             <li>Never manually alter or stretch the embedded QR code—the downloaded PDF contains the verified backend QR code.</li>
             <li>Encode the order&apos;s exact public profile URL onto the NTAG215 chip as an NDEF URI record and lock/test with both iOS and Android readers.</li>
@@ -79,7 +85,7 @@ export const PrinterDashboardPage: React.FC = () => {
           </ul>
           <Link
             to="/printer/orders"
-            className="inline-block mt-2 px-5 py-2.5 bg-[#0B1D3A] text-white text-xs font-semibold rounded-lg"
+            className="inline-block mt-2 px-5 py-2.5 bg-[#18142C] hover:bg-[#2A2048] text-white text-xs font-semibold rounded-xl transition-colors"
           >
             View Assigned Print Queue
           </Link>
@@ -104,17 +110,17 @@ export const PrinterOrdersPage: React.FC = () => {
   return (
     <PortalLayout portal="printer" title="Assigned Print Orders">
       {loading ? (
-        <div className="h-48 bg-slate-200 rounded-2xl animate-pulse" />
+        <div className="h-48 bg-[#EFEBF9] rounded-2xl animate-pulse" />
       ) : orders.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center">
-          <Printer className="h-8 w-8 text-slate-400 mx-auto mb-2" />
-          <h2 className="font-display font-bold text-lg text-[#0B1D3A]">No Assigned Orders</h2>
-          <p className="mt-1 text-sm text-slate-600">Orders assigned to your print facility by Admin will appear here.</p>
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-10 text-center">
+          <Printer className="h-8 w-8 text-[#7C3AED] mx-auto mb-2" />
+          <h2 className="font-display font-bold text-lg text-[#18142C]">No Assigned Orders</h2>
+          <p className="mt-1 text-sm text-[#64607D]">Orders assigned to your print facility by Admin will appear here.</p>
         </div>
       ) : (
-        <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500">
+            <thead className="bg-[#FAF9FE] border-b border-[#E9E4F5] text-xs text-[#64607D]">
               <tr>
                 <th className="py-3 px-4">Order #</th>
                 <th className="py-3 px-4">Customer</th>
@@ -125,21 +131,21 @@ export const PrinterOrdersPage: React.FC = () => {
                 <th className="py-3 px-4 text-right">Fulfilment</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-[#F0ECF9]">
               {orders.map((ord) => (
-                <tr key={ord.orderId} className="hover:bg-slate-50/70">
-                  <td className="py-3 px-4 font-mono text-xs font-semibold text-[#0B1D3A]">{ord.orderNumber}</td>
-                  <td className="py-3 px-4">{ord.shippingAddress.fullName}</td>
-                  <td className="py-3 px-4 text-xs text-slate-600">{ord.cardType}</td>
-                  <td className="py-3 px-4 font-mono tabular-nums">{ord.quantity}</td>
-                  <td className="py-3 px-4 text-xs text-slate-600">
+                <tr key={ord.orderId} className="hover:bg-[#FAF9FE]">
+                  <td className="py-3 px-4 font-mono text-xs font-semibold text-[#18142C]">{ord.orderNumber}</td>
+                  <td className="py-3 px-4 text-[#18142C]">{ord.shippingAddress.fullName}</td>
+                  <td className="py-3 px-4 text-xs text-[#64607D]">{ord.cardType}</td>
+                  <td className="py-3 px-4 font-mono tabular-nums text-[#18142C]">{ord.quantity}</td>
+                  <td className="py-3 px-4 text-xs text-[#64607D]">
                     {ord.shippingAddress.city}, {ord.shippingAddress.state} ({ord.shippingAddress.pinCode})
                   </td>
-                  <td className="py-3 px-4 text-xs font-semibold text-[#1D4ED8]">{ord.orderStatus}</td>
+                  <td className="py-3 px-4 text-xs font-semibold text-[#7C3AED]">{ord.orderStatus}</td>
                   <td className="py-3 px-4 text-right">
                     <Link
                       to={`/printer/orders/${ord.orderId}`}
-                      className="px-3 py-1.5 bg-[#0B1D3A] text-white text-xs font-semibold rounded-lg"
+                      className="px-3 py-1.5 bg-[#18142C] hover:bg-[#2A2048] text-white text-xs font-semibold rounded-lg transition-colors"
                     >
                       Open Job
                     </Link>
@@ -169,6 +175,8 @@ export const PrinterOrderDetailPage: React.FC = () => {
   const [pendingStepStatus, setPendingStepStatus] = useState<OrderStatus | null>(null);
   const [timelineError, setTimelineError] = useState<string | null>(null);
   const [timelineSuccess, setTimelineSuccess] = useState<string | null>(null);
+  const [dispatchEmailWarning, setDispatchEmailWarning] = useState<string | null>(null);
+  const [retryingDispatchEmail, setRetryingDispatchEmail] = useState(false);
 
   const [courierName, setCourierName] = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
@@ -293,31 +301,62 @@ export const PrinterOrderDetailPage: React.FC = () => {
         setOrder((prev) => (prev ? { ...prev, orderStatus: target } : prev));
       },
       onSuccess: async (target) => {
-        if (target === 'Printing in Progress') {
+        let emailWarningMsg: string | null = null;
+        const emailTemplate =
+          target === 'Printing in Progress'
+            ? 'printing_started'
+            : target === 'Delivered'
+              ? 'delivered'
+              : target === 'Dispatched' && order.trackingNumber
+                ? 'dispatched'
+                : null;
+
+        if (emailTemplate) {
           try {
-            await sendAndLogTransactionalEmail({
+            const emailRes = await sendAndLogTransactionalEmail({
+              orderId: order.orderId,
               uid: order.uid,
               to: order.shippingAddress.email,
-              templateId: 'printing_started',
-              variables: { ORDER_NUMBER: order.orderNumber },
+              templateId: emailTemplate,
+              variables:
+                emailTemplate === 'dispatched'
+                  ? buildDispatchedEmailVariables({
+                      orderNumber: order.orderNumber,
+                      orderId: order.orderId,
+                      customerName: order.shippingAddress?.fullName || 'Valued Customer',
+                      courierName: order.courierName || '',
+                      trackingNumber: order.trackingNumber || '',
+                      trackingUrl: order.trackingUrl || '',
+                      dispatchDate: order.dispatchDate || new Date().toISOString().slice(0, 10),
+                    })
+                  : {
+                      ORDER_NUMBER: order.orderNumber,
+                      CUSTOMER_NAME: order.shippingAddress?.fullName || 'Valued Customer',
+                    },
             });
-          } catch {
-            // Email notification is non-blocking once order status updates
-          }
-        } else if (target === 'Delivered') {
-          try {
-            await sendAndLogTransactionalEmail({
-              uid: order.uid,
-              to: order.shippingAddress.email,
-              templateId: 'delivered',
-              variables: { ORDER_NUMBER: order.orderNumber },
-            });
-          } catch {
-            // Email notification is non-blocking once order status updates
+            if (!emailRes.delivered) {
+              const reason = formatEmailDeliveryFailureReason(emailRes);
+              emailWarningMsg = reason
+                ? `Status updated to "${target}", but customer email failed: ${reason}`
+                : `Status updated to "${target}", but customer email could not be sent.`;
+            }
+          } catch (err) {
+            emailWarningMsg =
+              err instanceof Error
+                ? `Status updated to "${target}", but customer email failed: ${err.message}`
+                : `Status updated to "${target}", but customer email could not be sent.`;
           }
         }
-        setTimelineSuccess(`${order.orderNumber} updated to "${target}".`);
-        notify('Order status updated', target, 'success');
+
+        if (emailWarningMsg) {
+          setDispatchEmailWarning(emailWarningMsg);
+          setTimelineSuccess(null);
+          notify('Status updated; email attention needed', emailWarningMsg, 'info');
+        } else {
+          setDispatchEmailWarning(null);
+          setTimelineSuccess(`${order.orderNumber} updated to "${target}".`);
+          notify('Order status updated', target, 'success');
+        }
         await loadJob(true).catch(() => null);
       },
       onError: (friendlyMessage) => {
@@ -338,57 +377,76 @@ export const PrinterOrderDetailPage: React.FC = () => {
     setPendingStepStatus('Dispatched');
     setTimelineError(null);
     setTimelineSuccess(null);
+    setDispatchEmailWarning(null);
     try {
-      await createServerShippingRecord({
-        orderId: order.orderId,
-        courierName: courierName.trim(),
-        trackingNumber: trackingNumber.trim(),
-        trackingUrl: trackingUrl.trim(),
-        dispatchDate,
+      await executeDispatchWithNotification({
+        order,
+        input: {
+          orderId: order.orderId,
+          courierName,
+          trackingNumber,
+          trackingUrl,
+          dispatchDate,
+        },
+        createShippingRecordFn: createServerShippingRecord,
+        sendEmailFn: sendAndLogTransactionalEmail,
+        onDispatchSaved: (updatedOrder) => {
+          setOrder(updatedOrder);
+        },
+        onEmailSuccess: (message) => {
+          setDispatchEmailWarning(null);
+          setTimelineSuccess(message);
+          notify('Order dispatched', message, 'success');
+        },
+        onEmailFailure: (message, emailResult) => {
+          const reason = formatEmailDeliveryFailureReason(emailResult);
+          const fullMsg = reason ? `${message} Reason: ${reason}` : message;
+          setTimelineSuccess(null);
+          setDispatchEmailWarning(fullMsg);
+          notify('Dispatch saved; email failed', fullMsg, 'info');
+        },
+        onSaveFailure: (message) => {
+          setTimelineError(message);
+          notify('Dispatch failed', message, 'error');
+        },
       });
-      setOrder((prev) =>
-        prev
-          ? {
-              ...prev,
-              orderStatus: 'Dispatched',
-              courierName: courierName.trim(),
-              trackingNumber: trackingNumber.trim(),
-              trackingUrl: trackingUrl.trim(),
-              dispatchDate,
-            }
-          : prev
-      );
-      try {
-        await sendAndLogTransactionalEmail({
-          uid: order.uid,
-          to: order.shippingAddress.email,
-          templateId: 'dispatched',
-          variables: {
-            ORDER_NUMBER: order.orderNumber,
-            COURIER_NAME: courierName.trim(),
-            TRACKING_NUMBER: trackingNumber.trim(),
-          },
-        });
-      } catch {
-        // Email notification is non-blocking once dispatch is recorded
-      }
-      setTimelineSuccess(`Order marked Dispatched via ${courierName.trim()} (${trackingNumber.trim()}).`);
-      notify('Order dispatched', `Courier ${courierName.trim()} (${trackingNumber.trim()}) saved and customer notified.`, 'success');
       await loadJob(true).catch(() => null);
-    } catch (err) {
-      const friendlyMessage = sanitizeTimelineErrorMessage(err, 'Unable to dispatch order.');
-      setTimelineError(friendlyMessage);
-      notify('Dispatch failed', friendlyMessage, 'error');
     } finally {
       setUpdatingStep(false);
       setPendingStepStatus(null);
     }
   };
 
+  const handleRetryDispatchEmail = async () => {
+    if (!order || !userRecord || retryingDispatchEmail) return;
+    setRetryingDispatchEmail(true);
+    setTimelineError(null);
+    try {
+      await executeRetryDispatchEmail({
+        order,
+        sendEmailFn: sendAndLogTransactionalEmail,
+        onEmailSuccess: (message) => {
+          setDispatchEmailWarning(null);
+          setTimelineSuccess(message);
+          notify('Customer email sent', message, 'success');
+        },
+        onEmailFailure: (message, emailResult) => {
+          const reason = formatEmailDeliveryFailureReason(emailResult);
+          const fullMsg = reason ? `${message} Reason: ${reason}` : message;
+          setTimelineSuccess(null);
+          setDispatchEmailWarning(fullMsg);
+          notify('Email retry failed', fullMsg, 'error');
+        },
+      });
+    } finally {
+      setRetryingDispatchEmail(false);
+    }
+  };
+
   if (loading) {
     return (
       <PortalLayout portal="printer" title="Print Job Details">
-        <div className="h-64 bg-slate-200 rounded-2xl animate-pulse" />
+        <div className="h-64 bg-[#EFEBF9] rounded-2xl animate-pulse" />
       </PortalLayout>
     );
   }
@@ -396,7 +454,7 @@ export const PrinterOrderDetailPage: React.FC = () => {
   if (!order) {
     return (
       <PortalLayout portal="printer" title="Print Job Details">
-        <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-sm text-slate-600">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-8 text-center text-sm text-[#64607D]">
           Order not found or not assigned to your printer account.
         </div>
       </PortalLayout>
@@ -407,13 +465,13 @@ export const PrinterOrderDetailPage: React.FC = () => {
     <PortalLayout portal="printer" title={`Print Job: ${order.orderNumber}`}>
       <div className="space-y-6">
         {/* Header Summary */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
-            <div className="text-xs font-mono text-slate-500">Order {order.orderNumber} · Qty {order.quantity} · {order.cardType}</div>
-            <h2 className="font-display text-xl font-bold text-[#0B1D3A] mt-0.5">
+            <div className="text-xs font-mono text-[#64607D]">Order {order.orderNumber} · Qty {order.quantity} · {order.cardType}</div>
+            <h2 className="font-display text-xl font-bold text-[#18142C] mt-0.5">
               Status: {order.orderStatus}
             </h2>
-            <p className="text-xs text-slate-600 mt-1">
+            <p className="text-xs text-[#64607D] mt-1">
               Ship to: {order.shippingAddress.fullName}, {order.shippingAddress.addressLine1}, {order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.pinCode} · Ph: {order.shippingAddress.mobile}
             </p>
           </div>
@@ -422,7 +480,7 @@ export const PrinterOrderDetailPage: React.FC = () => {
               type="button"
               disabled={generatingPdf}
               onClick={() => handleDownloadPrintPdf(false)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#0B1D3A] text-white text-xs font-semibold rounded-xl disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#18142C] hover:bg-[#2A2048] text-white text-xs font-semibold rounded-xl disabled:opacity-50 cursor-pointer transition-colors"
             >
               <Download className="h-4 w-4" />
               <span>{generatingPdf ? 'Rendering...' : 'Download PDF'}</span>
@@ -431,16 +489,16 @@ export const PrinterOrderDetailPage: React.FC = () => {
               type="button"
               disabled={generatingPdf}
               onClick={() => handleDownloadSidePng('front')}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 border border-slate-300 text-xs font-semibold rounded-xl text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 border border-[#DDD6FE] text-xs font-semibold rounded-xl text-[#18142C] hover:bg-[#FAF9FE] disabled:opacity-50 cursor-pointer transition-colors"
             >
-              <ImageIcon className="h-4 w-4 text-[#1D4ED8]" />
+              <ImageIcon className="h-4 w-4 text-[#7C3AED]" />
               <span>Front PNG</span>
             </button>
             <button
               type="button"
               disabled={generatingPdf}
               onClick={() => handleDownloadSidePng('back')}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 border border-slate-300 text-xs font-semibold rounded-xl text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 border border-[#DDD6FE] text-xs font-semibold rounded-xl text-[#18142C] hover:bg-[#FAF9FE] disabled:opacity-50 cursor-pointer transition-colors"
             >
               <ImageIcon className="h-4 w-4 text-emerald-600" />
               <span>Back PNG</span>
@@ -449,7 +507,7 @@ export const PrinterOrderDetailPage: React.FC = () => {
               type="button"
               disabled={generatingPdf}
               onClick={() => handleDownloadPrintPdf(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 border border-slate-300 text-xs font-semibold rounded-xl text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-4 py-2.5 border border-[#DDD6FE] text-xs font-semibold rounded-xl text-[#18142C] hover:bg-[#FAF9FE] disabled:opacity-50 cursor-pointer transition-colors"
             >
               <FileText className="h-4 w-4" />
               <span>Download Proof w/ Guides</span>
@@ -474,8 +532,13 @@ export const PrinterOrderDetailPage: React.FC = () => {
           updating={updatingStep}
           pendingStatus={pendingStepStatus}
           errorMessage={timelineError}
+          warningMessage={dispatchEmailWarning}
           successMessage={timelineSuccess}
+          retryActionLabel="Retry Dispatch Email"
+          retryingAction={retryingDispatchEmail}
+          onRetryAction={handleRetryDispatchEmail}
           onDismissError={() => setTimelineError(null)}
+          onDismissWarning={() => setDispatchEmailWarning(null)}
           onDismissSuccess={() => setTimelineSuccess(null)}
           courierName={order.courierName}
           trackingNumber={order.trackingNumber}
@@ -491,13 +554,13 @@ export const PrinterOrderDetailPage: React.FC = () => {
 
         {/* Print Proof Preview (Front + Back with Actual QR Injected) */}
         {design && (
-          <div className="bg-white border border-slate-200 rounded-2xl p-6">
-            <h3 className="font-display font-bold text-sm text-[#0B1D3A] mb-4">
+          <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6">
+            <h3 className="font-display font-bold text-sm text-[#18142C] mb-4">
               Print Proof Preview (Trim: 85.6 × 54 mm · Bleed: 3 mm · Safe: 4 mm)
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <div className="text-xs font-medium text-slate-500 mb-2">Front Artwork</div>
+                <div className="text-xs font-medium text-[#64607D] mb-2">Front Artwork</div>
                 <CardCanvasPreview
                   side={design.frontDesign}
                   orientation={design.cardOrientation}
@@ -507,7 +570,7 @@ export const PrinterOrderDetailPage: React.FC = () => {
                 />
               </div>
               <div>
-                <div className="text-xs font-medium text-slate-500 mb-2">Back Artwork (Verified QR Embedded)</div>
+                <div className="text-xs font-medium text-[#64607D] mb-2">Back Artwork (Verified QR Embedded)</div>
                 <CardCanvasPreview
                   side={design.backDesign}
                   orientation={design.cardOrientation}
@@ -522,22 +585,22 @@ export const PrinterOrderDetailPage: React.FC = () => {
 
         {/* SMART Encoding Target + QR Artifact + Dispatch Form */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-3">
-            <h3 className="font-display font-bold text-sm text-[#0B1D3A]">SMART Encoding & Verified QR Target</h3>
-            <p className="text-xs text-slate-600">
+          <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 space-y-3">
+            <h3 className="font-display font-bold text-sm text-[#18142C]">SMART Encoding & Verified QR Target</h3>
+            <p className="text-xs text-[#64607D]">
               Encode this exact NDEF URI onto the card&apos;s SMART chip during manufacturing:
             </p>
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg font-mono text-xs text-[#1D4ED8] break-all">
+            <div className="p-3 bg-[#FAF9FE] border border-[#E9E4F5] rounded-lg font-mono text-xs text-[#7C3AED] break-all">
               {qr?.targetUrl || `${window.location.origin}/p/${order.profileSlug}`}
             </div>
             {qr?.pngDataUrl && (
               <div className="flex items-center gap-4 pt-2">
-                <img src={qr.pngDataUrl} alt="Verified QR" className="w-24 h-24 border border-slate-200 rounded-lg" />
+                <img src={qr.pngDataUrl} alt="Verified QR" className="w-24 h-24 border border-[#E9E4F5] rounded-lg" />
                 <div className="space-y-2">
                   <a
                     href={qr.pngDataUrl}
                     download={`${order.orderNumber}-qr.png`}
-                    className="block px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded text-xs font-semibold text-slate-800 text-center"
+                    className="block px-3 py-1.5 bg-[#F3EEFF] hover:bg-[#EAE3FF] rounded text-xs font-semibold text-[#18142C] text-center"
                   >
                     Download QR PNG
                   </a>
@@ -546,10 +609,10 @@ export const PrinterOrderDetailPage: React.FC = () => {
             )}
           </div>
 
-          <div id="printer-dispatch-form" className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
+          <div id="printer-dispatch-form" className="bg-white border border-[#E9E4F5] rounded-2xl p-6 space-y-4">
             <form onSubmit={handleDispatch} className="space-y-3">
-              <div className="flex items-center gap-2 font-display font-bold text-sm text-[#0B1D3A]">
-                <Truck className="h-4 w-4 text-[#1D4ED8]" />
+              <div className="flex items-center gap-2 font-display font-bold text-sm text-[#18142C]">
+                <Truck className="h-4 w-4 text-[#7C3AED]" />
                 <span>Mark Dispatched</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -559,7 +622,7 @@ export const PrinterOrderDetailPage: React.FC = () => {
                   value={courierName}
                   onChange={(e) => setCourierName(e.target.value)}
                   placeholder="Courier name (e.g. BlueDart)"
-                  className="px-3 py-2 border border-slate-300 rounded-lg text-xs"
+                  className="px-3 py-2 border border-[#DDD6FE] rounded-lg text-xs text-[#18142C]"
                 />
                 <input
                   type="text"
@@ -567,21 +630,21 @@ export const PrinterOrderDetailPage: React.FC = () => {
                   value={trackingNumber}
                   onChange={(e) => setTrackingNumber(e.target.value)}
                   placeholder="Tracking / AWB number"
-                  className="px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono"
+                  className="px-3 py-2 border border-[#DDD6FE] rounded-lg text-xs font-mono text-[#18142C]"
                 />
                 <input
                   type="url"
                   value={trackingUrl}
                   onChange={(e) => setTrackingUrl(e.target.value)}
                   placeholder="Tracking URL (optional)"
-                  className="px-3 py-2 border border-slate-300 rounded-lg text-xs"
+                  className="px-3 py-2 border border-[#DDD6FE] rounded-lg text-xs text-[#18142C]"
                 />
                 <input
                   type="date"
                   required
                   value={dispatchDate}
                   onChange={(e) => setDispatchDate(e.target.value)}
-                  className="px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono"
+                  className="px-3 py-2 border border-[#DDD6FE] rounded-lg text-xs font-mono text-[#18142C]"
                 />
               </div>
               <button
@@ -591,6 +654,18 @@ export const PrinterOrderDetailPage: React.FC = () => {
               >
                 {updatingStep ? 'Updating Dispatch...' : 'Confirm Dispatch & Notify Customer'}
               </button>
+              {dispatchEmailWarning && order.orderStatus === 'Dispatched' && (
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    disabled={retryingDispatchEmail}
+                    onClick={() => void handleRetryDispatchEmail()}
+                    className="w-full py-2 border border-amber-400 bg-amber-50 hover:bg-amber-100 text-amber-950 text-xs font-semibold rounded-xl cursor-pointer disabled:opacity-50"
+                  >
+                    {retryingDispatchEmail ? 'Retrying Dispatch Email...' : 'Retry Dispatch Email'}
+                  </button>
+                </div>
+              )}
             </form>
           </div>
         </div>
@@ -645,46 +720,46 @@ export const PrinterProfilePage: React.FC = () => {
 
   return (
     <PortalLayout portal="printer" title="Printer Facility Profile">
-      <form onSubmit={handleSave} className="bg-white border border-slate-200 rounded-2xl p-6 max-w-xl space-y-4">
+      <form onSubmit={handleSave} className="bg-white border border-[#E9E4F5] rounded-2xl p-6 max-w-xl space-y-4">
         <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">Business / Press Name</label>
+          <label className="block text-xs font-medium text-[#64607D] mb-1">Business / Press Name</label>
           <input
             type="text"
             required
             value={businessName}
             onChange={(e) => setBusinessName(e.target.value)}
-            className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm"
+            className="w-full px-3.5 py-2.5 border border-[#DDD6FE] rounded-lg text-sm text-[#18142C]"
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">Contact Person</label>
+          <label className="block text-xs font-medium text-[#64607D] mb-1">Contact Person</label>
           <input
             type="text"
             required
             value={contactPerson}
             onChange={(e) => setContactPerson(e.target.value)}
-            className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm"
+            className="w-full px-3.5 py-2.5 border border-[#DDD6FE] rounded-lg text-sm text-[#18142C]"
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">Fulfilment Phone</label>
+          <label className="block text-xs font-medium text-[#64607D] mb-1">Fulfilment Phone</label>
           <input
             type="tel"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm font-mono"
+            className="w-full px-3.5 py-2.5 border border-[#DDD6FE] rounded-lg text-sm font-mono text-[#18142C]"
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">Facility Address</label>
+          <label className="block text-xs font-medium text-[#64607D] mb-1">Facility Address</label>
           <textarea
             rows={3}
             value={address}
             onChange={(e) => setAddress(e.target.value)}
-            className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm"
+            className="w-full px-3.5 py-2.5 border border-[#DDD6FE] rounded-lg text-sm text-[#18142C]"
           />
         </div>
-        <button type="submit" className="px-5 py-2.5 bg-[#0B1D3A] text-white text-sm font-semibold rounded-xl">
+        <button type="submit" className="px-5 py-2.5 bg-[#18142C] hover:bg-[#2A2048] text-white text-sm font-semibold rounded-xl cursor-pointer transition-colors">
           Save Facility Profile
         </button>
       </form>

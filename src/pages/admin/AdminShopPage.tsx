@@ -295,17 +295,17 @@ export const AdminShopPage: React.FC = () => {
     <PortalLayout portal="admin" title="Shop & Smart Tags Management">
       <div className="space-y-6">
         {/* Top Summary & Tab Switcher */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="bg-white border border-[#E9E4F5] rounded-2xl p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-xs">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <ShoppingBag className="h-4 w-4 text-[#1D4ED8]" />
-              <h2 className="font-display font-bold text-base text-[#0B1D3A]">
+              <ShoppingBag className="h-4 w-4 text-[#7C3AED]" />
+              <h2 className="font-display font-bold text-base text-[#18142C]">
                 TapNex Smart Tags Storefront Catalog
               </h2>
             </div>
             <p className="text-xs text-slate-600">
               Manage Helmet, Pet, Belongings, Kids, and Find My Owner tags.{' '}
-              <strong className="text-[#0B1D3A]">
+              <strong className="text-[#18142C]">
                 {visibleCount} of {products.length} products
               </strong>{' '}
               are currently visible on the customer Shop page.
@@ -313,12 +313,12 @@ export const AdminShopPage: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex bg-slate-100 p-1 rounded-xl">
+            <div className="inline-flex bg-[#F3EEFF]/70 p-1 rounded-xl border border-[#E9E4F5]">
               <button
                 type="button"
                 onClick={() => setTab('products')}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
-                  tab === 'products' ? 'bg-[#0B1D3A] text-white' : 'text-slate-600 hover:text-slate-900'
+                  tab === 'products' ? 'bg-[#18142C] text-white' : 'text-slate-600 hover:text-[#18142C]'
                 }`}
               >
                 Products ({products.length})
@@ -327,7 +327,7 @@ export const AdminShopPage: React.FC = () => {
                 type="button"
                 onClick={() => setTab('categories')}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
-                  tab === 'categories' ? 'bg-[#0B1D3A] text-white' : 'text-slate-600 hover:text-slate-900'
+                  tab === 'categories' ? 'bg-[#18142C] text-white' : 'text-slate-600 hover:text-[#18142C]'
                 }`}
               >
                 Categories ({categories.length})
@@ -345,7 +345,7 @@ export const AdminShopPage: React.FC = () => {
                     isNew: true,
                   });
                 }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#1D4ED8] hover:bg-blue-700 text-white text-xs font-semibold whitespace-nowrap"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold whitespace-nowrap"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>Add Product</span>
@@ -359,7 +359,7 @@ export const AdminShopPage: React.FC = () => {
                     isNew: true,
                   })
                 }
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#1D4ED8] hover:bg-blue-700 text-white text-xs font-semibold whitespace-nowrap"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold whitespace-nowrap"
               >
                 <FolderPlus className="h-3.5 w-3.5" />
                 <span>Add Category</span>
@@ -373,15 +373,15 @@ export const AdminShopPage: React.FC = () => {
         ) : tab === 'products' ? (
           <div className="space-y-4">
             {/* Search & Category Filter */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="bg-white border border-[#E9E4F5] rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div className="flex flex-wrap gap-1.5">
                 <button
                   type="button"
                   onClick={() => setCategoryFilter('ALL')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors whitespace-nowrap ${
                     categoryFilter === 'ALL'
-                      ? 'bg-[#0B1D3A] text-white border-[#0B1D3A]'
-                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      ? 'bg-[#18142C] text-white border-[#18142C]'
+                      : 'bg-[#F3EEFF]/60 text-slate-700 border-[#E9E4F5] hover:bg-[#F3EEFF]'
                   }`}
                 >
                   All ({products.length})
@@ -395,8 +395,8 @@ export const AdminShopPage: React.FC = () => {
                       onClick={() => setCategoryFilter(c.categoryId)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors whitespace-nowrap ${
                         categoryFilter === c.categoryId
-                          ? 'bg-[#0B1D3A] text-white border-[#0B1D3A]'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                          ? 'bg-[#18142C] text-white border-[#18142C]'
+                          : 'bg-[#F3EEFF]/60 text-slate-700 border-[#E9E4F5] hover:bg-[#F3EEFF]'
                       }`}
                     >
                       {c.name} ({count})
@@ -418,9 +418,9 @@ export const AdminShopPage: React.FC = () => {
             </div>
 
             {/* Products Table */}
-            <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
+            <div className="bg-white border border-[#E9E4F5] rounded-2xl overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
+                <thead className="bg-[#FAF9FE] border-b border-[#E9E4F5] text-slate-500">
                   <tr>
                     <th className="py-3 px-4">Product</th>
                     <th className="py-3 px-4">Category</th>
@@ -454,10 +454,10 @@ export const AdminShopPage: React.FC = () => {
                               )}
                             </div>
                             <div className="min-w-0">
-                              <div className="font-semibold text-[#0B1D3A] flex items-center gap-1.5">
+                              <div className="font-semibold text-[#18142C] flex items-center gap-1.5">
                                 <span className="truncate max-w-[220px]">{prod.name}</span>
                                 {prod.featured && (
-                                  <span className="px-1.5 py-0.5 rounded bg-blue-50 text-[#1D4ED8] text-[10px] font-semibold">
+                                  <span className="px-1.5 py-0.5 rounded bg-[#F3EEFF] text-[#6D28D9] text-[10px] font-semibold">
                                     Featured
                                   </span>
                                 )}
@@ -470,7 +470,7 @@ export const AdminShopPage: React.FC = () => {
                         </td>
                         <td className="py-3 px-4 text-slate-700 font-medium">{prod.categoryName}</td>
                         <td className="py-3 px-4 font-mono tabular-nums">
-                          <div className="font-bold text-[#0B1D3A]">₹{prod.priceInr}</div>
+                          <div className="font-bold text-[#18142C]">₹{prod.priceInr}</div>
                           {prod.compareAtPriceInr && prod.compareAtPriceInr > prod.priceInr && (
                             <div className="text-[11px] text-slate-400 line-through">₹{prod.compareAtPriceInr}</div>
                           )}
@@ -491,7 +491,7 @@ export const AdminShopPage: React.FC = () => {
                               checked={prod.visibleOnShop}
                               disabled={busyId === prod.productId}
                               onChange={(e) => handleToggleProductVisibility(prod, e.target.checked)}
-                              className="h-4 w-4 accent-[#1D4ED8] rounded"
+                              className="h-4 w-4 accent-[#7C3AED] rounded"
                             />
                             <span
                               className={`inline-flex items-center gap-1 font-semibold ${
@@ -522,7 +522,7 @@ export const AdminShopPage: React.FC = () => {
                                 isNew: false,
                               })
                             }
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-[#0B1D3A] hover:bg-slate-50"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-[#DDD6FE] rounded-lg text-xs font-semibold text-[#18142C] hover:bg-[#F3EEFF]"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                             <span>Edit</span>
@@ -553,13 +553,13 @@ export const AdminShopPage: React.FC = () => {
                 <div
                   key={cat.categoryId}
                   className={`bg-white border rounded-2xl p-5 flex flex-col justify-between gap-4 ${
-                    cat.active ? 'border-slate-200' : 'border-slate-200 bg-slate-50 opacity-80'
+                    cat.active ? 'border-[#E9E4F5]' : 'border-[#E9E4F5] bg-[#FAF9FE] opacity-80'
                   }`}
                 >
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
                       <span className="inline-flex items-center gap-1.5 text-xs font-mono text-slate-500">
-                        <Tag className="h-3.5 w-3.5 text-[#1D4ED8]" />
+                        <Tag className="h-3.5 w-3.5 text-[#7C3AED]" />
                         <span>#{cat.sortOrder} · {cat.slug}</span>
                       </span>
                       <label className="inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer">
@@ -579,17 +579,17 @@ export const AdminShopPage: React.FC = () => {
                               'info'
                             );
                           }}
-                          className="h-4 w-4 accent-[#1D4ED8]"
+                          className="h-4 w-4 accent-[#7C3AED]"
                         />
                         <span>{cat.active ? 'Active' : 'Hidden'}</span>
                       </label>
                     </div>
-                    <h3 className="font-display font-bold text-base text-[#0B1D3A]">{cat.name}</h3>
+                    <h3 className="font-display font-bold text-base text-[#18142C]">{cat.name}</h3>
                     <p className="text-xs text-slate-600">{cat.description || 'No description provided.'}</p>
                     <div className="text-[11px] font-mono text-slate-500">{count} product(s)</div>
                   </div>
 
-                  <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                  <div className="flex items-center justify-between pt-3 border-t border-[#F0ECF9]">
                     <button
                       type="button"
                       onClick={() =>
@@ -598,7 +598,7 @@ export const AdminShopPage: React.FC = () => {
                           isNew: false,
                         })
                       }
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-[#1D4ED8] hover:underline"
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-[#7C3AED] hover:underline"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                       <span>Edit Category</span>
@@ -628,11 +628,11 @@ export const AdminShopPage: React.FC = () => {
         >
           <form
             onSubmit={handleSaveProduct}
-            className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden my-auto"
+            className="bg-white border border-[#E9E4F5] rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden my-auto"
           >
-            <div className="px-6 py-4 bg-[#0B1D3A] text-white flex items-center justify-between">
+            <div className="px-6 py-4 bg-[#18122B] text-white flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <CheckSquare className="h-4 w-4 text-cyan-300" />
+                <CheckSquare className="h-4 w-4 text-[#C4B5FD]" />
                 <h3 className="font-display font-bold text-base">
                   {productModal.isNew ? 'Add New Shop Product' : `Edit Product — ${productModal.draft.name}`}
                 </h3>
@@ -790,9 +790,9 @@ export const AdminShopPage: React.FC = () => {
                   )}
                 </div>
                 <div className="space-y-2 flex-1 min-w-0">
-                  <div className="text-xs font-semibold text-[#0B1D3A]">Product Image (4:3 recommended)</div>
+                  <div className="text-xs font-semibold text-[#18142C]">Product Image (4:3 recommended)</div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0B1D3A] text-white text-xs font-semibold cursor-pointer hover:bg-[#132A52]">
+                    <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#18142C] text-white text-xs font-semibold cursor-pointer hover:bg-[#2A2048]">
                       <Upload className="h-3.5 w-3.5" />
                       <span>Upload Photo</span>
                       <input type="file" accept="image/*" className="hidden" onChange={handleUploadProductImage} />
@@ -874,8 +874,8 @@ export const AdminShopPage: React.FC = () => {
                 />
               </div>
 
-              <div className="flex flex-wrap gap-5 pt-2 border-t border-slate-100">
-                <label className="inline-flex items-center gap-2 text-xs font-semibold text-[#0B1D3A] cursor-pointer">
+              <div className="flex flex-wrap gap-5 pt-2 border-t border-[#F0ECF9]">
+                <label className="inline-flex items-center gap-2 text-xs font-semibold text-[#18142C] cursor-pointer">
                   <input
                     type="checkbox"
                     checked={productModal.draft.visibleOnShop}
@@ -885,7 +885,7 @@ export const AdminShopPage: React.FC = () => {
                         draft: { ...productModal.draft, visibleOnShop: e.target.checked },
                       })
                     }
-                    className="h-4 w-4 accent-[#1D4ED8]"
+                    className="h-4 w-4 accent-[#7C3AED]"
                   />
                   <span>Show on Shop (Visible to Customers)</span>
                 </label>
@@ -913,14 +913,14 @@ export const AdminShopPage: React.FC = () => {
                         draft: { ...productModal.draft, featured: e.target.checked },
                       })
                     }
-                    className="h-4 w-4 accent-[#1D4ED8]"
+                    className="h-4 w-4 accent-[#7C3AED]"
                   />
                   <span>Featured Product</span>
                 </label>
               </div>
             </div>
 
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+            <div className="px-6 py-4 bg-[#FAF9FE] border-t border-[#E9E4F5] flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setProductModal(null)}
@@ -931,7 +931,7 @@ export const AdminShopPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={savingProduct}
-                className="px-5 py-2 bg-[#0B1D3A] hover:bg-[#132A52] text-white rounded-lg text-xs font-semibold disabled:opacity-50"
+                className="px-5 py-2 bg-[#18142C] hover:bg-[#2A2048] text-white rounded-lg text-xs font-semibold disabled:opacity-50"
               >
                 {savingProduct ? 'Saving...' : productModal.isNew ? 'Create Product' : 'Save Changes'}
               </button>
@@ -949,9 +949,9 @@ export const AdminShopPage: React.FC = () => {
         >
           <form
             onSubmit={handleSaveCategory}
-            className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+            className="bg-white border border-[#E9E4F5] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
           >
-            <div className="px-6 py-4 bg-[#0B1D3A] text-white flex items-center justify-between">
+            <div className="px-6 py-4 bg-[#18122B] text-white flex items-center justify-between">
               <h3 className="font-display font-bold text-base">
                 {categoryModal.isNew ? 'Add Shop Category' : `Edit Category — ${categoryModal.draft.name}`}
               </h3>
@@ -1031,7 +1031,7 @@ export const AdminShopPage: React.FC = () => {
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
                 />
               </div>
-              <label className="inline-flex items-center gap-2 text-xs font-semibold text-[#0B1D3A] cursor-pointer">
+              <label className="inline-flex items-center gap-2 text-xs font-semibold text-[#18142C] cursor-pointer">
                 <input
                   type="checkbox"
                   checked={categoryModal.draft.active}
@@ -1041,13 +1041,13 @@ export const AdminShopPage: React.FC = () => {
                       draft: { ...categoryModal.draft, active: e.target.checked },
                     })
                   }
-                  className="h-4 w-4 accent-[#1D4ED8]"
+                  className="h-4 w-4 accent-[#7C3AED]"
                 />
                 <span>Active on Customer Shop</span>
               </label>
             </div>
 
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+            <div className="px-6 py-4 bg-[#FAF9FE] border-t border-[#E9E4F5] flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setCategoryModal(null)}
@@ -1058,7 +1058,7 @@ export const AdminShopPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={savingCategory}
-                className="px-5 py-2 bg-[#0B1D3A] hover:bg-[#132A52] text-white rounded-lg text-xs font-semibold disabled:opacity-50"
+                className="px-5 py-2 bg-[#18142C] hover:bg-[#2A2048] text-white rounded-lg text-xs font-semibold disabled:opacity-50"
               >
                 {savingCategory ? 'Saving...' : 'Save Category'}
               </button>

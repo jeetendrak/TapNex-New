@@ -132,19 +132,19 @@ export const ScreenProtectionShield: React.FC<ScreenProtectionShieldProps> = ({
           className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center text-white"
           onClick={() => setCaptureShielded(false)}
         >
-          <div className="max-w-sm rounded-2xl bg-[#0B1D3A] border border-cyan-400/40 p-6 shadow-2xl space-y-3">
-            <ShieldAlert className="h-9 w-9 text-cyan-300 mx-auto" />
+          <div className="max-w-sm rounded-2xl bg-[#18122B] border border-[#C4B5FD]/40 p-6 shadow-2xl space-y-3">
+            <ShieldAlert className="h-9 w-9 text-[#C4B5FD] mx-auto" />
             <div className="font-display font-bold text-base">Protected TapNex Profile</div>
             <p className="text-xs text-slate-300 leading-relaxed">
               Downloading, saving, printing, and screen capture are restricted while viewing this profile.
             </p>
-            <div className="text-[11px] font-mono uppercase tracking-widest text-cyan-300/90 py-1.5 px-3 rounded-lg bg-white/5 border border-white/10">
+            <div className="text-[11px] font-mono uppercase tracking-widest text-[#D8CCFF] py-1.5 px-3 rounded-lg bg-white/5 border border-white/10">
               {watermarkLabel}
             </div>
             <button
               type="button"
               onClick={() => setCaptureShielded(false)}
-              className="mt-2 px-4 py-2 rounded-xl bg-white text-[#0B1D3A] text-xs font-semibold hover:bg-slate-100"
+              className="mt-2 px-4 py-2 rounded-xl bg-white text-[#18142C] text-xs font-semibold hover:bg-[#F3EEFF]"
             >
               Resume Viewing
             </button>

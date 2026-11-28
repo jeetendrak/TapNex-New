@@ -559,11 +559,16 @@ export interface EmailTemplateRecord {
 
 export interface NotificationRecord {
   notificationId: string;
+  orderId?: string | null;
   uid: string;
+  recipientEmail?: string;
+  templateId?: string;
   title: string;
   message: string;
   channel: 'in_app' | 'email';
-  deliveryStatus: 'Queued' | 'Sent' | 'ConfigRequired' | 'Read';
+  deliveryStatus: 'Queued' | 'Sent' | 'ConfigRequired' | 'Failed' | 'Read';
+  resendMessageId?: string | null;
+  error?: string | null;
   createdAt: unknown;
 }
 

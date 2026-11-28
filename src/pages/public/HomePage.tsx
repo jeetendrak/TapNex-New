@@ -131,34 +131,34 @@ export const HomePage: React.FC = () => {
 
   return (
     <PublicLayout>
-      {/* 1. Hero Section */}
-      <section className="bg-white border-b border-slate-200">
+      {/* 1. Hero Section — Soft Lavender Editorial Surface */}
+      <section className="bg-gradient-to-br from-[#DFD4FF] via-[#EDE7FF] to-[#FAF9FE] border-b border-[#E9E4F5]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 lg:py-20 grid grid-cols-1 lg:grid-cols-12 gap-10 items-stretch">
           <div className="lg:col-span-6 flex flex-col justify-center">
             <h1
-              className="font-display font-extrabold tracking-tight text-[#0B1D3A] leading-[1.08]"
+              className="font-display font-extrabold tracking-tight text-[#18142C] leading-[1.08]"
               style={{ fontSize: 'clamp(2.25rem, 4vw, 3.6rem)', textWrap: 'balance' }}
             >
               Your Business Identity. One Smart Tap.
             </h1>
-            <p className="mt-5 text-base sm:text-lg text-slate-600 leading-relaxed max-w-xl">
+            <p className="mt-5 text-base sm:text-lg text-[#524D6B] leading-relaxed max-w-xl">
               Share your contact details, business information and social media profiles instantly with a premium SMART business card.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-4">
               <SmartCardLink
-                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 text-sm font-semibold text-white bg-[#0B1D3A] hover:bg-[#132A52] rounded-xl transition-colors whitespace-nowrap"
+                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 text-sm font-semibold text-white bg-[#7C3AED] hover:bg-[#6D28D9] rounded-xl shadow-sm transition-colors whitespace-nowrap"
               >
                 <span>Get Your Smart Card</span>
                 <ArrowRight className="h-4 w-4" />
               </SmartCardLink>
               <Link
                 to="/shop"
-                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 text-sm font-semibold text-[#0B1D3A] bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors whitespace-nowrap"
+                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 text-sm font-semibold text-[#18142C] bg-white hover:bg-[#F3EEFF] border border-[#DDD6FE] rounded-xl transition-colors whitespace-nowrap"
               >
                 <span>Shop Smart Tags</span>
               </Link>
             </div>
-            <div className="mt-8 pt-6 border-t border-slate-200 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-slate-500">
+            <div className="mt-8 pt-6 border-t border-[#D8CEFB] flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-[#524D6B]">
               <span>300 DPI Print + 3 mm Bleed</span>
               <span aria-hidden="true">·</span>
               <span>iOS & Android vCard Download</span>
@@ -168,7 +168,7 @@ export const HomePage: React.FC = () => {
           </div>
 
           <div className="lg:col-span-6">
-            <div className="group relative h-full min-h-[300px] lg:min-h-[420px] rounded-2xl overflow-hidden border border-slate-200 bg-slate-100 shadow-sm hover:shadow-xl hover:border-blue-300/80 transition-all duration-500">
+            <div className="group relative h-full min-h-[300px] lg:min-h-[420px] rounded-3xl overflow-hidden border border-[#D8CEFB] bg-white/80 shadow-sm hover:shadow-xl hover:border-[#A78BFA] transition-all duration-500">
               <img
                 src={HERO_IMG}
                 alt="Matte deep navy SMART business card tapped against a smartphone"
@@ -181,13 +181,13 @@ export const HomePage: React.FC = () => {
       </section>
 
       {/* 2. How It Works */}
-      <section id="how-it-works" className="py-16 lg:py-20 bg-slate-50 border-b border-slate-200">
+      <section id="how-it-works" className="py-16 lg:py-20 bg-[#FAF9FE] border-b border-[#E9E4F5]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-2xl">
-            <h2 className="font-display text-2xl sm:text-3xl font-bold text-[#0B1D3A] tracking-tight">
+            <h2 className="font-display text-2xl sm:text-3xl font-bold text-[#18142C] tracking-tight">
               From Digital Profile to Physical SMART Card in Five Steps
             </h2>
-            <p className="mt-3 text-slate-600 text-base">
+            <p className="mt-3 text-[#64607D] text-base">
               Every card is custom-manufactured to exact ISO dimensions and paired with your permanent public profile link.
             </p>
           </div>
@@ -196,16 +196,16 @@ export const HomePage: React.FC = () => {
             {HOW_IT_WORKS_STEPS.map((item) => (
               <div
                 key={item.step}
-                className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col justify-between"
+                className="bg-white border border-[#E9E4F5] rounded-2xl p-5 flex flex-col justify-between"
               >
                 <div>
-                  <span className="font-mono text-sm font-semibold text-[#1D4ED8] tabular-nums">
+                  <span className="font-mono text-sm font-semibold text-[#7C3AED] tabular-nums">
                     {item.step}.
                   </span>
-                  <h3 className="mt-2 font-display text-base font-bold text-[#0B1D3A] leading-snug">
+                  <h3 className="mt-2 font-display text-base font-bold text-[#18142C] leading-snug">
                     {item.title}
                   </h3>
-                  <p className="mt-2 text-sm text-slate-600 leading-relaxed">{item.desc}</p>
+                  <p className="mt-2 text-sm text-[#64607D] leading-relaxed">{item.desc}</p>
                 </div>
               </div>
             ))}
@@ -214,81 +214,87 @@ export const HomePage: React.FC = () => {
       </section>
 
       {/* 3. Key Features (Asymmetric Bento Architecture) */}
-      <section id="features" className="py-16 lg:py-20 bg-white border-b border-slate-200">
+      <section id="features" className="py-16 lg:py-20 bg-white border-b border-[#E9E4F5]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10">
             <div>
-              <h2 className="font-display text-2xl sm:text-3xl font-bold text-[#0B1D3A] tracking-tight">
+              <h2 className="font-display text-2xl sm:text-3xl font-bold text-[#18142C] tracking-tight">
                 Engineered for Instant Sharing and Privacy Control
               </h2>
-              <p className="mt-2 text-slate-600 max-w-2xl">
+              <p className="mt-2 text-[#64607D] max-w-2xl">
                 Built on field-level visibility rules so you decide exactly what visitors and vCard downloads receive.
               </p>
             </div>
-            <Link to="/features" className="text-sm font-semibold text-[#1D4ED8] hover:underline whitespace-nowrap">
+            <Link to="/features" className="text-sm font-semibold text-[#7C3AED] hover:underline whitespace-nowrap">
               Explore all capabilities →
             </Link>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="md:col-span-2 bg-[#071226] text-white rounded-2xl p-8 flex flex-col justify-between border border-slate-800">
+            <div className="md:col-span-2 bg-gradient-to-br from-[#18122B] via-[#261B4A] to-[#130D24] text-white rounded-2xl p-8 flex flex-col justify-between border border-[#2E234E]">
               <div>
-                <div className="inline-flex items-center gap-2 text-cyan-400 text-xs font-semibold mb-4">
+                <div className="inline-flex items-center gap-2 text-[#C4B5FD] text-xs font-semibold mb-4">
                   <Smartphone className="h-4 w-4" />
                   <span>One-Tap SMART &amp; Universal QR Fallback</span>
                 </div>
                 <h3 className="font-display text-2xl font-bold tracking-tight">
                   Update your digital details without reprinting the card.
                 </h3>
-                <p className="mt-3 text-slate-300 text-sm sm:text-base leading-relaxed max-w-xl">
+                <p className="mt-3 text-[#D0C9E6] text-sm sm:text-base leading-relaxed max-w-xl">
                   Both the encoded SMART chip and the printed QR code resolve to your permanent profile URL. Change your phone number, title, WhatsApp, or custom links anytime—your physical card keeps working forever.
                 </p>
               </div>
-              <div className="mt-8 grid grid-cols-2 sm:grid-cols-3 gap-4 pt-6 border-t border-slate-800 text-xs text-slate-300">
-                <div className="flex items-center gap-2"><Download className="h-4 w-4 text-cyan-400 shrink-0" /><span>One-Tap Save Contact (.vcf)</span></div>
-                <div className="flex items-center gap-2"><Share2 className="h-4 w-4 text-cyan-400 shrink-0" /><span>16+ Social Platforms</span></div>
-                <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-cyan-400 shrink-0" /><span>Field-Level Privacy</span></div>
+              <div className="mt-8 grid grid-cols-2 sm:grid-cols-3 gap-4 pt-6 border-t border-[#2E234E] text-xs text-[#D0C9E6]">
+                <div className="flex items-center gap-2"><Download className="h-4 w-4 text-[#C4B5FD] shrink-0" /><span>One-Tap Save Contact (.vcf)</span></div>
+                <div className="flex items-center gap-2"><Share2 className="h-4 w-4 text-[#C4B5FD] shrink-0" /><span>16+ Social Platforms</span></div>
+                <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-[#C4B5FD] shrink-0" /><span>Field-Level Privacy</span></div>
               </div>
             </div>
 
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 flex flex-col justify-between">
+            <div className="bg-[#FAF9FE] border border-[#E9E4F5] rounded-2xl p-6 flex flex-col justify-between">
               <div>
-                <QrCode className="h-6 w-6 text-[#1D4ED8] mb-3" />
-                <h3 className="font-display text-lg font-bold text-[#0B1D3A]">
+                <div className="w-10 h-10 rounded-xl bg-[#F3EEFF] flex items-center justify-center mb-3">
+                  <QrCode className="h-5 w-5 text-[#7C3AED]" />
+                </div>
+                <h3 className="font-display text-lg font-bold text-[#18142C]">
                   Custom Business Card Design
                 </h3>
-                <p className="mt-2 text-sm text-slate-600 leading-relaxed">
+                <p className="mt-2 text-sm text-[#64607D] leading-relaxed">
                   Customize background colors, upload logos, adjust typography, and preview both front and back in exact 85.6 × 54 mm proportions.
                 </p>
               </div>
               <SmartCardLink
-                className="mt-6 inline-flex items-center text-sm font-semibold text-[#1D4ED8] hover:underline"
+                className="mt-6 inline-flex items-center text-sm font-semibold text-[#7C3AED] hover:underline"
               >
                 Open Design Studio →
               </SmartCardLink>
             </div>
 
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6">
-              <CreditCard className="h-6 w-6 text-[#1D4ED8] mb-3" />
-              <h3 className="font-display text-lg font-bold text-[#0B1D3A]">
+            <div className="bg-[#FAF9FE] border border-[#E9E4F5] rounded-2xl p-6">
+              <div className="w-10 h-10 rounded-xl bg-[#F3EEFF] flex items-center justify-center mb-3">
+                <CreditCard className="h-5 w-5 text-[#7C3AED]" />
+              </div>
+              <h3 className="font-display text-lg font-bold text-[#18142C]">
                 Zero Paper Waste
               </h3>
-              <p className="mt-2 text-sm text-slate-600 leading-relaxed">
+              <p className="mt-2 text-sm text-[#64607D] leading-relaxed">
                 Replace hundreds of disposable paper cards with a single durable smart card built for daily networking.
               </p>
             </div>
 
-            <div className="md:col-span-2 bg-slate-50 border border-slate-200 rounded-2xl p-6 grid grid-cols-1 sm:grid-cols-2 gap-6 items-center">
+            <div className="md:col-span-2 bg-[#FAF9FE] border border-[#E9E4F5] rounded-2xl p-6 grid grid-cols-1 sm:grid-cols-2 gap-6 items-center">
               <div>
-                <RefreshCw className="h-6 w-6 text-[#1D4ED8] mb-3" />
-                <h3 className="font-display text-lg font-bold text-[#0B1D3A]">
-                  Granular Public Visibility & Custom Fields
+                <div className="w-10 h-10 rounded-xl bg-[#F3EEFF] flex items-center justify-center mb-3">
+                  <RefreshCw className="h-5 w-5 text-[#7C3AED]" />
+                </div>
+                <h3 className="font-display text-lg font-bold text-[#18142C]">
+                  Granular Public Visibility &amp; Custom Fields
                 </h3>
-                <p className="mt-2 text-sm text-slate-600 leading-relaxed">
+                <p className="mt-2 text-sm text-[#64607D] leading-relaxed">
                   Keep alternate phone numbers or internal emails private while exposing GST numbers, booking links, or office numbers selectively.
                 </p>
               </div>
-              <div className="group rounded-xl overflow-hidden border border-slate-200 aspect-[4/3] bg-slate-100 shadow-xs hover:shadow-lg hover:border-blue-300/80 transition-all duration-500">
+              <div className="group rounded-xl overflow-hidden border border-[#E9E4F5] aspect-[4/3] bg-white shadow-xs hover:shadow-lg hover:border-[#C4B5FD] transition-all duration-500">
                 <img
                   src={WORKFLOW_IMG}
                   alt="Professionals exchanging digital business profile with SMART card"
@@ -302,14 +308,14 @@ export const HomePage: React.FC = () => {
       </section>
 
       {/* 4. Interactive Card Design Showcase */}
-      <section id="card-designs" className="py-16 lg:py-20 bg-slate-50 border-b border-slate-200">
+      <section id="card-designs" className="py-16 lg:py-20 bg-[#FAF9FE] border-b border-[#E9E4F5]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
             <div className="lg:col-span-5">
-              <h2 className="font-display text-2xl sm:text-3xl font-bold text-[#0B1D3A] tracking-tight">
-                Predefined Card Templates & Custom Studio
+              <h2 className="font-display text-2xl sm:text-3xl font-bold text-[#18142C] tracking-tight">
+                Predefined Card Templates &amp; Custom Studio
               </h2>
-              <p className="mt-3 text-slate-600 text-sm sm:text-base leading-relaxed">
+              <p className="mt-3 text-[#64607D] text-sm sm:text-base leading-relaxed">
                 Select a signature finish below to preview the front layout. Before purchase, the QR slot displays a secure non-scannable placeholder until your order is verified.
               </p>
 
@@ -321,14 +327,14 @@ export const HomePage: React.FC = () => {
                       key={tpl.templateId}
                       type="button"
                       onClick={() => setSelectedTpl(tpl)}
-                      className={`text-left px-3.5 py-2.5 rounded-lg border text-xs font-medium transition-colors ${
+                      className={`text-left px-3.5 py-2.5 rounded-xl border text-xs font-medium transition-colors cursor-pointer ${
                         active
-                          ? 'bg-[#0B1D3A] text-white border-[#0B1D3A]'
-                          : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
+                          ? 'bg-[#18142C] text-white border-[#18142C]'
+                          : 'bg-white text-[#18142C] border-[#E9E4F5] hover:border-[#C4B5FD]'
                       }`}
                     >
                       <div className="truncate font-semibold">{tpl.name}</div>
-                      <div className={`font-mono text-[11px] mt-0.5 ${active ? 'text-cyan-300' : 'text-slate-500'}`}>
+                      <div className={`font-mono text-[11px] mt-0.5 ${active ? 'text-[#C4B5FD]' : 'text-[#64607D]'}`}>
                         ₹{tpl.priceInr}
                       </div>
                     </button>
@@ -338,7 +344,7 @@ export const HomePage: React.FC = () => {
 
               <div className="mt-6">
                 <SmartCardLink
-                  className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#1D4ED8] hover:bg-blue-700 text-white text-sm font-semibold transition-colors"
+                  className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-sm font-semibold transition-colors"
                 >
                   <span>Customize {selectedTpl.name}</span>
                   <ArrowRight className="h-4 w-4" />
@@ -347,14 +353,14 @@ export const HomePage: React.FC = () => {
             </div>
 
             <div className="lg:col-span-7 space-y-6">
-              <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8">
-                <div className="flex items-center justify-between text-xs text-slate-500 mb-4">
+              <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 sm:p-8">
+                <div className="flex items-center justify-between text-xs text-[#64607D] mb-4">
                   <span>{selectedTpl.name} · {(selectedTpl.cardType || 'SMART Card').replace(/NFC/g, 'SMART')}</span>
                   <span className="font-mono tabular-nums">85.6 × 54.0 mm</span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-center">
                   <div className="transition-transform duration-300 ease-out hover:-translate-y-1">
-                    <div className="text-xs font-medium text-slate-500 mb-2">Front Side</div>
+                    <div className="text-xs font-medium text-[#64607D] mb-2">Front Side</div>
                     <CardCanvasPreview
                       side={selectedTpl.frontSpec}
                       orientation="landscape"
@@ -362,7 +368,7 @@ export const HomePage: React.FC = () => {
                     />
                   </div>
                   <div className="transition-transform duration-300 ease-out hover:-translate-y-1">
-                    <div className="text-xs font-medium text-slate-500 mb-2">Back Side (QR Placeholder)</div>
+                    <div className="text-xs font-medium text-[#64607D] mb-2">Back Side (QR Placeholder)</div>
                     <CardCanvasPreview
                       side={selectedTpl.backSpec}
                       orientation="landscape"
@@ -372,7 +378,7 @@ export const HomePage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="group rounded-2xl overflow-hidden border border-slate-200 aspect-[16/7] bg-slate-100 shadow-xs hover:shadow-xl hover:border-blue-300/80 transition-all duration-500">
+              <div className="group rounded-2xl overflow-hidden border border-[#E9E4F5] aspect-[16/7] bg-white shadow-xs hover:shadow-xl hover:border-[#C4B5FD] transition-all duration-500">
                 <img
                   src={SHOWCASE_IMG}
                   alt="Luxury matte navy, obsidian black, and pearl white SMART business cards"
@@ -386,20 +392,20 @@ export const HomePage: React.FC = () => {
       </section>
 
       {/* 4B. Smart Safety Tags & Accessories Shop Showcase */}
-      <section className="py-16 lg:py-20 bg-white border-b border-slate-200">
+      <section className="py-16 lg:py-20 bg-white border-b border-[#E9E4F5]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10">
             <div>
-              <h2 className="font-display text-2xl sm:text-3xl font-bold text-[#0B1D3A] tracking-tight">
+              <h2 className="font-display text-2xl sm:text-3xl font-bold text-[#18142C] tracking-tight">
                 Smart Safety Tags &amp; Recovery Stickers
               </h2>
-              <p className="mt-2 text-slate-600 max-w-2xl text-sm sm:text-base">
+              <p className="mt-2 text-[#64607D] max-w-2xl text-sm sm:text-base">
                 Protect helmets, kids school bags, pets, and personal gear with scannable SMART tags linked to your digital profile.
               </p>
             </div>
             <Link
               to="/shop"
-              className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#1D4ED8] hover:underline whitespace-nowrap"
+              className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#7C3AED] hover:underline whitespace-nowrap"
             >
               <span>Browse All Smart Tags</span>
               <ArrowRight className="h-4 w-4" />
@@ -416,10 +422,10 @@ export const HomePage: React.FC = () => {
                 <Link
                   key={item.productId}
                   to={`/shop?category=${encodeURIComponent(item.categoryId)}`}
-                  className="group bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden flex flex-col justify-between hover:shadow-md hover:border-blue-300 transition-all"
+                  className="group bg-[#FAF9FE] border border-[#E9E4F5] rounded-2xl overflow-hidden flex flex-col justify-between hover:shadow-md hover:border-[#C4B5FD] transition-all"
                 >
                   <div>
-                    <div className="aspect-[4/3] bg-slate-100 overflow-hidden">
+                    <div className="aspect-[4/3] bg-white overflow-hidden">
                       <img
                         src={item.imageDataUrl}
                         alt={item.name}
@@ -427,19 +433,19 @@ export const HomePage: React.FC = () => {
                       />
                     </div>
                     <div className="p-4">
-                      <div className="text-[11px] font-semibold text-[#1D4ED8] truncate">
+                      <div className="text-[11px] font-semibold text-[#7C3AED] truncate">
                         {catName}
                       </div>
-                      <h3 className="mt-1 font-display text-base font-bold text-[#0B1D3A] leading-snug line-clamp-2">
+                      <h3 className="mt-1 font-display text-base font-bold text-[#18142C] leading-snug line-clamp-2">
                         {item.name}
                       </h3>
                     </div>
                   </div>
                   <div className="px-4 pb-4 flex items-center justify-between">
-                    <span className="font-display text-lg font-extrabold text-[#0B1D3A] tabular-nums">
+                    <span className="font-display text-lg font-extrabold text-[#18142C] tabular-nums">
                       ₹{item.priceInr}
                     </span>
-                    <span className="text-xs font-semibold text-[#1D4ED8] group-hover:underline">
+                    <span className="text-xs font-semibold text-[#7C3AED] group-hover:underline">
                       View Tag →
                     </span>
                   </div>
@@ -451,78 +457,78 @@ export const HomePage: React.FC = () => {
       </section>
 
       {/* 5. Benefits by Profession */}
-      <section className="py-16 lg:py-20 bg-white border-b border-slate-200">
+      <section className="py-16 lg:py-20 bg-white border-b border-[#E9E4F5]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-2xl mb-10">
-            <h2 className="font-display text-2xl sm:text-3xl font-bold text-[#0B1D3A] tracking-tight">
+            <h2 className="font-display text-2xl sm:text-3xl font-bold text-[#18142C] tracking-tight">
               Built for Modern Teams and Independent Professionals
             </h2>
-            <p className="mt-2 text-slate-600">
+            <p className="mt-2 text-[#64607D]">
               Adaptable digital profiles and durable smart cards tailored to how you meet clients.
             </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {AUDIENCE_BENEFITS.map((item) => (
-              <div key={item.role} className="border border-slate-200 rounded-xl p-5 bg-slate-50/60">
-                <h3 className="font-display text-base font-bold text-[#0B1D3A]">{item.role}</h3>
-                <p className="mt-2 text-sm text-slate-600 leading-relaxed">{item.benefit}</p>
+              <div key={item.role} className="border border-[#E9E4F5] rounded-2xl p-5 bg-[#FAF9FE]">
+                <h3 className="font-display text-base font-bold text-[#18142C]">{item.role}</h3>
+                <p className="mt-2 text-sm text-[#64607D] leading-relaxed">{item.benefit}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* 6. Pricing Preview */}
-      <section className="py-16 lg:py-20 bg-[#071226] text-white">
+      {/* 6. Pricing Preview — Deep Indigo-Violet Showcase */}
+      <section className="py-16 lg:py-20 bg-gradient-to-br from-[#18122B] via-[#241848] to-[#140E26] text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch">
             <div className="lg:col-span-1 flex flex-col justify-center">
               <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">
                 Transparent Card Pricing in INR
               </h2>
-              <p className="mt-3 text-slate-300 text-sm leading-relaxed">
+              <p className="mt-3 text-[#D0C9E6] text-sm leading-relaxed">
                 No recurring subscription required for your digital profile. Pay once per personalized SMART business card, printed at 300 DPI and delivered across India in 10–15 days.
               </p>
               <Link
                 to="/pricing"
-                className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-cyan-400 hover:text-cyan-300"
+                className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-[#C4B5FD] hover:text-white"
               >
-                <span>Compare card finishes & bulk rates</span>
+                <span>Compare card finishes &amp; bulk rates</span>
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
 
-            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-7 flex flex-col justify-between">
+            <div className="bg-[#21193D]/90 border border-[#2E234E] rounded-2xl p-7 flex flex-col justify-between">
               <div>
-                <div className="text-sm font-semibold text-cyan-400">PVC Matte / Gloss SMART</div>
+                <div className="text-sm font-semibold text-[#C4B5FD]">PVC Matte / Gloss SMART</div>
                 <div className="mt-2 font-display text-3xl font-bold tabular-nums">₹1,200 – ₹1,500</div>
-                <p className="mt-2 text-xs text-slate-400">Ideal for founders, consultants, and sales teams</p>
-                <ul className="mt-5 space-y-2.5 text-sm text-slate-300">
-                  <li className="flex items-center gap-2"><Check className="h-4 w-4 text-cyan-400" /><span>85.6 × 54 mm ISO ID-1 precision trim</span></li>
-                  <li className="flex items-center gap-2"><Check className="h-4 w-4 text-cyan-400" /><span>NTAG215 SMART chip + fallback QR</span></li>
-                  <li className="flex items-center gap-2"><Check className="h-4 w-4 text-cyan-400" /><span>Live digital profile & vCard download</span></li>
+                <p className="mt-2 text-xs text-[#B8AFD6]">Ideal for founders, consultants, and sales teams</p>
+                <ul className="mt-5 space-y-2.5 text-sm text-[#E5E0F5]">
+                  <li className="flex items-center gap-2"><Check className="h-4 w-4 text-[#C4B5FD]" /><span>85.6 × 54 mm ISO ID-1 precision trim</span></li>
+                  <li className="flex items-center gap-2"><Check className="h-4 w-4 text-[#C4B5FD]" /><span>NTAG215 SMART chip + fallback QR</span></li>
+                  <li className="flex items-center gap-2"><Check className="h-4 w-4 text-[#C4B5FD]" /><span>Live digital profile &amp; vCard download</span></li>
                 </ul>
               </div>
               <SmartCardLink
-                className="mt-7 block text-center py-3 rounded-xl bg-white text-[#0B1D3A] text-sm font-semibold hover:bg-slate-100 transition-colors"
+                className="mt-7 block text-center py-3 rounded-xl bg-white text-[#18142C] text-sm font-semibold hover:bg-[#F3EEFF] transition-colors"
               >
                 Start Designing
               </SmartCardLink>
             </div>
 
-            <div className="bg-slate-900/90 border border-blue-500/40 rounded-2xl p-7 flex flex-col justify-between">
+            <div className="bg-[#21193D]/90 border border-[#7C3AED]/60 rounded-2xl p-7 flex flex-col justify-between">
               <div>
-                <div className="text-sm font-semibold text-cyan-400">Metal Hybrid Executive SMART</div>
+                <div className="text-sm font-semibold text-[#C4B5FD]">Metal Hybrid Executive SMART</div>
                 <div className="mt-2 font-display text-3xl font-bold tabular-nums">₹2,000 – ₹2,500</div>
-                <p className="mt-2 text-xs text-slate-400">Brushed dark metal finish for executive presence</p>
-                <ul className="mt-5 space-y-2.5 text-sm text-slate-300">
-                  <li className="flex items-center gap-2"><Check className="h-4 w-4 text-cyan-400" /><span>Custom front/back artwork at 300 DPI</span></li>
-                  <li className="flex items-center gap-2"><Check className="h-4 w-4 text-cyan-400" /><span>Multiple digital profiles support</span></li>
-                  <li className="flex items-center gap-2"><Check className="h-4 w-4 text-cyan-400" /><span>Tracked pan-India courier shipping</span></li>
+                <p className="mt-2 text-xs text-[#B8AFD6]">Brushed dark metal finish for executive presence</p>
+                <ul className="mt-5 space-y-2.5 text-sm text-[#E5E0F5]">
+                  <li className="flex items-center gap-2"><Check className="h-4 w-4 text-[#C4B5FD]" /><span>Custom front/back artwork at 300 DPI</span></li>
+                  <li className="flex items-center gap-2"><Check className="h-4 w-4 text-[#C4B5FD]" /><span>Multiple digital profiles support</span></li>
+                  <li className="flex items-center gap-2"><Check className="h-4 w-4 text-[#C4B5FD]" /><span>Tracked pan-India courier shipping</span></li>
                 </ul>
               </div>
               <SmartCardLink
-                className="mt-7 block text-center py-3 rounded-xl bg-[#1D4ED8] text-white text-sm font-semibold hover:bg-blue-600 transition-colors"
+                className="mt-7 block text-center py-3 rounded-xl bg-[#7C3AED] text-white text-sm font-semibold hover:bg-[#6D28D9] transition-colors"
               >
                 Order Executive Card
               </SmartCardLink>
@@ -534,10 +540,10 @@ export const HomePage: React.FC = () => {
       {/* 7. FAQ Section */}
       <section className="py-16 lg:py-20 bg-white">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="font-display text-2xl sm:text-3xl font-bold text-[#0B1D3A] tracking-tight text-center">
+          <h2 className="font-display text-2xl sm:text-3xl font-bold text-[#18142C] tracking-tight text-center">
             Frequently Asked Questions
           </h2>
-          <div className="mt-8 divide-y divide-slate-200 border border-slate-200 rounded-2xl bg-slate-50/40">
+          <div className="mt-8 divide-y divide-[#E9E4F5] border border-[#E9E4F5] rounded-2xl bg-[#FAF9FE]">
             {FAQS.map((item, idx) => {
               const isOpen = openFaq === idx;
               return (
@@ -545,12 +551,12 @@ export const HomePage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setOpenFaq(isOpen ? null : idx)}
-                    className="w-full flex items-center justify-between gap-4 text-left font-display font-semibold text-[#0B1D3A]"
+                    className="w-full flex items-center justify-between gap-4 text-left font-display font-semibold text-[#18142C] cursor-pointer"
                   >
                     <span>{item.q}</span>
-                    <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDown className={`h-4 w-4 shrink-0 text-[#7C3AED] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                   </button>
-                  {isOpen && <p className="mt-3 text-sm text-slate-600 leading-relaxed">{item.a}</p>}
+                  {isOpen && <p className="mt-3 text-sm text-[#64607D] leading-relaxed">{item.a}</p>}
                 </div>
               );
             })}

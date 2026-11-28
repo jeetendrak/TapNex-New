@@ -534,6 +534,7 @@ export const generatePublicProfileSlug = onCall(async (req) => {
 const razorpayKeyId = defineSecret('RAZORPAY_KEY_ID');
 const razorpayKeySecret = defineSecret('RAZORPAY_KEY_SECRET');
 const razorpayWebhookSecret = defineSecret('RAZORPAY_WEBHOOK_SECRET');
+const resendApiKey = defineSecret('RESEND_API_KEY');
 
 const RAZORPAY_API_BASE_URL = 'https://api.razorpay.com/v1';
 
@@ -3383,31 +3384,817 @@ export const adminSendDesignToPrint = onCall(async (req) => {
   return txResult;
 });
 
-// 14. sendTransactionalEmail
-export const sendTransactionalEmail = onCall(async (req) => {
-  if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
-  const { to, subject, html } = req.data as { to: string; subject: string; html: string };
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) return { delivered: false, reason: 'RESEND_API_KEY not configured' };
-  const resp = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: process.env.RESEND_FROM_EMAIL || 'orders@tapnex.in', to: [to], subject, html }),
+const ALLOWED_TRANSACTIONAL_TEMPLATES = new Set([
+  'welcome',
+  'email_verification',
+  'password_reset',
+  'order_confirmation',
+  'payment_success',
+  'payment_failure',
+  'design_approved',
+  'printer_assigned',
+  'printing_started',
+  'dispatched',
+  'delivered',
+  'order_cancelled',
+  'refund_notification',
+  'admin_new_order',
+  'test_email',
+]);
+
+const ORDER_SCOPED_EMAIL_TEMPLATES = new Set([
+  'order_confirmation',
+  'payment_success',
+  'payment_failure',
+  'printer_assigned',
+  'printing_started',
+  'dispatched',
+  'delivered',
+  'order_cancelled',
+  'refund_notification',
+]);
+
+const PRINTER_ALLOWED_EMAIL_TEMPLATES = new Set([
+  'printing_started',
+  'dispatched',
+  'delivered',
+]);
+
+function escapeEmailHtml(raw: unknown): string {
+  return String(raw ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function sanitizeEmailHeaderText(raw: unknown): string {
+  return String(raw ?? '')
+    .replace(/[\r\n\0]+/g, ' ')
+    .trim();
+}
+
+function isValidEmailAddress(raw: unknown): boolean {
+  if (typeof raw !== 'string') return false;
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.length > 254 || /[\r\n\0]/.test(trimmed)) {
+    return false;
+  }
+  return /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(trimmed);
+}
+
+function resolveResendFromAddress(rawEnv?: string): { valid: boolean; from: string } {
+  const defaultFrom = 'TapNex <orders@tapnex.in>';
+  if (!rawEnv || !rawEnv.trim()) {
+    return { valid: true, from: defaultFrom };
+  }
+  const trimmed = rawEnv.replace(/[\r\n\0]+/g, '').trim();
+  if (isValidEmailAddress(trimmed)) {
+    return { valid: true, from: trimmed };
+  }
+  const namedMatch = trimmed.match(/^([^<>]+)<([^<>]+)>$/);
+  if (namedMatch) {
+    const displayName = namedMatch[1].trim();
+    const emailPart = namedMatch[2].trim();
+    if (displayName && isValidEmailAddress(emailPart)) {
+      return { valid: true, from: `${displayName} <${emailPart}>` };
+    }
+  }
+  return { valid: false, from: '' };
+}
+
+function normalizeOptionalTrackingUrl(raw: unknown): string {
+  const trimmed = typeof raw === 'string' ? raw.trim() : '';
+  if (!trimmed || trimmed.length > 2048) return '';
+  try {
+    const parsed = new URL(trimmed);
+    if ((parsed.protocol === 'http:' || parsed.protocol === 'https:') && parsed.hostname) {
+      return parsed.toString();
+    }
+  } catch {
+    return '';
+  }
+  return '';
+}
+
+function sanitizeEmailErrorMessage(raw: unknown, secretToMask?: string): string {
+  let msg = String(raw ?? 'Email delivery failed.').replace(/[\r\n]+/g, ' ').trim();
+  if (secretToMask && secretToMask.trim()) {
+    msg = msg.split(secretToMask.trim()).join('[REDACTED]');
+  }
+  msg = msg.replace(/re_[a-zA-Z0-9_-]{8,}/g, '[REDACTED]');
+  if (!msg) return 'Email delivery failed.';
+  return msg.length > 260 ? `${msg.slice(0, 257)}...` : msg;
+}
+
+function wrapTapNexEmailShell(params: {
+  heading: string;
+  subtitle?: string;
+  bodyHtml: string;
+}): string {
+  return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:0 auto;padding:24px;background:#F7F5FD;">
+      <div style="background:#ffffff;border:1px solid #E9E4F5;border-radius:16px;overflow:hidden;">
+        <div style="background:linear-gradient(135deg,#18122B 0%,#311B6B 100%);padding:20px 24px;">
+          <div style="font-size:20px;font-weight:700;color:#ffffff;letter-spacing:0.2px;">TapNex</div>
+          <div style="font-size:12px;color:#D8CCFF;margin-top:4px;">${escapeEmailHtml(params.subtitle || 'Smart NFC & QR Business Cards')}</div>
+        </div>
+        <div style="padding:24px;color:#18142C;font-size:14px;line-height:1.6;">
+          <h2 style="margin:0 0 12px;font-size:18px;color:#18122B;">${escapeEmailHtml(params.heading)}</h2>
+          ${params.bodyHtml}
+        </div>
+        <div style="padding:16px 24px;background:#FAF9FE;font-size:12px;color:#64607D;border-top:1px solid #E9E4F5;">
+          TapNex Digital Identity Platform · Need help? Visit your TapNex portal.
+        </div>
+      </div>
+    </div>`;
+}
+
+function buildDispatchedEmailContent(params: {
+  customerName: string;
+  orderNumber: string;
+  orderId: string;
+  courierName: string;
+  trackingNumber: string;
+  dispatchDate: string;
+  trackingUrl?: string;
+}): { subject: string; html: string } {
+  const safeCustomerName = escapeEmailHtml(params.customerName || 'Valued Customer');
+  const displayOrder = params.orderNumber || params.orderId;
+  const safeOrderDisplay = escapeEmailHtml(displayOrder);
+  const safeOrderId = escapeEmailHtml(params.orderId);
+  const safeCourier = escapeEmailHtml(params.courierName);
+  const safeTracking = escapeEmailHtml(params.trackingNumber);
+  const safeDispatchDate = escapeEmailHtml(params.dispatchDate);
+  const validTrackingUrl = normalizeOptionalTrackingUrl(params.trackingUrl);
+
+  const trackingCtaHtml = validTrackingUrl
+    ? `<div style="margin:20px 0;">
+        <a href="${escapeEmailHtml(validTrackingUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 22px;background:#7C3AED;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;border-radius:10px;">Track Your Order</a>
+      </div>`
+    : '';
+
+  const orderIdRow =
+    params.orderId && params.orderNumber && params.orderId !== params.orderNumber
+      ? `<tr><td style="padding:10px 14px;font-size:13px;color:#64607D;border-bottom:1px solid #E9E4F5;">Order Reference</td><td style="padding:10px 14px;font-size:13px;font-family:monospace;color:#18142C;border-bottom:1px solid #E9E4F5;">${safeOrderId}</td></tr>`
+      : '';
+
+  return {
+    subject: 'Your TapNex Order Has Been Dispatched!',
+    html: wrapTapNexEmailShell({
+      heading: 'Your TapNex Order Has Been Dispatched!',
+      bodyHtml: `
+        <p style="margin:0 0 12px;">Dear ${safeCustomerName},</p>
+        <p style="margin:0 0 18px;">Great news! Your TapNex smart card order has been handed over to our courier partner and is now on its way.</p>
+        <table role="presentation" style="width:100%;border-collapse:collapse;background:#FAF9FE;border:1px solid #E9E4F5;border-radius:12px;margin-bottom:20px;">
+          <tr><td style="padding:10px 14px;font-size:13px;color:#64607D;border-bottom:1px solid #E9E4F5;">Order ID</td><td style="padding:10px 14px;font-size:13px;font-weight:600;color:#18142C;border-bottom:1px solid #E9E4F5;">${safeOrderDisplay}</td></tr>
+          ${orderIdRow}
+          <tr><td style="padding:10px 14px;font-size:13px;color:#64607D;border-bottom:1px solid #E9E4F5;">Courier Partner</td><td style="padding:10px 14px;font-size:13px;font-weight:600;color:#18142C;border-bottom:1px solid #E9E4F5;">${safeCourier}</td></tr>
+          <tr><td style="padding:10px 14px;font-size:13px;color:#64607D;border-bottom:1px solid #E9E4F5;">Tracking Number</td><td style="padding:10px 14px;font-size:13px;font-weight:600;font-family:monospace;color:#18142C;border-bottom:1px solid #E9E4F5;">${safeTracking}</td></tr>
+          <tr><td style="padding:10px 14px;font-size:13px;color:#64607D;">Dispatch Date</td><td style="padding:10px 14px;font-size:13px;font-weight:600;color:#18142C;">${safeDispatchDate}</td></tr>
+        </table>
+        ${trackingCtaHtml}
+        <p style="margin:16px 0 0;font-size:13px;color:#64607D;">Expected delivery within 10–15 days across India. Once delivered, tap your smart card against any compatible smartphone or scan the QR code to share your digital profile.</p>
+      `,
+    }),
+  };
+}
+
+function buildStandardTransactionalEmailContent(params: {
+  templateId: string;
+  customerName: string;
+  orderNumber: string;
+  orderId: string;
+  amount: string;
+  designId?: string;
+}): { subject: string; html: string } {
+  const safeName = escapeEmailHtml(params.customerName || 'Valued Customer');
+  const safeOrder = escapeEmailHtml(params.orderNumber || params.orderId || 'TapNex Order');
+  const safeAmount = escapeEmailHtml(params.amount || '');
+  const safeDesignId = escapeEmailHtml(params.designId || '');
+
+  switch (params.templateId) {
+    case 'order_confirmation':
+      return {
+        subject: `Your Smart Business Card Order Is Confirmed! (${params.orderNumber || params.orderId})`,
+        html: wrapTapNexEmailShell({
+          heading: 'Your Smart Business Card Order Is Confirmed!',
+          bodyHtml: `
+            <p style="margin:0 0 12px;">Dear ${safeName},</p>
+            <p style="margin:0 0 12px;">Thank you for ordering with TapNex. Your personalized smart card order <strong>${safeOrder}</strong>${safeAmount ? ` (₹${safeAmount})` : ''} has been confirmed and queued for production.</p>
+            <p style="margin:0 0 12px;"><strong>Expected delivery:</strong> 10–15 days within India.</p>
+            <p style="margin:0;color:#64607D;">Log in to your TapNex Customer Portal anytime to view your live 12-step fulfilment timeline.</p>
+          `,
+        }),
+      };
+    case 'payment_success':
+      return {
+        subject: `Payment Verified for Order ${params.orderNumber || params.orderId}`,
+        html: wrapTapNexEmailShell({
+          heading: 'Payment Verified & Received',
+          bodyHtml: `
+            <p style="margin:0 0 12px;">Dear ${safeName},</p>
+            <p style="margin:0 0 12px;">We have verified your payment${safeAmount ? ` of <strong>₹${safeAmount}</strong>` : ''} for order <strong>${safeOrder}</strong>.</p>
+            <p style="margin:0;color:#64607D;">Your digital profile and verified QR artwork are now unlocked and ready for print fulfilment.</p>
+          `,
+        }),
+      };
+    case 'payment_failure':
+      return {
+        subject: `Payment Action Required for Order ${params.orderNumber || params.orderId}`,
+        html: wrapTapNexEmailShell({
+          heading: 'Payment Could Not Be Completed',
+          bodyHtml: `
+            <p style="margin:0 0 12px;">Dear ${safeName},</p>
+            <p style="margin:0 0 12px;">Your payment attempt for order <strong>${safeOrder}</strong> was not completed or marked unsuccessful.</p>
+            <p style="margin:0;color:#64607D;">You can safely retry checkout from your TapNex Customer Portal or contact support for assistance.</p>
+          `,
+        }),
+      };
+    case 'design_approved':
+      return {
+        subject: `Your TapNex Card Design Is Approved (${params.orderNumber || params.designId || 'Ready'})`,
+        html: wrapTapNexEmailShell({
+          heading: 'Card Design Approved for Production',
+          bodyHtml: `
+            <p style="margin:0 0 12px;">Dear ${safeName},</p>
+            <p style="margin:0 0 12px;">Your 85.6 × 54 mm smart business card layout${safeDesignId ? ` (<span style="font-family:monospace;">${safeDesignId}</span>)` : ''} is approved and locked for 300 DPI production${params.orderNumber ? ` on order <strong>${safeOrder}</strong>` : ''}.</p>
+            <p style="margin:0;color:#64607D;">We will notify you by email as printing and dispatch progress.</p>
+          `,
+        }),
+      };
+    case 'printer_assigned':
+      return {
+        subject: `New Print Job Assigned: ${params.orderNumber || params.orderId}`,
+        html: wrapTapNexEmailShell({
+          heading: 'New Print Job Assigned',
+          subtitle: 'TapNex Print Partner Network',
+          bodyHtml: `
+            <p style="margin:0 0 12px;">Order <strong>${safeOrder}</strong> has been assigned to your facility in the TapNex Printer Portal.</p>
+            <p style="margin:0;color:#64607D;">Please sign in to download the 300 DPI print-ready PDF and verified QR code, then update each fulfilment step.</p>
+          `,
+        }),
+      };
+    case 'printing_started':
+      return {
+        subject: `Your TapNex Smart Card Is Now Printing (${params.orderNumber || params.orderId})`,
+        html: wrapTapNexEmailShell({
+          heading: 'Printing & Smart Encoding Started',
+          bodyHtml: `
+            <p style="margin:0 0 12px;">Dear ${safeName},</p>
+            <p style="margin:0 0 12px;">Our production team has started printing and encoding your personalized smart card for order <strong>${safeOrder}</strong>.</p>
+            <p style="margin:0;color:#64607D;">You will receive tracking details via email as soon as your package is dispatched.</p>
+          `,
+        }),
+      };
+    case 'delivered':
+      return {
+        subject: `Delivered: Your TapNex Smart Card (${params.orderNumber || params.orderId})`,
+        html: wrapTapNexEmailShell({
+          heading: 'Your TapNex Smart Card Has Been Delivered!',
+          bodyHtml: `
+            <p style="margin:0 0 12px;">Dear ${safeName},</p>
+            <p style="margin:0 0 12px;">Order <strong>${safeOrder}</strong> has been marked delivered.</p>
+            <p style="margin:0;color:#64607D;">Tap your smart card against any compatible smartphone or scan the printed QR code to share your live digital profile anytime.</p>
+          `,
+        }),
+      };
+    case 'order_cancelled':
+      return {
+        subject: `Order Cancelled (${params.orderNumber || params.orderId})`,
+        html: wrapTapNexEmailShell({
+          heading: 'Order Cancelled',
+          bodyHtml: `
+            <p style="margin:0 0 12px;">Dear ${safeName},</p>
+            <p style="margin:0 0 12px;">Your TapNex order <strong>${safeOrder}</strong> has been cancelled.</p>
+            <p style="margin:0;color:#64607D;">If a refund applies or you need help placing a new order, please check your Customer Portal or contact support.</p>
+          `,
+        }),
+      };
+    case 'refund_notification':
+      return {
+        subject: `Refund Initiated for Order ${params.orderNumber || params.orderId}`,
+        html: wrapTapNexEmailShell({
+          heading: 'Refund Initiated',
+          bodyHtml: `
+            <p style="margin:0 0 12px;">Dear ${safeName},</p>
+            <p style="margin:0 0 12px;">A refund${safeAmount ? ` of <strong>₹${safeAmount}</strong>` : ''} for order <strong>${safeOrder}</strong> has been initiated and your order has been updated.</p>
+            <p style="margin:0;color:#64607D;">Bank settlement typically completes within 5–7 business days depending on your payment method.</p>
+          `,
+        }),
+      };
+    case 'test_email':
+      return {
+        subject: 'TapNex Resend Email Configuration Test',
+        html: wrapTapNexEmailShell({
+          heading: 'Resend Transactional Email Is Working',
+          bodyHtml: `
+            <p style="margin:0 0 12px;">Hello ${safeName},</p>
+            <p style="margin:0 0 12px;">This test email confirms that TapNex Cloud Functions can authenticate with Resend and deliver customer emails.</p>
+            <p style="margin:0;color:#64607D;">Customer confirmation, printing, dispatch, delivery, cancellation, and refund notifications are active.</p>
+          `,
+        }),
+      };
+    default:
+      return {
+        subject: `TapNex Notification (${params.orderNumber || params.templateId})`,
+        html: wrapTapNexEmailShell({
+          heading: 'TapNex Order & Account Update',
+          bodyHtml: `
+            <p style="margin:0 0 12px;">Dear ${safeName},</p>
+            <p style="margin:0;">There is an update on your TapNex account${params.orderNumber ? ` for order <strong>${safeOrder}</strong>` : ''} (${escapeEmailHtml(params.templateId)}).</p>
+          `,
+        }),
+      };
+  }
+}
+
+async function logEmailNotification(params: {
+  orderId: string | null;
+  uid: string;
+  recipientEmail: string;
+  templateId: string;
+  subject: string;
+  deliveryStatus: 'Sent' | 'ConfigRequired' | 'Failed';
+  resendMessageId?: string | null;
+  error?: string | null;
+}): Promise<string> {
+  const notifRef = db.collection('notifications').doc();
+  const statusSummary =
+    params.deliveryStatus === 'Sent'
+      ? 'Sent via Resend'
+      : params.deliveryStatus === 'ConfigRequired'
+        ? 'Resend API key required'
+        : `Failed (${params.error || 'Delivery error'})`;
+  await notifRef.set({
+    notificationId: notifRef.id,
+    orderId: params.orderId,
+    uid: params.uid,
+    recipientEmail: params.recipientEmail,
+    templateId: params.templateId,
+    title: params.subject.slice(0, 150) || 'TapNex Email Notification',
+    message: `Email notification (${params.templateId}) -> ${params.recipientEmail || 'unknown'} [${statusSummary}]`.slice(
+      0,
+      950
+    ),
+    channel: 'email',
+    deliveryStatus: params.deliveryStatus,
+    resendMessageId: params.resendMessageId || null,
+    error: params.error || null,
+    createdAt: FieldValue.serverTimestamp(),
   });
-  return { delivered: resp.ok };
+  return notifRef.id;
+}
+
+// 14. sendTransactionalEmail
+export const sendTransactionalEmail = onCall({ secrets: [resendApiKey] }, async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
+  const actorRole = await assertRole(req.auth, ['USER', 'PRINTER', 'ADMIN', 'SUPERADMIN']);
+
+  const payload = (req.data || {}) as {
+    orderId?: unknown;
+    uid?: unknown;
+    templateId?: unknown;
+    variables?: Record<string, unknown>;
+    to?: unknown;
+    subject?: unknown;
+    html?: unknown;
+  };
+
+  const templateId = typeof payload.templateId === 'string' ? payload.templateId.trim() : '';
+  if (!templateId || !ALLOWED_TRANSACTIONAL_TEMPLATES.has(templateId)) {
+    throw new HttpsError('invalid-argument', 'A valid transactional email templateId is required.');
+  }
+
+  const rawVariables =
+    payload.variables && typeof payload.variables === 'object' ? payload.variables : {};
+
+  let resolvedOrderId: string | null = null;
+  let recipientUid = req.auth.uid;
+  let recipientEmail = '';
+  let resolvedSubject = sanitizeEmailHeaderText(payload.subject);
+  let resolvedHtml = typeof payload.html === 'string' ? payload.html.trim() : '';
+
+  if (ORDER_SCOPED_EMAIL_TEMPLATES.has(templateId) || payload.orderId !== undefined) {
+    const orderId = assertValidDocId(payload.orderId, 'orderId');
+    resolvedOrderId = orderId;
+    const orderSnap = await db.collection('orders').doc(orderId).get();
+    if (!orderSnap.exists) {
+      throw new HttpsError('not-found', `Order ${orderId} not found.`);
+    }
+    const orderData = (orderSnap.data() || {}) as Record<string, unknown>;
+    const orderUid = typeof orderData.uid === 'string' ? orderData.uid.trim() : '';
+
+    if (actorRole === 'USER') {
+      const paymentStatus = typeof orderData.paymentStatus === 'string' ? orderData.paymentStatus : '';
+      if (
+        templateId !== 'order_confirmation' ||
+        orderUid !== req.auth.uid ||
+        (paymentStatus !== 'Verified' && paymentStatus !== 'Completed')
+      ) {
+        throw new HttpsError(
+          'permission-denied',
+          'Customers may only trigger confirmation emails for their own verified orders.'
+        );
+      }
+    } else if (actorRole === 'PRINTER') {
+      if (!PRINTER_ALLOWED_EMAIL_TEMPLATES.has(templateId)) {
+        throw new HttpsError(
+          'permission-denied',
+          'Printers may only trigger fulfilment status emails.'
+        );
+      }
+      const linkedPrinterId = await getActiveLinkedPrinterId(req.auth.uid);
+      if (orderData.printerId !== linkedPrinterId) {
+        throw new HttpsError(
+          'permission-denied',
+          'Printer can only send notification emails for orders assigned to its linked Print Auth ID.'
+        );
+      }
+    }
+
+    recipientUid = orderUid || req.auth.uid;
+
+    if (templateId === 'printer_assigned') {
+      const assignedPrinterId =
+        typeof orderData.printerId === 'string' ? orderData.printerId.trim() : '';
+      if (!assignedPrinterId || assignedPrinterId === 'admin_inhouse') {
+        throw new HttpsError(
+          'failed-precondition',
+          'Order does not have an external printer facility assigned.'
+        );
+      }
+      const directPrinterSnap = await db.collection('printers').doc(assignedPrinterId).get();
+      let printerData = directPrinterSnap.exists ? directPrinterSnap.data() : undefined;
+      if (!printerData) {
+        const printerQuery = await db
+          .collection('printers')
+          .where('printerId', '==', assignedPrinterId)
+          .limit(1)
+          .get();
+        printerData = printerQuery.docs[0]?.data();
+      }
+      recipientEmail =
+        typeof printerData?.email === 'string' ? printerData.email.trim() : '';
+      if (typeof printerData?.uid === 'string' && printerData.uid.trim()) {
+        recipientUid = printerData.uid.trim();
+      }
+    } else {
+      const shippingAddr =
+        orderData.shippingAddress && typeof orderData.shippingAddress === 'object'
+          ? (orderData.shippingAddress as Record<string, unknown>)
+          : {};
+      recipientEmail =
+        typeof shippingAddr.email === 'string' ? shippingAddr.email.trim() : '';
+      if (!recipientEmail && orderUid) {
+        const userSnap = await db.collection('users').doc(orderUid).get();
+        const userEmail = userSnap.data()?.email;
+        if (typeof userEmail === 'string') {
+          recipientEmail = userEmail.trim();
+        }
+      }
+    }
+
+    if (templateId === 'dispatched') {
+      const orderCourier = sanitizeEmailHeaderText(orderData.courierName);
+      const orderTracking = sanitizeEmailHeaderText(orderData.trackingNumber);
+      const orderStatus = typeof orderData.orderStatus === 'string' ? orderData.orderStatus : '';
+      if (orderStatus !== 'Dispatched' && (!orderCourier || !orderTracking)) {
+        throw new HttpsError(
+          'failed-precondition',
+          'Dispatch information must be saved on the order before sending the dispatch email.'
+        );
+      }
+
+      const shippingAddr =
+        orderData.shippingAddress && typeof orderData.shippingAddress === 'object'
+          ? (orderData.shippingAddress as Record<string, unknown>)
+          : {};
+      const customerName = sanitizeEmailHeaderText(
+        shippingAddr.fullName || rawVariables.CUSTOMER_NAME || 'Valued Customer'
+      );
+      const orderNumber = sanitizeEmailHeaderText(
+        orderData.orderNumber || rawVariables.ORDER_NUMBER || orderId
+      );
+      const courierName =
+        orderCourier || sanitizeEmailHeaderText(rawVariables.COURIER_NAME);
+      const trackingNumber =
+        orderTracking || sanitizeEmailHeaderText(rawVariables.TRACKING_NUMBER);
+      const dispatchDate = sanitizeEmailHeaderText(
+        orderData.dispatchDate || rawVariables.DISPATCH_DATE || new Date().toISOString().slice(0, 10)
+      );
+      const trackingUrl =
+        typeof orderData.trackingUrl === 'string' && orderData.trackingUrl.trim()
+          ? orderData.trackingUrl.trim()
+          : typeof rawVariables.TRACKING_URL === 'string'
+            ? rawVariables.TRACKING_URL.trim()
+            : '';
+
+      if (!courierName || !trackingNumber) {
+        const notifId = await logEmailNotification({
+          orderId: resolvedOrderId,
+          uid: recipientUid,
+          recipientEmail,
+          templateId,
+          subject: 'Your TapNex Order Has Been Dispatched!',
+          deliveryStatus: 'Failed',
+          error: 'Required dispatch fields (courierName, trackingNumber) are missing.',
+        });
+        return {
+          delivered: false,
+          mode: 'invalid_dispatch_data',
+          notificationId: notifId,
+          error: 'Required dispatch details are missing.',
+        };
+      }
+
+      const built = buildDispatchedEmailContent({
+        customerName,
+        orderNumber,
+        orderId,
+        courierName,
+        trackingNumber,
+        dispatchDate,
+        trackingUrl,
+      });
+      resolvedSubject = built.subject;
+      resolvedHtml = built.html;
+    } else {
+      const shippingAddr =
+        orderData.shippingAddress && typeof orderData.shippingAddress === 'object'
+          ? (orderData.shippingAddress as Record<string, unknown>)
+          : {};
+      const customerName = sanitizeEmailHeaderText(
+        shippingAddr.fullName || rawVariables.CUSTOMER_NAME || 'Valued Customer'
+      );
+      const orderNumber = sanitizeEmailHeaderText(
+        orderData.orderNumber || rawVariables.ORDER_NUMBER || orderId
+      );
+      const amount = sanitizeEmailHeaderText(
+        rawVariables.AMOUNT || (typeof orderData.total === 'number' ? String(orderData.total) : '')
+      );
+      const designId = sanitizeEmailHeaderText(
+        orderData.designId || rawVariables.DESIGN_ID || ''
+      );
+      const built = buildStandardTransactionalEmailContent({
+        templateId,
+        customerName,
+        orderNumber,
+        orderId,
+        amount,
+        designId,
+      });
+      if (!resolvedSubject) {
+        resolvedSubject = built.subject;
+      }
+      if (!resolvedHtml) {
+        resolvedHtml = built.html;
+      }
+    }
+  } else {
+    if (actorRole !== 'ADMIN' && actorRole !== 'SUPERADMIN') {
+      throw new HttpsError(
+        'permission-denied',
+        'Administrator privileges are required for this notification type.'
+      );
+    }
+    const targetUid = typeof payload.uid === 'string' ? payload.uid.trim() : '';
+    if (targetUid) {
+      recipientUid = targetUid;
+      const userSnap = await db.collection('users').doc(targetUid).get();
+      if (typeof userSnap.data()?.email === 'string') {
+        recipientEmail = String(userSnap.data()?.email).trim();
+      }
+    }
+    if (typeof payload.to === 'string' && payload.to.trim() && (!recipientEmail || templateId === 'test_email')) {
+      recipientEmail = payload.to.trim();
+    }
+    const built = buildStandardTransactionalEmailContent({
+      templateId,
+      customerName: sanitizeEmailHeaderText(rawVariables.CUSTOMER_NAME || 'Valued Customer'),
+      orderNumber: sanitizeEmailHeaderText(rawVariables.ORDER_NUMBER || ''),
+      orderId: '',
+      amount: sanitizeEmailHeaderText(rawVariables.AMOUNT || ''),
+      designId: sanitizeEmailHeaderText(rawVariables.DESIGN_ID || ''),
+    });
+    if (!resolvedSubject) {
+      resolvedSubject = built.subject;
+    }
+    if (!resolvedHtml) {
+      resolvedHtml = built.html;
+    }
+  }
+
+  if (!isValidEmailAddress(recipientEmail)) {
+    const errorMsg = 'Recipient email address is missing or invalid.';
+    const notifId = await logEmailNotification({
+      orderId: resolvedOrderId,
+      uid: recipientUid,
+      recipientEmail,
+      templateId,
+      subject: resolvedSubject || 'TapNex Notification',
+      deliveryStatus: 'Failed',
+      error: errorMsg,
+    });
+    return {
+      delivered: false,
+      mode: 'invalid_email',
+      notificationId: notifId,
+      error: errorMsg,
+    };
+  }
+
+  let configuredFromOverride = '';
+  if (!process.env.RESEND_FROM_EMAIL || !process.env.RESEND_FROM_EMAIL.trim()) {
+    try {
+      const senderSnap = await db.collection('emailTemplates').doc('sender_config').get();
+      if (senderSnap.exists) {
+        const cfg = (senderSnap.data() || {}) as Record<string, unknown>;
+        const cfgEmail = typeof cfg.fromEmail === 'string' ? cfg.fromEmail.trim() : '';
+        const cfgName = typeof cfg.fromName === 'string' ? sanitizeEmailHeaderText(cfg.fromName) : 'TapNex';
+        if (cfgEmail && isValidEmailAddress(cfgEmail)) {
+          configuredFromOverride = cfgName ? `${cfgName} <${cfgEmail}>` : cfgEmail;
+        }
+      }
+    } catch {
+      configuredFromOverride = '';
+    }
+  }
+
+  const sender = resolveResendFromAddress(process.env.RESEND_FROM_EMAIL || configuredFromOverride);
+  if (!sender.valid) {
+    const errorMsg = 'Invalid RESEND_FROM_EMAIL configuration.';
+    const notifId = await logEmailNotification({
+      orderId: resolvedOrderId,
+      uid: recipientUid,
+      recipientEmail,
+      templateId,
+      subject: resolvedSubject,
+      deliveryStatus: 'Failed',
+      error: errorMsg,
+    });
+    return {
+      delivered: false,
+      mode: 'invalid_sender',
+      notificationId: notifId,
+      error: errorMsg,
+    };
+  }
+
+  let secretApiKey = '';
+  try {
+    secretApiKey = (resendApiKey.value() || '').trim();
+  } catch {
+    secretApiKey = '';
+  }
+  const apiKey = secretApiKey || (process.env.RESEND_API_KEY || '').trim();
+
+  if (!apiKey) {
+    const errorMsg = 'Resend API key is not configured.';
+    const notifId = await logEmailNotification({
+      orderId: resolvedOrderId,
+      uid: recipientUid,
+      recipientEmail,
+      templateId,
+      subject: resolvedSubject,
+      deliveryStatus: 'ConfigRequired',
+      error: errorMsg,
+    });
+    return {
+      delivered: false,
+      mode: 'unconfigured',
+      notificationId: notifId,
+      error: errorMsg,
+    };
+  }
+
+  try {
+    const resp = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: sender.from,
+        to: [recipientEmail],
+        subject: resolvedSubject,
+        html: resolvedHtml,
+      }),
+    });
+
+    const rawText = await resp.text();
+    let parsedBody: Record<string, unknown> = {};
+    if (rawText) {
+      try {
+        parsedBody = JSON.parse(rawText) as Record<string, unknown>;
+      } catch {
+        parsedBody = {};
+      }
+    }
+
+    if (!resp.ok) {
+      const rawErrText = String(
+        parsedBody.message || parsedBody.error || rawText || `Resend returned HTTP ${resp.status}`
+      );
+      const needsDomainHint =
+        /domain is not verified|verify your domain|testing emails/i.test(rawErrText)
+          ? ' Verify your domain in Resend or update Sender Email in Admin Email Settings / RESEND_FROM_EMAIL.'
+          : '';
+      const apiErr = sanitizeEmailErrorMessage(`${rawErrText}${needsDomainHint}`, apiKey);
+      const notifId = await logEmailNotification({
+        orderId: resolvedOrderId,
+        uid: recipientUid,
+        recipientEmail,
+        templateId,
+        subject: resolvedSubject,
+        deliveryStatus: 'Failed',
+        error: apiErr,
+      });
+      return {
+        delivered: false,
+        mode: 'resend_error',
+        notificationId: notifId,
+        error: apiErr,
+      };
+    }
+
+    const resendMessageId =
+      typeof parsedBody.id === 'string' && parsedBody.id.trim() ? parsedBody.id.trim() : null;
+    const notifId = await logEmailNotification({
+      orderId: resolvedOrderId,
+      uid: recipientUid,
+      recipientEmail,
+      templateId,
+      subject: resolvedSubject,
+      deliveryStatus: 'Sent',
+      resendMessageId,
+      error: null,
+    });
+
+    return {
+      delivered: true,
+      mode: 'resend_live',
+      notificationId: notifId,
+      resendMessageId,
+    };
+  } catch (err) {
+    const safeError = sanitizeEmailErrorMessage(
+      err instanceof Error ? err.message : 'Unable to reach Resend email service.',
+      apiKey
+    );
+    const notifId = await logEmailNotification({
+      orderId: resolvedOrderId,
+      uid: recipientUid,
+      recipientEmail,
+      templateId,
+      subject: resolvedSubject,
+      deliveryStatus: 'Failed',
+      error: safeError,
+    });
+    return {
+      delivered: false,
+      mode: 'network_error',
+      notificationId: notifId,
+      error: safeError,
+    };
+  }
 });
 
 // 15. createShippingRecord
 export const createShippingRecord = onCall(async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
   const actorRole = await assertRole(req.auth, ['PRINTER', 'ADMIN', 'SUPERADMIN']);
-  const { orderId, courierName, trackingNumber, trackingUrl, dispatchDate } = req.data as {
-    orderId: string;
-    courierName: string;
-    trackingNumber: string;
-    trackingUrl?: string;
-    dispatchDate: string;
+  const payload = (req.data || {}) as {
+    orderId?: unknown;
+    courierName?: unknown;
+    trackingNumber?: unknown;
+    trackingUrl?: unknown;
+    dispatchDate?: unknown;
   };
+  const orderId = assertValidDocId(payload.orderId, 'orderId');
+  const courierName = sanitizeEmailHeaderText(payload.courierName);
+  const trackingNumber = sanitizeEmailHeaderText(payload.trackingNumber);
+  const dispatchDate = sanitizeEmailHeaderText(payload.dispatchDate);
+  const rawTrackingUrl = typeof payload.trackingUrl === 'string' ? payload.trackingUrl.trim() : '';
+
+  if (!courierName || !trackingNumber || !dispatchDate) {
+    throw new HttpsError(
+      'invalid-argument',
+      'Courier name, tracking number, and dispatch date are required.'
+    );
+  }
+  let safeTrackingUrl = '';
+  if (rawTrackingUrl) {
+    safeTrackingUrl = normalizeOptionalTrackingUrl(rawTrackingUrl);
+    if (!safeTrackingUrl) {
+      throw new HttpsError(
+        'invalid-argument',
+        'Tracking URL must be a valid http:// or https:// web link.'
+      );
+    }
+  }
+
   const orderSnap = await db.collection('orders').doc(orderId).get();
   if (!orderSnap.exists) {
     throw new HttpsError('not-found', `Order ${orderId} not found.`);
@@ -3428,7 +4215,7 @@ export const createShippingRecord = onCall(async (req) => {
     printerId: effectivePrinterId,
     courierName,
     trackingNumber,
-    trackingUrl: trackingUrl || '',
+    trackingUrl: safeTrackingUrl,
     dispatchDate,
     createdAt: FieldValue.serverTimestamp(),
   });
@@ -3436,7 +4223,7 @@ export const createShippingRecord = onCall(async (req) => {
     orderStatus: 'Dispatched',
     courierName,
     trackingNumber,
-    trackingUrl: trackingUrl || '',
+    trackingUrl: safeTrackingUrl,
     dispatchDate,
     updatedAt: FieldValue.serverTimestamp(),
   });

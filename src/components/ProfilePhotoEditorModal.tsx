@@ -210,8 +210,8 @@ export const ProfilePhotoEditorModal: React.FC<ProfilePhotoEditorModalProps> = (
       role="dialog"
       aria-modal="true"
     >
-      <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
-        <div className="px-5 py-4 bg-[#050814] text-white flex items-center justify-between">
+      <div className="bg-white border border-[#E9E4F5] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+        <div className="px-5 py-4 bg-[#18122B] text-white flex items-center justify-between">
           <div>
             <h2 className="font-display font-bold text-sm">{title}</h2>
             <p className="text-[11px] text-slate-300">
@@ -291,7 +291,7 @@ export const ProfilePhotoEditorModal: React.FC<ProfilePhotoEditorModalProps> = (
                 <ZoomOut className="h-3.5 w-3.5 text-slate-400" />
                 <span>Zoom / Crop Size</span>
               </span>
-              <span className="font-mono text-[11px] text-[#1D4ED8]">{Math.round(zoom * 100)}%</span>
+              <span className="font-mono text-[11px] text-[#7C3AED]">{Math.round(zoom * 100)}%</span>
             </div>
             <div className="flex items-center gap-2.5">
               <input
@@ -301,7 +301,7 @@ export const ProfilePhotoEditorModal: React.FC<ProfilePhotoEditorModalProps> = (
                 step={0.02}
                 value={zoom}
                 onChange={(e) => setZoom(Number(e.target.value))}
-                className="flex-1 accent-[#1D4ED8]"
+                className="flex-1 accent-[#7C3AED]"
               />
               <ZoomIn className="h-4 w-4 text-slate-400 shrink-0" />
             </div>
@@ -353,7 +353,7 @@ export const ProfilePhotoEditorModal: React.FC<ProfilePhotoEditorModalProps> = (
               type="button"
               disabled={saving || !currentSrc}
               onClick={handleApply}
-              className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-[#0B1D3A] hover:bg-[#132A52] text-white text-xs font-semibold disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-[#18142C] hover:bg-[#2A2048] text-white text-xs font-semibold disabled:opacity-50"
             >
               <Check className="h-3.5 w-3.5" />
               <span>{saving ? 'Applying...' : 'Apply Photo'}</span>

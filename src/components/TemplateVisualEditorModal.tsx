@@ -296,9 +296,9 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
         className="bg-white border border-slate-200 rounded-2xl w-full max-w-6xl max-h-[94vh] flex flex-col shadow-2xl overflow-hidden"
       >
         {/* Modal Header */}
-        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-slate-200 bg-slate-50 shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-[#E9E4F5] bg-[#FAF9FE] shrink-0">
           <div>
-            <h2 className="font-display font-bold text-base sm:text-lg text-[#0B1D3A]">
+            <h2 className="font-display font-bold text-base sm:text-lg text-[#18142C]">
               {isNew ? 'Design New Card Template' : `Visual Template Studio — ${draft.name}`}
             </h2>
             <p className="text-[11px] font-mono text-slate-500">
@@ -308,7 +308,7 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-slate-200 text-slate-500"
+            className="p-2 rounded-lg hover:bg-[#F3EEFF] text-slate-500 hover:text-[#18142C]"
             aria-label="Close template studio"
           >
             <X className="h-4 w-4" />
@@ -320,7 +320,7 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
           {/* Left Column: Live Mouse-Draggable Canvas */}
           <div className="lg:col-span-6 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="inline-flex rounded-xl bg-slate-100 p-1">
+              <div className="inline-flex rounded-xl bg-[#F3EEFF]/70 border border-[#E9E4F5] p-1">
                 <button
                   type="button"
                   onClick={() => {
@@ -329,7 +329,7 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
                     setEditingTextId(null);
                   }}
                   className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold ${
-                    activeSide === 'front' ? 'bg-white text-[#0B1D3A] shadow-xs' : 'text-slate-600'
+                    activeSide === 'front' ? 'bg-white text-[#18142C] shadow-xs' : 'text-slate-600'
                   }`}
                 >
                   Front Side
@@ -342,19 +342,19 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
                     setEditingTextId(null);
                   }}
                   className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold ${
-                    activeSide === 'back' ? 'bg-white text-[#0B1D3A] shadow-xs' : 'text-slate-600'
+                    activeSide === 'back' ? 'bg-white text-[#18142C] shadow-xs' : 'text-slate-600'
                   }`}
                 >
                   Back Side
                 </button>
               </div>
 
-              <div className="inline-flex rounded-xl bg-slate-100 p-1">
+              <div className="inline-flex rounded-xl bg-[#F3EEFF]/70 border border-[#E9E4F5] p-1">
                 <button
                   type="button"
                   onClick={() => setPreviewOrientation('landscape')}
                   className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold ${
-                    previewOrientation === 'landscape' ? 'bg-white text-[#0B1D3A] shadow-xs' : 'text-slate-600'
+                    previewOrientation === 'landscape' ? 'bg-white text-[#18142C] shadow-xs' : 'text-slate-600'
                   }`}
                 >
                   Landscape
@@ -363,7 +363,7 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
                   type="button"
                   onClick={() => setPreviewOrientation('vertical')}
                   className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold ${
-                    previewOrientation === 'vertical' ? 'bg-white text-[#0B1D3A] shadow-xs' : 'text-slate-600'
+                    previewOrientation === 'vertical' ? 'bg-white text-[#18142C] shadow-xs' : 'text-slate-600'
                   }`}
                 >
                   Vertical
@@ -405,8 +405,8 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
                 onUpdateTextValue={handleUpdateTextValue}
               />
               {selectedTargets.length > 0 && (
-                <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200">
-                  <span className="text-[11px] font-semibold text-[#0B1D3A]">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-white border border-[#E9E4F5]">
+                  <span className="text-[11px] font-semibold text-[#18142C]">
                     {selectedTargets.length} selected (Shift+Click multi-select)
                   </span>
                   <div className="flex items-center gap-1">
@@ -426,7 +426,7 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
                         onClick={() =>
                           setCurrentSide(alignTargetsOnSide(currentSide, selectedTargets, btn.action, previewOrientation))
                         }
-                        className="p-1.5 rounded border border-slate-200 bg-slate-50 hover:bg-[#1D4ED8] hover:text-white text-slate-700"
+                        className="p-1.5 rounded border border-[#E9E4F5] bg-[#FAF9FE] hover:bg-[#7C3AED] hover:text-white text-slate-700"
                         title={`Align ${btn.action}`}
                       >
                         {btn.icon}
@@ -437,8 +437,8 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
               )}
             </div>
 
-            <div className="rounded-xl bg-blue-50/70 border border-blue-200 p-3 text-xs text-slate-700 flex items-start gap-2.5">
-              <Move className="h-4 w-4 text-[#1D4ED8] shrink-0 mt-0.5" />
+            <div className="rounded-xl bg-[#F3EEFF]/70 border border-[#DDD6FE] p-3 text-xs text-slate-700 flex items-start gap-2.5">
+              <Move className="h-4 w-4 text-[#7C3AED] shrink-0 mt-0.5" />
               <span>
                 <strong>Interactive Layout:</strong> Drag text blocks, Logo, Photo, or QR Code directly on the card canvas with your mouse. Double-click any text item to edit placeholders like <code className="font-mono text-[11px] bg-white px-1 rounded">{'{{FULL_NAME}}'}</code> or custom copy.
               </span>
@@ -453,7 +453,7 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
 
           {/* Right Column: Tabs for Background Upload, Text Elements, Media/QR, Template Metadata */}
           <div className="lg:col-span-6 space-y-4">
-            <div className="grid grid-cols-4 gap-1 p-1 bg-slate-100 rounded-xl">
+            <div className="grid grid-cols-4 gap-1 p-1 bg-[#F3EEFF]/70 border border-[#E9E4F5] rounded-xl">
               {(
                 [
                   { id: 'background', label: 'Background' },
@@ -472,7 +472,7 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
                     }
                   }}
                   className={`py-2 px-2 rounded-lg text-[11px] font-semibold transition-colors ${
-                    inspectorTab === tab.id ? 'bg-white text-[#0B1D3A] shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    inspectorTab === tab.id ? 'bg-white text-[#18142C] shadow-xs' : 'text-slate-600 hover:text-[#18142C]'
                   }`}
                 >
                   {tab.label}
@@ -481,17 +481,17 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
             </div>
 
             {inspectorTab === 'background' && (
-              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 space-y-4">
+              <div className="p-4 rounded-xl border border-[#E9E4F5] bg-[#FAF9FE] space-y-4">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-xs font-bold text-[#0B1D3A]">
-                    <ImageIcon className="h-4 w-4 text-[#1D4ED8]" />
+                  <div className="flex items-center gap-2 text-xs font-bold text-[#18142C]">
+                    <ImageIcon className="h-4 w-4 text-[#7C3AED]" />
                     <span>{activeSide === 'front' ? 'Front Side' : 'Back Side'} Background &amp; Artwork</span>
                   </div>
                   <span
                     className="inline-flex items-center gap-1 text-[11px] text-slate-500"
                     title="Recommended: 1082 × 709 px (Landscape) or 709 × 1082 px (Vertical) at 300 DPI."
                   >
-                    <Info className="h-3.5 w-3.5 text-[#1D4ED8]" />
+                    <Info className="h-3.5 w-3.5 text-[#7C3AED]" />
                     <span>Auto-compressed</span>
                   </span>
                 </div>
@@ -502,7 +502,7 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
                 </p>
 
                 <div className="flex flex-wrap items-center gap-2.5">
-                  <label className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#0B1D3A] hover:bg-[#132A52] text-white text-xs font-semibold cursor-pointer">
+                  <label className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#18142C] hover:bg-[#2A2048] text-white text-xs font-semibold cursor-pointer">
                     <Upload className="h-3.5 w-3.5" />
                     <span>{currentSide.backgroundImageUrl ? 'Replace Design / Background' : 'Upload Design / Background'}</span>
                     <input type="file" accept="image/*" className="hidden" onChange={handleUploadSideBackground} />
@@ -558,7 +558,7 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
                           borderWidthPx: currentSide.borderWidthPx || 2,
                         })
                       }
-                      className="h-4 w-4 accent-[#1D4ED8]"
+                      className="h-4 w-4 accent-[#7C3AED]"
                     />
                     <span>Show Card Outer Border ({activeSide === 'front' ? 'Front' : 'Back'})</span>
                   </label>
@@ -593,16 +593,16 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
 
             {inspectorTab === 'text' && (
               <div className="space-y-3.5">
-                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 space-y-2.5">
+                <div className="p-3.5 rounded-xl border border-[#E9E4F5] bg-[#FAF9FE] space-y-2.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-[#0B1D3A] flex items-center gap-1.5">
-                      <Sparkles className="h-3.5 w-3.5 text-[#1D4ED8]" />
+                    <span className="text-xs font-bold text-[#18142C] flex items-center gap-1.5">
+                      <Sparkles className="h-3.5 w-3.5 text-[#7C3AED]" />
                       <span>Quick Insert Field / Text ({activeSide === 'front' ? 'Front' : 'Back'})</span>
                     </span>
                     <button
                       type="button"
                       onClick={() => handleAddTextOrToken('Custom Tagline', 9, false)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#1D4ED8] text-white text-[11px] font-semibold"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-[11px] font-semibold"
                     >
                       <Plus className="h-3 w-3" />
                       <span>Custom Text</span>
@@ -620,7 +620,7 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
                         key={t.token}
                         type="button"
                         onClick={() => handleAddTextOrToken(t.token, t.fontSizePt, Boolean(t.bold))}
-                        className="px-2 py-1 rounded-md border border-slate-300 bg-white hover:border-[#1D4ED8] text-[11px] font-medium text-slate-700"
+                        className="px-2 py-1 rounded-md border border-[#E9E4F5] bg-white hover:border-[#7C3AED] text-[11px] font-medium text-slate-700"
                       >
                         + {t.label}
                       </button>
@@ -629,7 +629,7 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
                 </div>
 
                 {/* Clickable layer list */}
-                <div className="p-3 rounded-xl border border-slate-200 space-y-2">
+                <div className="p-3 rounded-xl border border-[#E9E4F5] space-y-2">
                   <div className="text-[11px] font-semibold text-slate-500">
                     Elements on {activeSide === 'front' ? 'Front' : 'Back'} ({currentSide.elements.length})
                   </div>
@@ -643,8 +643,8 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
                           onClick={() => setSelectedTarget({ kind: 'text', id: el.id })}
                           className={`max-w-[180px] truncate px-2.5 py-1 rounded-lg text-[11px] font-medium border ${
                             isSel
-                              ? 'bg-[#0B1D3A] text-white border-[#0B1D3A]'
-                              : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300'
+                              ? 'bg-[#18142C] text-white border-[#18142C]'
+                              : 'bg-[#FAF9FE] text-slate-700 border-[#E9E4F5] hover:border-[#DDD6FE]'
                           }`}
                         >
                           {el.text}
@@ -655,9 +655,9 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
                 </div>
 
                 {selectedEl ? (
-                  <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3">
+                  <div className="p-4 rounded-xl border border-[#E9E4F5] bg-[#FAF9FE] space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-[#0B1D3A]">Selected Text Properties</span>
+                      <span className="text-xs font-bold text-[#18142C]">Selected Text Properties</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -724,7 +724,7 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
                         type="button"
                         onClick={() => updateSelectedEl({ fontWeight: selectedEl.fontWeight === 'bold' ? 'normal' : 'bold' })}
                         className={`p-1.5 rounded border text-xs ${
-                          selectedEl.fontWeight === 'bold' ? 'bg-[#0B1D3A] text-white border-[#0B1D3A]' : 'bg-white border-slate-300'
+                          selectedEl.fontWeight === 'bold' ? 'bg-[#18142C] text-white border-[#18142C]' : 'bg-white border-slate-300'
                         }`}
                         title="Bold"
                       >
@@ -734,7 +734,7 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
                         type="button"
                         onClick={() => updateSelectedEl({ fontStyle: selectedEl.fontStyle === 'italic' ? 'normal' : 'italic' })}
                         className={`p-1.5 rounded border text-xs ${
-                          selectedEl.fontStyle === 'italic' ? 'bg-[#0B1D3A] text-white border-[#0B1D3A]' : 'bg-white border-slate-300'
+                          selectedEl.fontStyle === 'italic' ? 'bg-[#18142C] text-white border-[#18142C]' : 'bg-white border-slate-300'
                         }`}
                         title="Italic"
                       >
@@ -746,7 +746,7 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
                           updateSelectedEl({ textDecoration: selectedEl.textDecoration === 'underline' ? 'none' : 'underline' })
                         }
                         className={`p-1.5 rounded border text-xs ${
-                          selectedEl.textDecoration === 'underline' ? 'bg-[#0B1D3A] text-white border-[#0B1D3A]' : 'bg-white border-slate-300'
+                          selectedEl.textDecoration === 'underline' ? 'bg-[#18142C] text-white border-[#18142C]' : 'bg-white border-slate-300'
                         }`}
                         title="Underline"
                       >
@@ -757,7 +757,7 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
                         type="button"
                         onClick={() => updateSelectedEl({ uppercase: !selectedEl.uppercase })}
                         className={`px-2 py-1 rounded border text-[11px] font-bold ${
-                          selectedEl.uppercase ? 'bg-[#0B1D3A] text-white border-[#0B1D3A]' : 'bg-white border-slate-300'
+                          selectedEl.uppercase ? 'bg-[#18142C] text-white border-[#18142C]' : 'bg-white border-slate-300'
                         }`}
                         title="Uppercase"
                       >
@@ -770,7 +770,7 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
                           type="button"
                           onClick={() => updateSelectedEl({ align: al })}
                           className={`p-1.5 rounded border text-xs ${
-                            selectedEl.align === al ? 'bg-[#1D4ED8] text-white border-[#1D4ED8]' : 'bg-white border-slate-300'
+                            selectedEl.align === al ? 'bg-[#7C3AED] text-white border-[#7C3AED]' : 'bg-white border-slate-300'
                           }`}
                           title={`Align ${al}`}
                         >
@@ -786,7 +786,7 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
                           <button
                             type="button"
                             onClick={() => updateSelectedEl({ curveDeg: 0 })}
-                            className="text-[10px] font-semibold text-[#1D4ED8] hover:underline"
+                            className="text-[10px] font-semibold text-[#7C3AED] hover:underline"
                           >
                             Flatten
                           </button>
@@ -850,8 +850,8 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
             {inspectorTab === 'media' && (
               <div className="space-y-4">
                 {/* Logo controls */}
-                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 space-y-3">
-                  <div className="text-xs font-bold text-[#0B1D3A]">
+                <div className="p-4 rounded-xl border border-[#E9E4F5] bg-[#FAF9FE] space-y-3">
+                  <div className="text-xs font-bold text-[#18142C]">
                     Brand / Company Logo ({activeSide === 'front' ? 'Front' : 'Back'})
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -888,10 +888,10 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
                 </div>
 
                 {/* QR & NFC & Avatar */}
-                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 space-y-3">
+                <div className="p-4 rounded-xl border border-[#E9E4F5] bg-[#FAF9FE] space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0B1D3A]">
-                      <QrCode className="h-3.5 w-3.5 text-[#1D4ED8]" />
+                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#18142C]">
+                      <QrCode className="h-3.5 w-3.5 text-[#7C3AED]" />
                       <span>QR Code Placeholder Slot</span>
                     </span>
                     <label className="inline-flex items-center gap-2 text-xs font-medium cursor-pointer">
@@ -899,7 +899,7 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
                         type="checkbox"
                         checked={currentSide.showQrSlot}
                         onChange={(e) => setCurrentSide({ ...currentSide, showQrSlot: e.target.checked })}
-                        className="h-4 w-4 accent-[#1D4ED8]"
+                        className="h-4 w-4 accent-[#7C3AED]"
                       />
                       <span>Show on {activeSide}</span>
                     </label>
@@ -920,16 +920,16 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
                     </div>
                   )}
 
-                  <div className="pt-3 border-t border-slate-200 space-y-2.5">
+                  <div className="pt-3 border-t border-[#E9E4F5] space-y-2.5">
                     <div className="flex items-center justify-between gap-3">
                       <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={currentSide.showNfcIcon}
                           onChange={(e) => setCurrentSide({ ...currentSide, showNfcIcon: e.target.checked })}
-                          className="h-4 w-4 accent-[#1D4ED8]"
+                          className="h-4 w-4 accent-[#7C3AED]"
                         />
-                        <Wifi className="h-3.5 w-3.5 text-[#1D4ED8]" />
+                        <Wifi className="h-3.5 w-3.5 text-[#7C3AED]" />
                         <span>Show SMART Contactless Icon</span>
                       </label>
                     </div>
@@ -1102,7 +1102,7 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
                       type="checkbox"
                       checked={Boolean(draft.supportsVertical)}
                       onChange={(e) => setDraft({ ...draft, supportsVertical: e.target.checked })}
-                      className="h-4 w-4 accent-[#1D4ED8]"
+                      className="h-4 w-4 accent-[#7C3AED]"
                     />
                     <span>Supports Vertical Orientation</span>
                   </label>
@@ -1111,11 +1111,11 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
                       type="checkbox"
                       checked={draft.active}
                       onChange={(e) => setDraft({ ...draft, active: e.target.checked })}
-                      className="h-4 w-4 accent-[#1D4ED8]"
+                      className="h-4 w-4 accent-[#7C3AED]"
                     />
                     <span>Visible to Users in Design Studio</span>
                   </label>
-                  <label className="inline-flex items-center gap-2 text-xs font-semibold text-[#0B1D3A] cursor-pointer">
+                  <label className="inline-flex items-center gap-2 text-xs font-semibold text-[#18142C] cursor-pointer">
                     <input
                       type="checkbox"
                       checked={Boolean(draft.isDefault)}
@@ -1137,7 +1137,7 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
         </div>
 
         {/* Footer Actions */}
-        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50 shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-t border-[#E9E4F5] bg-[#FAF9FE] shrink-0">
           <div className="text-[11px] text-slate-500">
             Changes remain temporary until you click <strong>{isNew ? 'Create Template' : 'Save Template'}</strong>.
           </div>
@@ -1152,7 +1152,7 @@ export const TemplateVisualEditorModal: React.FC<TemplateVisualEditorModalProps>
             <button
               type="submit"
               disabled={saving}
-              className="px-5 py-2 bg-[#0B1D3A] hover:bg-[#132A52] text-white rounded-lg text-xs font-semibold disabled:opacity-50"
+              className="px-5 py-2 bg-[#18142C] hover:bg-[#2A2048] text-white rounded-lg text-xs font-semibold disabled:opacity-50"
             >
               {saving ? 'Saving...' : isNew ? 'Create Template' : 'Save Template'}
             </button>

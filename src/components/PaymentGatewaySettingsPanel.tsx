@@ -64,18 +64,18 @@ export const PaymentGatewaySettingsPanel: React.FC = () => {
 
   return (
     <form onSubmit={handleSave} className="space-y-6">
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
+      <div className="bg-white border border-[#E9E4F5] rounded-2xl p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h2 className="font-display font-bold text-base text-[#0B1D3A] flex items-center gap-2">
-              <CreditCard className="h-5 w-5 text-[#1D4ED8]" />
+            <h2 className="font-display font-bold text-base text-[#18142C] flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-[#7C3AED]" />
               <span>Payment Gateway Control</span>
             </h2>
             <p className="text-xs text-slate-600 mt-1">
               Customer Studio and Shop checkouts are exclusively verified by Firebase Cloud Functions using live Razorpay APIs.
             </p>
           </div>
-          <span className="px-3 py-1 rounded-lg bg-blue-50 text-xs font-mono font-semibold text-[#1D4ED8] shrink-0">
+          <span className="px-3 py-1 rounded-lg bg-[#F3EEFF] text-xs font-mono font-semibold text-[#6D28D9] shrink-0">
             Razorpay Only · {draft.razorpay?.enabled ? 'Active' : 'Disabled'}
           </span>
         </div>
@@ -107,19 +107,19 @@ export const PaymentGatewaySettingsPanel: React.FC = () => {
               key={id}
               className={`bg-white border rounded-2xl p-5 space-y-4 transition-colors ${
                 isRazorpay && gw.enabled
-                  ? 'border-[#1D4ED8]/40 shadow-xs'
-                  : 'border-slate-200 opacity-75'
+                  ? 'border-[#7C3AED]/40 shadow-xs'
+                  : 'border-[#E9E4F5] opacity-75'
               }`}
             >
-              <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100">
+              <div className="flex items-start justify-between gap-3 pb-3 border-b border-[#F0ECF9]">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     {isUpiStyle ? (
                       <Smartphone className="h-4 w-4 text-slate-500 shrink-0" />
                     ) : (
-                      <CreditCard className="h-4 w-4 text-[#1D4ED8] shrink-0" />
+                      <CreditCard className="h-4 w-4 text-[#7C3AED] shrink-0" />
                     )}
-                    <h3 className="font-display font-bold text-sm text-[#0B1D3A]">{gw.label}</h3>
+                    <h3 className="font-display font-bold text-sm text-[#18142C]">{gw.label}</h3>
                     {isRazorpay ? (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-[10px] font-semibold text-emerald-700">
                         <KeyRound className="h-2.5 w-2.5" />
@@ -144,17 +144,17 @@ export const PaymentGatewaySettingsPanel: React.FC = () => {
                     disabled={!isRazorpay}
                     checked={isRazorpay ? gw.enabled : false}
                     onChange={(e) => updateGateway(id, { enabled: e.target.checked })}
-                    className="h-4 w-4 accent-[#1D4ED8]"
+                    className="h-4 w-4 accent-[#7C3AED]"
                   />
-                  <span className="text-xs font-semibold text-[#0B1D3A]">
+                  <span className="text-xs font-semibold text-[#18142C]">
                     {isRazorpay ? (gw.enabled ? 'Enabled' : 'Disabled') : 'Unavailable'}
                   </span>
                 </label>
               </div>
 
               {isRazorpay ? (
-                <div className="rounded-xl bg-slate-50 border border-slate-200 p-3.5 text-xs text-slate-700 space-y-1">
-                  <div className="font-semibold text-[#0B1D3A]">Server-Authoritative Flow Active</div>
+                <div className="rounded-xl bg-[#FAF9FE] border border-[#E9E4F5] p-3.5 text-xs text-slate-700 space-y-1">
+                  <div className="font-semibold text-[#18142C]">Server-Authoritative Flow Active</div>
                   <p className="text-[11px] text-slate-600 leading-relaxed">
                     Orders invoke <code className="font-mono">createPaymentOrder</code>, verify signatures and payment capture status via <code className="font-mono">verifyPayment</code>, and reconcile webhooks via <code className="font-mono">razorpayWebhook</code>. Public Key ID is supplied dynamically per order from the backend.
                   </p>
@@ -173,7 +173,7 @@ export const PaymentGatewaySettingsPanel: React.FC = () => {
         <button
           type="submit"
           disabled={saving}
-          className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#0B1D3A] hover:bg-[#132A52] text-white text-sm font-semibold rounded-xl disabled:opacity-50"
+          className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#18142C] hover:bg-[#2A2048] text-white text-sm font-semibold rounded-xl disabled:opacity-50"
         >
           <CheckCircle2 className="h-4 w-4" />
           <span>{saving ? 'Saving Gateway Settings...' : 'Save Payment Gateway Settings'}</span>
