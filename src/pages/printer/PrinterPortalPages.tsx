@@ -18,6 +18,7 @@ import {
 } from '../../lib/firestoreService';
 import { createServerShippingRecord, updateServerOrderStatus } from '../../lib/paymentApi';
 import { formatFirestoreErrorMessage } from '../../lib/cardDesignSize';
+import { executeTimelineStatusUpdate, sanitizeTimelineErrorMessage } from '../../lib/timelineFeedback';
 import { downloadBlob, generateCardSidePngBlob, generatePrintReadyPdfBlob } from '../../lib/printPdf';
 import type {
   CardDesignRecord,
@@ -165,6 +166,9 @@ export const PrinterOrderDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [updatingStep, setUpdatingStep] = useState(false);
+  const [pendingStepStatus, setPendingStepStatus] = useState<OrderStatus | null>(null);
+  const [timelineError, setTimelineError] = useState<string | null>(null);
+  const [timelineSuccess, setTimelineSuccess] = useState<string | null>(null);
 
   const [courierName, setCourierName] = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
@@ -264,51 +268,76 @@ export const PrinterOrderDetailPage: React.FC = () => {
   };
 
   const handleStatusStep = async (nextStatus: OrderStatus) => {
-    if (!order || !userRecord || updatingStep || nextStatus === order.orderStatus) return;
-    setUpdatingStep(true);
-    try {
-      await updateServerOrderStatus(order.orderId, nextStatus);
-      setOrder((prev) => (prev ? { ...prev, orderStatus: nextStatus } : prev));
-      if (nextStatus === 'Printing in Progress') {
-        try {
-          await sendAndLogTransactionalEmail({
-            uid: order.uid,
-            to: order.shippingAddress.email,
-            templateId: 'printing_started',
-            variables: { ORDER_NUMBER: order.orderNumber },
-          });
-        } catch {
-          // Email notification is non-blocking once order status updates
-        }
-      } else if (nextStatus === 'Delivered') {
-        try {
-          await sendAndLogTransactionalEmail({
-            uid: order.uid,
-            to: order.shippingAddress.email,
-            templateId: 'delivered',
-            variables: { ORDER_NUMBER: order.orderNumber },
-          });
-        } catch {
-          // Email notification is non-blocking once order status updates
-        }
-      }
-      notify('Order status updated', nextStatus, 'success');
-      await loadJob(true);
-    } catch (err) {
-      notify(
-        'Status update failed',
-        formatFirestoreErrorMessage(err, 'Unable to update order status.'),
-        'error'
-      );
-    } finally {
-      setUpdatingStep(false);
+    if (!order) return;
+    if (nextStatus === 'Dispatched' && !order.trackingNumber) {
+      setTimelineSuccess(null);
+      setTimelineError('Enter courier name and tracking number below to mark this order as Dispatched.');
+      document.getElementById('printer-dispatch-form')?.scrollIntoView({ behavior: 'smooth' });
+      return;
     }
+
+    await executeTimelineStatusUpdate({
+      orderId: order.orderId,
+      currentStatus: order.orderStatus,
+      nextStatus,
+      hasUserSession: Boolean(userRecord),
+      isUpdating: updatingStep,
+      updateOrderStatusFn: updateServerOrderStatus,
+      onStart: (target) => {
+        setUpdatingStep(true);
+        setPendingStepStatus(target);
+        setTimelineError(null);
+        setTimelineSuccess(null);
+      },
+      onOptimisticUpdate: (target) => {
+        setOrder((prev) => (prev ? { ...prev, orderStatus: target } : prev));
+      },
+      onSuccess: async (target) => {
+        if (target === 'Printing in Progress') {
+          try {
+            await sendAndLogTransactionalEmail({
+              uid: order.uid,
+              to: order.shippingAddress.email,
+              templateId: 'printing_started',
+              variables: { ORDER_NUMBER: order.orderNumber },
+            });
+          } catch {
+            // Email notification is non-blocking once order status updates
+          }
+        } else if (target === 'Delivered') {
+          try {
+            await sendAndLogTransactionalEmail({
+              uid: order.uid,
+              to: order.shippingAddress.email,
+              templateId: 'delivered',
+              variables: { ORDER_NUMBER: order.orderNumber },
+            });
+          } catch {
+            // Email notification is non-blocking once order status updates
+          }
+        }
+        setTimelineSuccess(`${order.orderNumber} updated to "${target}".`);
+        notify('Order status updated', target, 'success');
+        await loadJob(true).catch(() => null);
+      },
+      onError: (friendlyMessage) => {
+        setTimelineError(friendlyMessage);
+        notify('Status update failed', friendlyMessage, 'error');
+      },
+      onFinish: () => {
+        setUpdatingStep(false);
+        setPendingStepStatus(null);
+      },
+    });
   };
 
   const handleDispatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!order || !userRecord || updatingStep) return;
     setUpdatingStep(true);
+    setPendingStepStatus('Dispatched');
+    setTimelineError(null);
+    setTimelineSuccess(null);
     try {
       await createServerShippingRecord({
         orderId: order.orderId,
@@ -343,16 +372,16 @@ export const PrinterOrderDetailPage: React.FC = () => {
       } catch {
         // Email notification is non-blocking once dispatch is recorded
       }
+      setTimelineSuccess(`Order marked Dispatched via ${courierName.trim()} (${trackingNumber.trim()}).`);
       notify('Order dispatched', `Courier ${courierName.trim()} (${trackingNumber.trim()}) saved and customer notified.`, 'success');
-      await loadJob(true);
+      await loadJob(true).catch(() => null);
     } catch (err) {
-      notify(
-        'Dispatch failed',
-        formatFirestoreErrorMessage(err, 'Unable to dispatch order.'),
-        'error'
-      );
+      const friendlyMessage = sanitizeTimelineErrorMessage(err, 'Unable to dispatch order.');
+      setTimelineError(friendlyMessage);
+      notify('Dispatch failed', friendlyMessage, 'error');
     } finally {
       setUpdatingStep(false);
+      setPendingStepStatus(null);
     }
   };
 
@@ -443,12 +472,19 @@ export const PrinterOrderDetailPage: React.FC = () => {
             'Delivered',
           ]}
           updating={updatingStep}
+          pendingStatus={pendingStepStatus}
+          errorMessage={timelineError}
+          successMessage={timelineSuccess}
+          onDismissError={() => setTimelineError(null)}
+          onDismissSuccess={() => setTimelineSuccess(null)}
           courierName={order.courierName}
           trackingNumber={order.trackingNumber}
           trackingUrl={order.trackingUrl}
           dispatchDate={order.dispatchDate}
           onSelectStatus={handleStatusStep}
           onOpenDispatchForm={() => {
+            setTimelineError(null);
+            setTimelineSuccess(null);
             document.getElementById('printer-dispatch-form')?.scrollIntoView({ behavior: 'smooth' });
           }}
         />
@@ -550,9 +586,10 @@ export const PrinterOrderDetailPage: React.FC = () => {
               </div>
               <button
                 type="submit"
-                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl"
+                disabled={updatingStep}
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Confirm Dispatch & Notify Customer
+                {updatingStep ? 'Updating Dispatch...' : 'Confirm Dispatch & Notify Customer'}
               </button>
             </form>
           </div>

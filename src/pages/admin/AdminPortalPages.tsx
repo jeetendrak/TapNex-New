@@ -96,6 +96,11 @@ import {
   updateServerOrderStatus,
 } from '../../lib/paymentApi';
 import { formatFirestoreErrorMessage } from '../../lib/cardDesignSize';
+import {
+  ADMIN_MANUAL_ORDER_STATUS_OPTIONS,
+  executeTimelineStatusUpdate,
+  sanitizeTimelineErrorMessage,
+} from '../../lib/timelineFeedback';
 import { sanitizeRichBioHtml } from '../../lib/richText';
 import { exportRowsToCsv, exportRowsToExcel } from '../../lib/exportUtils';
 import { downloadBlob, generateCardSidePngBlob, generatePrintReadyPdfBlob } from '../../lib/printPdf';
@@ -1569,6 +1574,9 @@ export const AdminOrderDetailPage: React.FC = () => {
   const [selectedPrinter, setSelectedPrinter] = useState('');
   const [notes, setNotes] = useState('');
   const [updatingWorkflow, setUpdatingWorkflow] = useState(false);
+  const [pendingWorkflowStatus, setPendingWorkflowStatus] = useState<OrderStatus | null>(null);
+  const [timelineError, setTimelineError] = useState<string | null>(null);
+  const [timelineSuccess, setTimelineSuccess] = useState<string | null>(null);
   const [preparingPrint, setPreparingPrint] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
 
@@ -1628,45 +1636,66 @@ export const AdminOrderDetailPage: React.FC = () => {
         : order.printerId || 'Unassigned';
 
   const handleTimelineStatusSelect = async (nextStatus: OrderStatus) => {
-    if (!userRecord || updatingWorkflow || nextStatus === order.orderStatus) return;
-    setUpdatingWorkflow(true);
-    try {
-      await updateServerOrderStatus(order.orderId, nextStatus);
-      setOrder((prev) => (prev ? { ...prev, orderStatus: nextStatus } : prev));
-      if (nextStatus === 'Printing in Progress') {
-        try {
-          await sendAndLogTransactionalEmail({
-            uid: order.uid,
-            to: order.shippingAddress.email,
-            templateId: 'printing_started',
-            variables: { ORDER_NUMBER: order.orderNumber },
-          });
-        } catch {
-          // Email notification is non-blocking once order status updates
-        }
-      } else if (nextStatus === 'Delivered') {
-        try {
-          await sendAndLogTransactionalEmail({
-            uid: order.uid,
-            to: order.shippingAddress.email,
-            templateId: 'delivered',
-            variables: { ORDER_NUMBER: order.orderNumber },
-          });
-        } catch {
-          // Email notification is non-blocking once order status updates
-        }
-      }
-      notify('Fulfilment updated', `${order.orderNumber} → ${nextStatus}`, 'success');
-      await load();
-    } catch (err) {
-      notify(
-        'Fulfilment update failed',
-        formatFirestoreErrorMessage(err, 'Unable to update order status.'),
-        'error'
-      );
-    } finally {
-      setUpdatingWorkflow(false);
+    if (nextStatus === 'Dispatched' && !order.trackingNumber) {
+      setTimelineSuccess(null);
+      setTimelineError('Enter courier partner and tracking number below to mark this order as Dispatched.');
+      setShowDispatchForm(true);
+      return;
     }
+
+    await executeTimelineStatusUpdate({
+      orderId: order.orderId,
+      currentStatus: order.orderStatus,
+      nextStatus,
+      hasUserSession: Boolean(userRecord),
+      isUpdating: updatingWorkflow,
+      updateOrderStatusFn: updateServerOrderStatus,
+      onStart: (target) => {
+        setUpdatingWorkflow(true);
+        setPendingWorkflowStatus(target);
+        setTimelineError(null);
+        setTimelineSuccess(null);
+      },
+      onOptimisticUpdate: (target) => {
+        setOrder((prev) => (prev ? { ...prev, orderStatus: target } : prev));
+      },
+      onSuccess: async (target) => {
+        if (target === 'Printing in Progress') {
+          try {
+            await sendAndLogTransactionalEmail({
+              uid: order.uid,
+              to: order.shippingAddress.email,
+              templateId: 'printing_started',
+              variables: { ORDER_NUMBER: order.orderNumber },
+            });
+          } catch {
+            // Email notification is non-blocking once order status updates
+          }
+        } else if (target === 'Delivered') {
+          try {
+            await sendAndLogTransactionalEmail({
+              uid: order.uid,
+              to: order.shippingAddress.email,
+              templateId: 'delivered',
+              variables: { ORDER_NUMBER: order.orderNumber },
+            });
+          } catch {
+            // Email notification is non-blocking once order status updates
+          }
+        }
+        setTimelineSuccess(`${order.orderNumber} updated to "${target}".`);
+        notify('Fulfilment updated', `${order.orderNumber} → ${target}`, 'success');
+        await load().catch(() => null);
+      },
+      onError: (friendlyMessage) => {
+        setTimelineError(friendlyMessage);
+        notify('Fulfilment update failed', friendlyMessage, 'error');
+      },
+      onFinish: () => {
+        setUpdatingWorkflow(false);
+        setPendingWorkflowStatus(null);
+      },
+    });
   };
 
   const handlePrepareQrAndPrint = async (): Promise<QrCodeRecord | null> => {
@@ -1748,6 +1777,9 @@ export const AdminOrderDetailPage: React.FC = () => {
     e.preventDefault();
     if (!userRecord || updatingWorkflow) return;
     setUpdatingWorkflow(true);
+    setPendingWorkflowStatus('Dispatched');
+    setTimelineError(null);
+    setTimelineSuccess(null);
     try {
       await createServerShippingRecord({
         orderId: order.orderId,
@@ -1783,16 +1815,16 @@ export const AdminOrderDetailPage: React.FC = () => {
         // Email notification is non-blocking once dispatch is recorded
       }
       setShowDispatchForm(false);
+      setTimelineSuccess(`Order marked Dispatched via ${courierName.trim()} (${trackingNumber.trim()}).`);
       notify('Order dispatched', `Courier ${courierName.trim()} (${trackingNumber.trim()}) recorded and customer notified.`, 'success');
-      await load();
+      await load().catch(() => null);
     } catch (err) {
-      notify(
-        'Dispatch failed',
-        formatFirestoreErrorMessage(err, 'Unable to dispatch order.'),
-        'error'
-      );
+      const friendlyMessage = sanitizeTimelineErrorMessage(err, 'Unable to dispatch order.');
+      setTimelineError(friendlyMessage);
+      notify('Dispatch failed', friendlyMessage, 'error');
     } finally {
       setUpdatingWorkflow(false);
+      setPendingWorkflowStatus(null);
     }
   };
 
@@ -1883,13 +1915,22 @@ export const AdminOrderDetailPage: React.FC = () => {
           currentStatus={order.orderStatus}
           interactive
           updating={updatingWorkflow}
+          pendingStatus={pendingWorkflowStatus}
+          errorMessage={timelineError}
+          successMessage={timelineSuccess}
+          onDismissError={() => setTimelineError(null)}
+          onDismissSuccess={() => setTimelineSuccess(null)}
           printerLabel={printerLabel}
           courierName={order.courierName}
           trackingNumber={order.trackingNumber}
           trackingUrl={order.trackingUrl}
           dispatchDate={order.dispatchDate}
           onSelectStatus={handleTimelineStatusSelect}
-          onOpenDispatchForm={() => setShowDispatchForm(true)}
+          onOpenDispatchForm={() => {
+            setTimelineError(null);
+            setTimelineSuccess(null);
+            setShowDispatchForm(true);
+          }}
         />
 
         {/* In-House / Admin Courier Dispatch Panel */}
@@ -2065,11 +2106,22 @@ export const AdminOrderDetailPage: React.FC = () => {
               <div className="space-y-2">
                 <label className="block text-xs font-medium text-slate-600">Change Order Status</label>
                 <select
-                  value={order.orderStatus}
-                  onChange={(e) => handleTimelineStatusSelect(e.target.value as OrderStatus)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white"
+                  disabled={updatingWorkflow}
+                  value={ADMIN_MANUAL_ORDER_STATUS_OPTIONS.includes(order.orderStatus) ? order.orderStatus : ''}
+                  onChange={(e) => {
+                    const nextStatus = e.target.value as OrderStatus | '';
+                    if (nextStatus) {
+                      void handleTimelineStatusSelect(nextStatus);
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white disabled:opacity-50"
                 >
-                  {[...ORDER_STATUS_FLOW, 'Cancelled', 'Refunded'].map((s) => (
+                  {!ADMIN_MANUAL_ORDER_STATUS_OPTIONS.includes(order.orderStatus) && (
+                    <option value="" disabled>
+                      {`Current: ${order.orderStatus} (select next step)`}
+                    </option>
+                  )}
+                  {ADMIN_MANUAL_ORDER_STATUS_OPTIONS.map((s) => (
                     <option key={s} value={s}>{s}</option>
                   ))}
                 </select>
