@@ -999,7 +999,9 @@ describe('Design Studio Layout Engine, Rich Bio Sanitizer & Link Controls', () =
 
     const storageRulesSrc = fs.readFileSync(path.resolve(process.cwd(), 'storage.rules'), 'utf8');
     expect(storageRulesSrc).toContain('match /qrCodes/{orderId}/{fileName}');
-    expect(storageRulesSrc).toContain('allow write: if false;');
+    expect(storageRulesSrc).toMatch(
+  /match \/qrCodes\/\{orderId\}\/\{fileName\}\s*\{\s*allow read,\s*write: if false;\s*\}/
+);
     expect(storageRulesSrc).toContain('match /dispatchDocs/{orderId}/{fileName}');
     expect(storageRulesSrc).toMatch(/match \/dispatchDocs\/\{orderId\}\/\{fileName\}\s*\{\s*allow read, write: if false;\s*\}/);
     expect(storageRulesSrc).not.toContain('firestore.get');
@@ -1620,6 +1622,34 @@ describe('Smart Safety Tags Shop, Multi-Profile Types, Auto-Slugs & Family Reuse
     expect(studioSrc).toContain('reset-design-modal-title');
     expect(studioSrc).toContain('renderElementHistoryButtons');
     expect(studioSrc).toContain('Reset All Settings');
+  });
+
+  it('links printer login UIDs to stable Print Auth IDs across the portal, Cloud Function, and Firestore rules', () => {
+    const serviceSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/lib/firestoreService.ts'), 'utf8');
+    const apiSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/lib/paymentApi.ts'), 'utf8');
+    const adminSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/pages/admin/AdminPortalPages.tsx'), 'utf8');
+    const functionsSrc = fs.readFileSync(path.resolve(process.cwd(), 'functions/src/index.ts'), 'utf8');
+    const rulesSrc = fs.readFileSync(path.resolve(process.cwd(), 'firestore.rules'), 'utf8');
+
+    expect(serviceSrc).toContain("where('printerId', '==', printer.printerId)");
+    expect(serviceSrc).toContain('!printer.printerId.trim()');
+    expect(serviceSrc).toContain('existingPrinter.printerId');
+    expect(apiSrc).toContain("functions, 'linkPrinterAccount'");
+    expect(adminSrc).toContain('linkPrinterAccount(p.printerId, matchingUser.uid)');
+    expect(adminSrc).toContain('const sameUidUser');
+    expect(functionsSrc).toContain('export const linkPrinterAccount = onCall');
+    expect(functionsSrc).toContain('facilityEmail !== authEmail');
+    expect(functionsSrc).toContain('currentMapping.printerId === printerUid');
+    expect(functionsSrc).toContain('async function getActiveLinkedPrinterId(printerUid: string)');
+    expect(functionsSrc).toContain('orderSnap.data()?.printerId !== linkedPrinterId');
+    expect(functionsSrc).toContain('printerId: effectivePrinterId');
+    expect(functionsSrc).toContain('assignedPrinterId !== linkedPrinterId');
+    expect(rulesSrc).toContain('function isAssignedPrinter(data)');
+    expect(rulesSrc).not.toContain('.data.printerId != request.auth.uid');
+    expect(rulesSrc).toContain('isAssignedPrinter(existing())');
+    expect(rulesSrc).toContain('isAssignedPrinter(resource.data)');
+    expect(rulesSrc).toContain('isAssignedPrinter(incoming())');
+    expect(rulesSrc).toContain("get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'PRINTER'");
   });
 
   it('places Profile Type dropdown at the top bar directly before Create Digital Profile button', () => {

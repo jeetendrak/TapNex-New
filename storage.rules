@@ -32,14 +32,12 @@ service firebase.storage {
     }
 
     // Paid QR codes & print-ready 300 DPI PDFs: strictly restricted!
-    match /qrCodes/{orderId}/{fileName} {
-      allow read: if isAdmin() || isPrinter();
-      allow write: if false;
-    }
+   match /qrCodes/{orderId}/{fileName} {
+  allow read, write: if false;
+}
 
     match /printFiles/{orderId}/{fileName} {
-      allow read: if isAdmin() || isPrinter();
-      allow write: if isAdmin() || isPrinter();
+      allow read, write: if false;
     }
 
     // Dispatch documents: server-mediated only via Cloud Functions against named Firestore DB

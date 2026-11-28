@@ -92,6 +92,7 @@ import {
   adminReconcileProfilePayment,
   adminSendDesignToPrint,
   assignOrderPrinter,
+  linkPrinterAccount,
 } from '../../lib/paymentApi';
 import { sanitizeRichBioHtml } from '../../lib/richText';
 import { exportRowsToCsv, exportRowsToExcel } from '../../lib/exportUtils';
@@ -1150,13 +1151,20 @@ export const AdminPrintersPage: React.FC = () => {
   const { notify } = useToast();
   const [printers, setPrinters] = useState<PrinterRecord[]>([]);
   const [orders, setOrders] = useState<OrderRecord[]>([]);
+  const [users, setUsers] = useState<UserRecord[]>([]);
+  const [linkingPrinterId, setLinkingPrinterId] = useState<string | null>(null);
   const [uidInput, setUidInput] = useState(() => generatePrinterAuthId());
   const [businessName, setBusinessName] = useState('');
   const [contactPerson, setContactPerson] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
 
-  const load = () => Promise.all([getAllPrinters(), getAllOrders()]).then(([p, o]) => { setPrinters(p); setOrders(o); });
+  const load = () =>
+    Promise.all([getAllPrinters(), getAllOrders(), getAllUsers()]).then(([p, o, u]) => {
+      setPrinters(p);
+      setOrders(o);
+      setUsers(u);
+    });
   useEffect(() => { load(); }, []);
 
   const handleAddPrinter = async (e: React.FormEvent) => {
@@ -1234,6 +1242,7 @@ export const AdminPrintersPage: React.FC = () => {
               <tr>
                 <th className="py-3 px-4">Facility</th>
                 <th className="py-3 px-4">Contact</th>
+                <th className="py-3 px-4">Printer Login</th>
                 <th className="py-3 px-4">Assigned Jobs</th>
                 <th className="py-3 px-4">Dispatched</th>
                 <th className="py-3 px-4">Status</th>
@@ -1244,10 +1253,53 @@ export const AdminPrintersPage: React.FC = () => {
               {printers.map((p) => {
                 const pOrders = orders.filter((o) => o.printerId === p.printerId);
                 const done = pOrders.filter((o) => ['Dispatched', 'In Transit', 'Delivered'].includes(o.orderStatus)).length;
+                const linkedUser = p.uid !== p.printerId
+                  ? users.find((u) => u.uid === p.uid && u.role === 'PRINTER')
+                  : undefined;
+                const sameUidUser = p.uid === p.printerId
+                  ? users.find((u) => u.uid === p.uid && u.role === 'PRINTER')
+                  : undefined;
+                const matchingUser = p.uid === p.printerId
+                  ? users.find((u) =>
+                      u.uid !== p.printerId &&
+                      u.role === 'PRINTER' &&
+                      u.status === 'Active' &&
+                      u.email.trim().toLowerCase() === p.email.trim().toLowerCase()
+                    )
+                  : undefined;
                 return (
                   <tr key={p.printerId}>
                     <td className="py-3 px-4 font-semibold text-[#0B1D3A]">{p.businessName}<div className="font-mono text-[11px] text-slate-400">{p.printerId}</div></td>
                     <td className="py-3 px-4">{p.contactPerson}<div className="text-slate-500">{p.email}</div></td>
+                    <td className="py-3 px-4">
+                      {p.uid !== p.printerId ? (
+                        <div className="text-emerald-700 font-medium">Linked<div className="text-slate-500 font-normal">{linkedUser?.email || p.email}</div></div>
+                      ) : sameUidUser ? (
+                        <div className="text-emerald-700 font-medium">Linked<div className="text-slate-500 font-normal">{sameUidUser.email} (same UID)</div></div>
+                      ) : matchingUser ? (
+                        <button
+                          type="button"
+                          disabled={linkingPrinterId === p.printerId}
+                          onClick={async () => {
+                            setLinkingPrinterId(p.printerId);
+                            try {
+                              await linkPrinterAccount(p.printerId, matchingUser.uid);
+                              await load();
+                              notify('Printer login linked', `${p.businessName} is now linked to ${matchingUser.email}.`, 'success');
+                            } catch (err) {
+                              notify('Unable to link printer login', err instanceof Error ? err.message : 'Please check the printer account and try again.', 'error');
+                            } finally {
+                              setLinkingPrinterId(null);
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-xs font-semibold disabled:opacity-50"
+                        >
+                          {linkingPrinterId === p.printerId ? 'Linking...' : 'Link Login'}
+                        </button>
+                      ) : (
+                        <span className="text-slate-400">No matching verified PRINTER login</span>
+                      )}
+                    </td>
                     <td className="py-3 px-4 font-mono tabular-nums">{pOrders.length}</td>
                     <td className="py-3 px-4 font-mono tabular-nums">{done}</td>
                     <td className="py-3 px-4 font-semibold">{p.status}</td>

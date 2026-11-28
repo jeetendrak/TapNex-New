@@ -166,6 +166,26 @@ function assertValidDocId(raw: unknown, label: string): string {
   return clean;
 }
 
+async function getActiveLinkedPrinterId(printerUid: string): Promise<string> {
+  const printerSnap = await db.collection('printers').doc(printerUid).get();
+  const printer = printerSnap.data() || {};
+  const linkedPrinterId =
+    typeof printer.printerId === 'string' ? printer.printerId.trim() : '';
+
+  // A legacy printer may use its Firebase UID as its own Print Auth ID.
+  // That exact-identity case is valid; it still cannot access orders assigned
+  // to a different facility ID unless an Admin explicitly links the account.
+  if (
+    !printerSnap.exists ||
+    printer.uid !== printerUid ||
+    !/^[a-zA-Z0-9_-]{1,128}$/.test(linkedPrinterId) ||
+    printer.status !== 'Active'
+  ) {
+    throw new HttpsError('permission-denied', 'An active linked printer facility is required.');
+  }
+  return linkedPrinterId;
+}
+
 function normalizePublicHttpUrl(raw: unknown): string {
   const trimmed = typeof raw === 'string' ? raw.trim() : '';
   if (!trimmed || trimmed.length > 2048) {
@@ -348,6 +368,133 @@ export const assignUserRole = onCall(async (req) => {
     details: `Role changed to ${newRole}`,
   });
   return { targetUid, newRole };
+});
+
+// 3A. linkPrinterAccount
+// Links a verified PRINTER login to an existing print facility without changing
+// the stable Print Auth ID already stored on assigned orders.
+export const linkPrinterAccount = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
+  const actorRole = await assertRole(req.auth, ['ADMIN', 'SUPERADMIN']);
+  const printerId = assertValidDocId(req.data?.printerId, 'Print Auth ID');
+  const printerUid = assertValidDocId(req.data?.printerUid, 'printer account UID');
+
+  if (printerId === printerUid) {
+    throw new HttpsError('invalid-argument', 'The Print Auth ID and Firebase UID must be different.');
+  }
+
+  let authAccount: AuthUserRecord;
+  try {
+    authAccount = await auth.getUser(printerUid);
+  } catch {
+    throw new HttpsError('not-found', 'The selected Firebase Authentication account was not found.');
+  }
+
+  if (authAccount.disabled || authAccount.emailVerified !== true || !authAccount.email) {
+    throw new HttpsError('failed-precondition', 'The printer login must be enabled and have a verified email address.');
+  }
+
+  const facilityRef = db.collection('printers').doc(printerId);
+  const mappingRef = db.collection('printers').doc(printerUid);
+  const userRef = db.collection('users').doc(printerUid);
+  const mappingsForFacility = db.collection('printers').where('printerId', '==', printerId);
+
+  await db.runTransaction(async (tx) => {
+    const facilitySnap = await tx.get(facilityRef);
+    const userSnap = await tx.get(userRef);
+    const mappingSnap = await tx.get(mappingRef);
+    const existingFacilityMappings = await tx.get(mappingsForFacility);
+
+    if (!facilitySnap.exists) {
+      throw new HttpsError('not-found', 'The Print Auth ID does not match an existing printer facility.');
+    }
+    if (!userSnap.exists) {
+      throw new HttpsError('not-found', 'The printer user profile was not found.');
+    }
+
+    const facility = facilitySnap.data() || {};
+    const user = userSnap.data() || {};
+    const authEmail = authAccount.email!.trim().toLowerCase();
+    const userEmail = typeof user.email === 'string' ? user.email.trim().toLowerCase() : '';
+    const facilityEmail = typeof facility.email === 'string' ? facility.email.trim().toLowerCase() : '';
+
+    if (user.role !== 'PRINTER' || user.status !== 'Active') {
+      throw new HttpsError('failed-precondition', 'Select an active user whose role is PRINTER; the Firebase Auth email must also be verified.');
+    }
+    if (userEmail !== authEmail) {
+      throw new HttpsError('failed-precondition', 'The Firebase Auth email and user profile email do not match.');
+    }
+    if (!facilityEmail || facilityEmail !== authEmail) {
+      throw new HttpsError('failed-precondition', 'The printer account email must match the print facility email.');
+    }
+    if (facility.printerId !== printerId || facility.uid !== printerId) {
+      throw new HttpsError('failed-precondition', 'The selected record is not an unlinked Print Auth facility record.');
+    }
+    if (facility.status !== 'Active') {
+      throw new HttpsError('failed-precondition', 'Activate the print facility before linking a login.');
+    }
+    if (
+      typeof facility.businessName !== 'string' || facility.businessName.trim().length < 2 ||
+      typeof facility.contactPerson !== 'string' || facility.contactPerson.trim().length < 2
+    ) {
+      throw new HttpsError('failed-precondition', 'The print facility is missing its business or contact details.');
+    }
+
+    if (mappingSnap.exists) {
+      const currentMapping = mappingSnap.data() || {};
+      const isUnlinkedPlaceholder =
+        currentMapping.uid === printerUid && currentMapping.printerId === printerUid;
+      const isAlreadyLinkedToThisFacility =
+        currentMapping.uid === printerUid && currentMapping.printerId === printerId;
+      if (!isUnlinkedPlaceholder && !isAlreadyLinkedToThisFacility) {
+        throw new HttpsError('already-exists', 'This login is already linked to a different print facility.');
+      }
+    }
+
+    for (const mappedDoc of existingFacilityMappings.docs) {
+      if (mappedDoc.id !== printerId && mappedDoc.id !== printerUid) {
+        throw new HttpsError('already-exists', 'This print facility is already linked to another login.');
+      }
+      if (mappedDoc.id === printerUid && mappedDoc.data().uid !== printerUid) {
+        throw new HttpsError('already-exists', 'This printer login mapping is already in use.');
+      }
+    }
+
+    const linkedPrinter: Record<string, unknown> = {
+      printerId,
+      uid: printerUid,
+      businessName: facility.businessName,
+      contactPerson: facility.contactPerson,
+      email: authAccount.email,
+      phone: typeof facility.phone === 'string' ? facility.phone : '',
+      status: facility.status,
+      serviceAreas: Array.isArray(facility.serviceAreas) ? facility.serviceAreas : ['All India'],
+      createdAt:
+        (mappingSnap.exists ? mappingSnap.data()?.createdAt : undefined) ||
+        facility.createdAt ||
+        FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    if (typeof facility.address === 'string' && facility.address) {
+      linkedPrinter.address = facility.address;
+    }
+
+    // Admin SDK writes the UID-keyed mapping. The original printers/{printerId}
+    // facility document is intentionally retained for stable order references.
+    tx.set(mappingRef, linkedPrinter);
+  });
+
+  await writeAuditLog({
+    actorUid: req.auth.uid,
+    actorEmail: typeof req.auth.token.email === 'string' ? req.auth.token.email : undefined,
+    actorRole,
+    action: 'LINK_PRINTER_ACCOUNT',
+    targetCollection: 'printers',
+    targetId: printerId,
+    details: `Linked Print Auth ID ${printerId} to printer UID ${printerUid} (${authAccount.email})`,
+  });
+
+  return { printerId, printerUid, linked: true as const };
 });
 
 // 4. updateUserStatus
@@ -2221,20 +2368,75 @@ export const generateAdminQr = onCall(async (req) => {
 
 // 11. generatePrintReadyPdf (Exact 85.6x54mm + 3mm bleed)
 export const generatePrintReadyPdf = onCall(async (req) => {
-  if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
-  await assertRole(req.auth, ['PRINTER', 'ADMIN', 'SUPERADMIN']);
-  const orderId = assertValidDocId((req.data as { orderId?: unknown })?.orderId, 'orderId');
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [91.6, 60] });
+  if (!req.auth) {
+    throw new HttpsError('unauthenticated', 'Auth required.');
+  }
+
+  const actorRole = await assertRole(req.auth, [
+    'PRINTER',
+    'ADMIN',
+    'SUPERADMIN',
+  ]);
+
+  const orderId = assertValidDocId(
+    (req.data as { orderId?: unknown })?.orderId,
+    'orderId'
+  );
+
+  // Verify that the requested order exists.
+  const orderRef = db.collection('orders').doc(orderId);
+  const orderSnap = await orderRef.get();
+
+  if (!orderSnap.exists) {
+    throw new HttpsError('not-found', `Order ${orderId} not found.`);
+  }
+
+  // Printers can generate PDFs only for orders assigned
+  // to their linked Print Auth ID.
+  if (actorRole === 'PRINTER') {
+    const linkedPrinterId = await getActiveLinkedPrinterId(req.auth.uid);
+
+    if (orderSnap.data()?.printerId !== linkedPrinterId) {
+      throw new HttpsError(
+        'permission-denied',
+        'Printer can only generate PDFs for orders assigned to its linked Print Auth ID.'
+      );
+    }
+  }
+
+  // Generate print-ready PDF.
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: [91.6, 60],
+  });
+
   doc.setFillColor(11, 29, 58);
   doc.rect(0, 0, 91.6, 60, 'F');
+
   doc.addPage([91.6, 60], 'landscape');
   doc.setFillColor(255, 255, 255);
   doc.rect(0, 0, 91.6, 60, 'F');
+
   const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
+
+  // Save PDF to Firebase Storage.
   const path = `printFiles/${orderId}/card-print-300dpi.pdf`;
-  await storage.bucket().file(path).save(pdfBuffer, { contentType: 'application/pdf' });
-  await db.collection('orders').doc(orderId).update({ printFileReady: true, updatedAt: FieldValue.serverTimestamp() });
-  return { storagePath: path, dimensions: '85.6x54mm+3mm_bleed' };
+
+  await storage.bucket().file(path).save(pdfBuffer, {
+    contentType: 'application/pdf',
+  });
+
+  // Update the existing order document.
+  await orderRef.update({
+    printFileReady: true,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  return {
+    storagePath: path,
+    dimensions: '85.6x54mm+3mm_bleed',
+  };
 });
 
 // 12. assignPrinter
@@ -2329,8 +2531,9 @@ export const updateOrderStatus = onCall(async (req) => {
   if (!orderSnap.exists) {
     throw new HttpsError('not-found', `Order ${orderId} not found.`);
   }
-  if (actorRole === 'PRINTER' && orderSnap.data()?.printerId !== req.auth.uid) {
-    throw new HttpsError('permission-denied', 'Printer can only update assigned orders.');
+  const linkedPrinterId = actorRole === 'PRINTER' ? await getActiveLinkedPrinterId(req.auth.uid) : '';
+  if (actorRole === 'PRINTER' && orderSnap.data()?.printerId !== linkedPrinterId) {
+    throw new HttpsError('permission-denied', 'Printer can only update orders assigned to its linked Print Auth ID.');
   }
 
   await orderRef.update({
@@ -3197,7 +3400,7 @@ export const sendTransactionalEmail = onCall(async (req) => {
 // 15. createShippingRecord
 export const createShippingRecord = onCall(async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
-  await assertRole(req.auth, ['PRINTER', 'ADMIN', 'SUPERADMIN']);
+  const actorRole = await assertRole(req.auth, ['PRINTER', 'ADMIN', 'SUPERADMIN']);
   const { orderId, courierName, trackingNumber, trackingUrl, dispatchDate } = req.data as {
     orderId: string;
     courierName: string;
@@ -3206,12 +3409,23 @@ export const createShippingRecord = onCall(async (req) => {
     dispatchDate: string;
   };
   const orderSnap = await db.collection('orders').doc(orderId).get();
+  if (!orderSnap.exists) {
+    throw new HttpsError('not-found', `Order ${orderId} not found.`);
+  }
+  const orderData = orderSnap.data() || {};
+  const linkedPrinterId = actorRole === 'PRINTER' ? await getActiveLinkedPrinterId(req.auth.uid) : '';
+  if (actorRole === 'PRINTER' && orderData.printerId !== linkedPrinterId) {
+    throw new HttpsError('permission-denied', 'Printer can only dispatch orders assigned to its linked Print Auth ID.');
+  }
+  const effectivePrinterId = typeof orderData.printerId === 'string' && orderData.printerId
+    ? orderData.printerId
+    : 'admin_inhouse';
   const ref = db.collection('shippingRecords').doc();
   await ref.set({
     shippingId: ref.id,
     orderId,
-    uid: orderSnap.data()?.uid,
-    printerId: req.auth.uid,
+    uid: orderData.uid,
+    printerId: effectivePrinterId,
     courierName,
     trackingNumber,
     trackingUrl: trackingUrl || '',
@@ -3274,10 +3488,13 @@ export const recordAuditLog = onCall(async (req) => {
 // 19. validatePrinterAccess
 export const validatePrinterAccess = onCall(async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Auth required.');
-  await assertRole(req.auth, ['PRINTER', 'ADMIN', 'SUPERADMIN']);
+  const actorRole = await assertRole(req.auth, ['PRINTER', 'ADMIN', 'SUPERADMIN']);
   const { orderId } = req.data as { orderId: string };
   const orderSnap = await db.collection('orders').doc(orderId).get();
-  const allowed = orderSnap.exists && orderSnap.data()?.printerId === req.auth.uid;
+  const linkedPrinterId = actorRole === 'PRINTER' ? await getActiveLinkedPrinterId(req.auth.uid) : '';
+  const allowed = orderSnap.exists && (
+    actorRole !== 'PRINTER' || orderSnap.data()?.printerId === linkedPrinterId
+  );
   return { allowed };
 });
 
@@ -3396,10 +3613,11 @@ async function assertDispatchDocOrderAccess(
   const orderData = (orderSnap.data() || {}) as Record<string, unknown>;
   if (actorRole === 'PRINTER') {
     const assignedPrinterId = typeof orderData.printerId === 'string' ? orderData.printerId.trim() : '';
-    if (!assignedPrinterId || assignedPrinterId !== authInfo.uid) {
+    const linkedPrinterId = await getActiveLinkedPrinterId(authInfo.uid);
+    if (!assignedPrinterId || assignedPrinterId !== linkedPrinterId) {
       throw new HttpsError(
         'permission-denied',
-        'Printer can only access dispatch documents for orders currently assigned to their account.'
+        'Printer can only access dispatch documents for orders currently assigned to its linked Print Auth ID.'
       );
     }
   }

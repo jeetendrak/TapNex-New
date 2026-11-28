@@ -281,3 +281,20 @@ export async function updateServerOrderStatus(
     throw new Error(extractCallableErrorMessage(err, 'Unable to update order status.'));
   }
 }
+
+export async function linkPrinterAccount(
+  printerId: string,
+  printerUid: string
+): Promise<{ printerId: string; printerUid: string; linked: true }> {
+  await requireAuthenticatedSession();
+  const callable = httpsCallable<
+    { printerId: string; printerUid: string },
+    { printerId: string; printerUid: string; linked: true }
+  >(functions, 'linkPrinterAccount');
+  try {
+    const res = await callable({ printerId, printerUid });
+    return res.data;
+  } catch (err) {
+    throw new Error(extractCallableErrorMessage(err, 'Unable to link the printer login account.'));
+  }
+}

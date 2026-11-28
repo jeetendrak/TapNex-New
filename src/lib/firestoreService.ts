@@ -1443,7 +1443,18 @@ export async function getCustomerOrders(uid: string): Promise<OrderRecord[]> {
 
 export async function getPrinterOrders(printerUid: string): Promise<OrderRecord[]> {
   try {
-    const q = query(collection(db, 'orders'), where('printerId', '==', printerUid));
+    // The printer document is keyed by Firebase Auth UID, while orders retain the stable Print Auth ID.
+    const printerSnap = await getDoc(doc(db, 'printers', printerUid));
+    if (!printerSnap.exists()) return [];
+    const printer = printerSnap.data() as PrinterRecord;
+    if (
+      printer.uid !== printerUid ||
+      printer.status !== 'Active' ||
+      typeof printer.printerId !== 'string' ||
+      !printer.printerId.trim()
+    ) return [];
+
+    const q = query(collection(db, 'orders'), where('printerId', '==', printer.printerId));
     const snap = await getDocs(q);
     return snap.docs.map((d) => d.data() as OrderRecord);
   } catch (err) {
@@ -1615,7 +1626,29 @@ export async function getUserById(uid: string): Promise<UserRecord | null> {
 export async function getAllPrinters(): Promise<PrinterRecord[]> {
   try {
     const snap = await getDocs(collection(db, 'printers'));
-    return snap.docs.map((d) => d.data() as PrinterRecord);
+    const records = snap.docs.map((d) => d.data() as PrinterRecord);
+
+    // Role assignment creates a provisional printers/{authUid} record. Hide that placeholder
+    // while a separately-created print facility with the same contact email is waiting to be linked.
+    const visibleRecords = records.filter((record) => {
+      const hasPrintAuthFacilityForSameEmail = records.some((candidate) =>
+        candidate.printerId !== record.printerId &&
+        candidate.printerId.startsWith('prt_') &&
+        candidate.email.trim().toLowerCase() === record.email.trim().toLowerCase()
+      );
+      return !(record.uid === record.printerId && hasPrintAuthFacilityForSameEmail);
+    });
+
+    // During migration, the old Print Auth ID document and the linked UID document coexist.
+    // Prefer the linked UID document, but return only one row per stable Print Auth ID.
+    const byPrinterId = new Map<string, PrinterRecord>();
+    for (const record of visibleRecords) {
+      const current = byPrinterId.get(record.printerId);
+      if (!current || (record.uid !== record.printerId && current.uid === current.printerId)) {
+        byPrinterId.set(record.printerId, record);
+      }
+    }
+    return Array.from(byPrinterId.values());
   } catch (err) {
     handleFirestoreError(err, OperationType.LIST, 'printers');
   }
@@ -1625,21 +1658,58 @@ export async function savePrinterRecord(
   printer: Omit<PrinterRecord, 'createdAt' | 'updatedAt'>,
   actor: { uid: string; email?: string; role: UserRole }
 ): Promise<void> {
-  const ref = doc(db, 'printers', printer.printerId);
+  const documentId = printer.uid && printer.uid !== printer.printerId ? printer.uid : printer.printerId;
+  const ref = doc(db, 'printers', documentId);
+  const facilityRef = documentId !== printer.printerId ? doc(db, 'printers', printer.printerId) : null;
+  const printerData: Omit<PrinterRecord, 'createdAt' | 'updatedAt'> = {
+    printerId: printer.printerId,
+    uid: printer.uid,
+    businessName: printer.businessName,
+    contactPerson: printer.contactPerson,
+    email: printer.email,
+    status: printer.status,
+    ...(printer.phone !== undefined ? { phone: printer.phone } : {}),
+    ...(printer.address !== undefined ? { address: printer.address } : {}),
+    ...(printer.serviceAreas !== undefined ? { serviceAreas: printer.serviceAreas } : {}),
+  };
   try {
     const snap = await getDoc(ref);
+    const facilitySnap = facilityRef ? await getDoc(facilityRef) : null;
+    const batch = writeBatch(db);
+    const updatedAt = serverTimestamp();
+    const updateData = {
+      ...printerData,
+      updatedAt,
+    };
+
     if (snap.exists()) {
-      await updateDoc(ref, {
-        ...printer,
-        updatedAt: serverTimestamp(),
-      });
+      batch.update(ref, updateData);
     } else {
-      await setDoc(ref, {
-        ...printer,
+      batch.set(ref, {
+        ...printerData,
         createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        updatedAt,
       });
     }
+
+    if (facilityRef) {
+      const stableFacilityData = {
+        ...printerData,
+        printerId: printer.printerId,
+        uid: printer.printerId,
+        updatedAt,
+      };
+      if (facilitySnap?.exists()) {
+        batch.update(facilityRef, stableFacilityData);
+      } else {
+        batch.set(facilityRef, {
+          ...stableFacilityData,
+          createdAt: serverTimestamp(),
+        });
+      }
+    }
+
+    await batch.commit();
     await recordAuditLog({
       actorUid: actor.uid,
       actorEmail: actor.email,
@@ -1663,6 +1733,21 @@ export async function updateUserRoleAndStatus(params: {
 }): Promise<void> {
   const batch = writeBatch(db);
   const userRef = doc(db, 'users', params.targetUser.uid);
+  const printerRef = doc(db, 'printers', params.targetUser.uid);
+  const existingPrinterSnap =
+    params.newRole === 'PRINTER' || params.targetUser.role === 'PRINTER'
+      ? await getDoc(printerRef)
+      : null;
+  const existingPrinter = existingPrinterSnap?.exists()
+    ? (existingPrinterSnap.data() as PrinterRecord)
+    : null;
+  const linkedFacilityRef =
+    params.newRole === 'PRINTER' &&
+    existingPrinter?.uid === params.targetUser.uid &&
+    existingPrinter.printerId !== params.targetUser.uid
+      ? doc(db, 'printers', existingPrinter.printerId)
+      : null;
+  const linkedFacilitySnap = linkedFacilityRef ? await getDoc(linkedFacilityRef) : null;
 
   batch.update(userRef, {
     role: params.newRole,
@@ -1685,23 +1770,61 @@ export async function updateUserRoleAndStatus(params: {
   }
 
   if (params.newRole === 'PRINTER') {
-    const printerRef = doc(db, 'printers', params.targetUser.uid);
+    const linkedPrinterId =
+      existingPrinter?.uid === params.targetUser.uid && existingPrinter.printerId
+        ? existingPrinter.printerId
+        : params.targetUser.uid;
+    const printerStatus: PrinterRecord['status'] =
+      params.newStatus === 'Active'
+        ? 'Active'
+        : params.newStatus === 'Disabled'
+          ? 'Disabled'
+          : 'Blocked';
+
+    const printerUpdate = {
+      businessName:
+        existingPrinter?.businessName ||
+        params.targetUser.displayName ||
+        params.targetUser.username ||
+        'Print Partner',
+      contactPerson:
+        existingPrinter?.contactPerson ||
+        params.targetUser.displayName ||
+        params.targetUser.email,
+      email: existingPrinter?.email || params.targetUser.email,
+      phone: existingPrinter?.phone || params.targetUser.phone || '',
+      ...(existingPrinter?.address ? { address: existingPrinter.address } : {}),
+      status: printerStatus,
+      serviceAreas: existingPrinter?.serviceAreas || ['All India'],
+      updatedAt: serverTimestamp(),
+    };
+
     batch.set(
       printerRef,
       {
-        printerId: params.targetUser.uid,
+        printerId: linkedPrinterId,
         uid: params.targetUser.uid,
-        businessName: params.targetUser.displayName || params.targetUser.username || 'Print Partner',
-        contactPerson: params.targetUser.displayName || params.targetUser.email,
-        email: params.targetUser.email,
-        phone: params.targetUser.phone || '',
-        status: params.newStatus === 'Active' ? 'Active' : 'Blocked',
-        serviceAreas: ['All India'],
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        ...printerUpdate,
+        createdAt: existingPrinter?.createdAt || serverTimestamp(),
       },
       { merge: true }
     );
+
+    if (linkedFacilityRef) {
+      const stableFacilityUpdate = {
+        printerId: linkedPrinterId,
+        uid: linkedPrinterId,
+        ...printerUpdate,
+      };
+      if (linkedFacilitySnap?.exists()) {
+        batch.update(linkedFacilityRef, stableFacilityUpdate);
+      } else {
+        batch.set(linkedFacilityRef, {
+          ...stableFacilityUpdate,
+          createdAt: serverTimestamp(),
+        });
+      }
+    }
   }
 
   try {

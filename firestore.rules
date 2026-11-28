@@ -57,7 +57,17 @@ service cloud.firestore {
     function isPrinter() {
       return isVerified() &&
         exists(/databases/$(database)/documents/printers/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/printers/$(request.auth.uid)).data.status == 'Active';
+        get(/databases/$(database)/documents/printers/$(request.auth.uid)).data.uid == request.auth.uid &&
+       isValidId(get(/databases/$(database)/documents/printers/$(request.auth.uid)).data.printerId) &&
+        get(/databases/$(database)/documents/printers/$(request.auth.uid)).data.status == 'Active' &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'PRINTER' &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'Active';
+    }
+
+    function isAssignedPrinter(data) {
+      return isPrinter() &&
+        data.printerId == get(/databases/$(database)/documents/printers/$(request.auth.uid)).data.printerId;
     }
 
     function isActiveUser() {
@@ -501,11 +511,11 @@ service cloud.firestore {
     match /orders/{orderId} {
       allow get: if isValidId(orderId) && (
         (isSignedIn() && existing().uid == request.auth.uid) ||
-        (isPrinter() && existing().printerId == request.auth.uid) ||
+        isAssignedPrinter(existing()) ||
         isAdmin()
       );
       allow list: if (isSignedIn() && resource.data.uid == request.auth.uid) ||
-        (isSignedIn() && resource.data.printerId == request.auth.uid) ||
+        isAssignedPrinter(resource.data) ||
         isAdmin();
       allow create: if isValidId(orderId) && isValidOrder(incoming()) &&
         (incoming().get('orderSource', 'studio') == 'shop' || exists(/databases/$(database)/documents/cardDesigns/$(incoming().designId))) &&
@@ -535,7 +545,7 @@ service cloud.firestore {
         incoming().total == existing().total && (
           (isAdmin() &&
             incoming().diff(existing()).affectedKeys().hasOnly(['printerId', 'orderStatus', 'printFileReady', 'courierName', 'trackingNumber', 'trackingUrl', 'dispatchDate', 'internalNotes', 'shippingAddress', 'updatedAt'])) ||
-          (isPrinter() && existing().printerId == request.auth.uid &&
+          (isAssignedPrinter(existing()) &&
             incoming().diff(existing()).affectedKeys().hasOnly(['orderStatus', 'courierName', 'trackingNumber', 'trackingUrl', 'dispatchDate', 'updatedAt']))
         );
       allow delete: if isValidId(orderId) && isSuperAdmin();
@@ -552,22 +562,22 @@ service cloud.firestore {
     match /qrCodes/{qrCodeId} {
       allow get: if isValidId(qrCodeId) && (
         isAdmin() ||
-        (isPrinter() && existing().printerId == request.auth.uid) ||
+        isAssignedPrinter(existing()) ||
         (isActiveUser() && existing().uid == request.auth.uid &&
           exists(/databases/$(database)/documents/appSettings/global) &&
           get(/databases/$(database)/documents/appSettings/global).data.allowCustomerQrView == true)
       );
-      allow list: if isAdmin() || (isSignedIn() && resource.data.printerId == request.auth.uid);
+      allow list: if isAdmin() || isAssignedPrinter(resource.data);
       allow create, update, delete: if false;
     }
 
     // 11. Shipping Records
     match /shippingRecords/{shippingId} {
-      allow get: if isValidId(shippingId) && ((isSignedIn() && existing().uid == request.auth.uid) || (isPrinter() && existing().printerId == request.auth.uid) || isAdmin());
-      allow list: if (isSignedIn() && resource.data.uid == request.auth.uid) || (isSignedIn() && resource.data.printerId == request.auth.uid) || isAdmin();
+      allow get: if isValidId(shippingId) && ((isSignedIn() && existing().uid == request.auth.uid) || isAssignedPrinter(existing()) || isAdmin());
+      allow list: if (isSignedIn() && resource.data.uid == request.auth.uid) || isAssignedPrinter(resource.data) || isAdmin();
       allow create: if isValidId(shippingId) && isValidShippingRecord(incoming()) && incoming().createdAt == request.time && (
         isAdmin() ||
-        (isPrinter() && incoming().printerId == request.auth.uid && exists(/databases/$(database)/documents/orders/$(incoming().orderId)))
+        (isAssignedPrinter(incoming()) && exists(/databases/$(database)/documents/orders/$(incoming().orderId)) && get(/databases/$(database)/documents/orders/$(incoming().orderId)).data.printerId == incoming().printerId)
       );
       allow update, delete: if isValidId(shippingId) && isAdmin();
     }
