@@ -4,6 +4,12 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { PublicLayout } from './components/PublicLayout';
+import {
+  ADMIN_PORTAL_ALLOWED_ROLES,
+  CUSTOMER_PORTAL_ALLOWED_ROLES,
+  PRINTER_PORTAL_ALLOWED_ROLES,
+  SUPERADMIN_PORTAL_ALLOWED_ROLES,
+} from './lib/roleNavigation';
 
 // Public Pages
 import { HomePage } from './pages/public/HomePage';
@@ -137,7 +143,7 @@ export default function App() {
             <Route
               path="/dashboard"
               element={
-                <ProtectedRoute allowedRoles={['USER', 'PRINTER', 'ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={CUSTOMER_PORTAL_ALLOWED_ROLES}>
                   <CustomerOverviewPage />
                 </ProtectedRoute>
               }
@@ -145,7 +151,7 @@ export default function App() {
             <Route
               path="/dashboard/profile"
               element={
-                <ProtectedRoute allowedRoles={['USER', 'PRINTER', 'ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={CUSTOMER_PORTAL_ALLOWED_ROLES}>
                   <CustomerProfilePage />
                 </ProtectedRoute>
               }
@@ -153,7 +159,7 @@ export default function App() {
             <Route
               path="/dashboard/social-links"
               element={
-                <ProtectedRoute allowedRoles={['USER', 'PRINTER', 'ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={CUSTOMER_PORTAL_ALLOWED_ROLES}>
                   <CustomerSocialLinksPage />
                 </ProtectedRoute>
               }
@@ -161,7 +167,7 @@ export default function App() {
             <Route
               path="/dashboard/custom-fields"
               element={
-                <ProtectedRoute allowedRoles={['USER', 'PRINTER', 'ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={CUSTOMER_PORTAL_ALLOWED_ROLES}>
                   <CustomerCustomFieldsPage />
                 </ProtectedRoute>
               }
@@ -169,7 +175,7 @@ export default function App() {
             <Route
               path="/dashboard/visibility"
               element={
-                <ProtectedRoute allowedRoles={['USER', 'PRINTER', 'ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={CUSTOMER_PORTAL_ALLOWED_ROLES}>
                   <CustomerVisibilityPage />
                 </ProtectedRoute>
               }
@@ -177,7 +183,7 @@ export default function App() {
             <Route
               path="/dashboard/card-design"
               element={
-                <ProtectedRoute allowedRoles={['USER', 'PRINTER', 'ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={CUSTOMER_PORTAL_ALLOWED_ROLES}>
                   <CustomerCardStudioPage />
                 </ProtectedRoute>
               }
@@ -185,7 +191,7 @@ export default function App() {
             <Route
               path="/dashboard/checkout"
               element={
-                <ProtectedRoute allowedRoles={['USER', 'PRINTER', 'ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={CUSTOMER_PORTAL_ALLOWED_ROLES}>
                   <CustomerCheckoutPage />
                 </ProtectedRoute>
               }
@@ -193,7 +199,7 @@ export default function App() {
             <Route
               path="/dashboard/orders"
               element={
-                <ProtectedRoute allowedRoles={['USER', 'PRINTER', 'ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={CUSTOMER_PORTAL_ALLOWED_ROLES}>
                   <CustomerOrdersPage />
                 </ProtectedRoute>
               }
@@ -201,7 +207,7 @@ export default function App() {
             <Route
               path="/dashboard/tracking"
               element={
-                <ProtectedRoute allowedRoles={['USER', 'PRINTER', 'ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={CUSTOMER_PORTAL_ALLOWED_ROLES}>
                   <CustomerOrdersPage initialTab="tracking" />
                 </ProtectedRoute>
               }
@@ -209,7 +215,7 @@ export default function App() {
             <Route
               path="/dashboard/orders/:orderId"
               element={
-                <ProtectedRoute allowedRoles={['USER', 'PRINTER', 'ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={CUSTOMER_PORTAL_ALLOWED_ROLES}>
                   <CustomerOrdersPage initialTab="tracking" />
                 </ProtectedRoute>
               }
@@ -217,7 +223,7 @@ export default function App() {
             <Route
               path="/dashboard/settings"
               element={
-                <ProtectedRoute allowedRoles={['USER', 'PRINTER', 'ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={CUSTOMER_PORTAL_ALLOWED_ROLES}>
                   <CustomerSettingsPage />
                 </ProtectedRoute>
               }
@@ -225,7 +231,7 @@ export default function App() {
             <Route
               path="/dashboard/support"
               element={
-                <ProtectedRoute allowedRoles={['USER', 'PRINTER', 'ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={CUSTOMER_PORTAL_ALLOWED_ROLES}>
                   <CustomerSupportPage />
                 </ProtectedRoute>
               }
@@ -236,7 +242,7 @@ export default function App() {
             <Route
               path="/printer/dashboard"
               element={
-                <ProtectedRoute allowedRoles={['PRINTER', 'ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={PRINTER_PORTAL_ALLOWED_ROLES}>
                   <PrinterDashboardPage />
                 </ProtectedRoute>
               }
@@ -244,7 +250,7 @@ export default function App() {
             <Route
               path="/printer/orders"
               element={
-                <ProtectedRoute allowedRoles={['PRINTER', 'ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={PRINTER_PORTAL_ALLOWED_ROLES}>
                   <PrinterOrdersPage />
                 </ProtectedRoute>
               }
@@ -252,7 +258,7 @@ export default function App() {
             <Route
               path="/printer/orders/:orderId"
               element={
-                <ProtectedRoute allowedRoles={['PRINTER', 'ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={PRINTER_PORTAL_ALLOWED_ROLES}>
                   <PrinterOrderDetailPage />
                 </ProtectedRoute>
               }
@@ -260,7 +266,7 @@ export default function App() {
             <Route
               path="/printer/profile"
               element={
-                <ProtectedRoute allowedRoles={['PRINTER', 'ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={PRINTER_PORTAL_ALLOWED_ROLES}>
                   <PrinterProfilePage />
                 </ProtectedRoute>
               }
@@ -271,7 +277,7 @@ export default function App() {
             <Route
               path="/admin/dashboard"
               element={
-                <ProtectedRoute allowedRoles={['ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={ADMIN_PORTAL_ALLOWED_ROLES}>
                   <AdminDashboardPage />
                 </ProtectedRoute>
               }
@@ -279,7 +285,7 @@ export default function App() {
             <Route
               path="/admin/users"
               element={
-                <ProtectedRoute allowedRoles={['ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={ADMIN_PORTAL_ALLOWED_ROLES}>
                   <AdminUsersPage />
                 </ProtectedRoute>
               }
@@ -287,7 +293,7 @@ export default function App() {
             <Route
               path="/admin/users/:uid"
               element={
-                <ProtectedRoute allowedRoles={['ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={ADMIN_PORTAL_ALLOWED_ROLES}>
                   <AdminUserDetailPage />
                 </ProtectedRoute>
               }
@@ -295,7 +301,7 @@ export default function App() {
             <Route
               path="/admin/printers"
               element={
-                <ProtectedRoute allowedRoles={['ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={ADMIN_PORTAL_ALLOWED_ROLES}>
                   <AdminPrintersPage />
                 </ProtectedRoute>
               }
@@ -303,7 +309,7 @@ export default function App() {
             <Route
               path="/admin/profiles"
               element={
-                <ProtectedRoute allowedRoles={['ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={ADMIN_PORTAL_ALLOWED_ROLES}>
                   <AdminProfilesPage />
                 </ProtectedRoute>
               }
@@ -311,7 +317,7 @@ export default function App() {
             <Route
               path="/admin/approved-designs"
               element={
-                <ProtectedRoute allowedRoles={['ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={ADMIN_PORTAL_ALLOWED_ROLES}>
                   <AdminApprovedDesignsPage />
                 </ProtectedRoute>
               }
@@ -319,7 +325,7 @@ export default function App() {
             <Route
               path="/admin/orders"
               element={
-                <ProtectedRoute allowedRoles={['ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={ADMIN_PORTAL_ALLOWED_ROLES}>
                   <AdminOrdersPage />
                 </ProtectedRoute>
               }
@@ -327,7 +333,7 @@ export default function App() {
             <Route
               path="/admin/orders/:orderId"
               element={
-                <ProtectedRoute allowedRoles={['ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={ADMIN_PORTAL_ALLOWED_ROLES}>
                   <AdminOrderDetailPage />
                 </ProtectedRoute>
               }
@@ -335,7 +341,7 @@ export default function App() {
             <Route
               path="/admin/payments"
               element={
-                <ProtectedRoute allowedRoles={['ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={ADMIN_PORTAL_ALLOWED_ROLES}>
                   <AdminPaymentsPage />
                 </ProtectedRoute>
               }
@@ -343,7 +349,7 @@ export default function App() {
             <Route
               path="/admin/card-designs"
               element={
-                <ProtectedRoute allowedRoles={['ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={ADMIN_PORTAL_ALLOWED_ROLES}>
                   <AdminCardTemplatesPage />
                 </ProtectedRoute>
               }
@@ -351,7 +357,7 @@ export default function App() {
             <Route
               path="/admin/shop"
               element={
-                <ProtectedRoute allowedRoles={['ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={ADMIN_PORTAL_ALLOWED_ROLES}>
                   <AdminShopPage />
                 </ProtectedRoute>
               }
@@ -359,7 +365,7 @@ export default function App() {
             <Route
               path="/admin/qr-management"
               element={
-                <ProtectedRoute allowedRoles={['ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={ADMIN_PORTAL_ALLOWED_ROLES}>
                   <AdminQrManagementPage />
                 </ProtectedRoute>
               }
@@ -367,7 +373,7 @@ export default function App() {
             <Route
               path="/admin/shipping"
               element={
-                <ProtectedRoute allowedRoles={['ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={ADMIN_PORTAL_ALLOWED_ROLES}>
                   <AdminShippingPage />
                 </ProtectedRoute>
               }
@@ -375,7 +381,7 @@ export default function App() {
             <Route
               path="/admin/reports"
               element={
-                <ProtectedRoute allowedRoles={['ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={ADMIN_PORTAL_ALLOWED_ROLES}>
                   <AdminReportsPage />
                 </ProtectedRoute>
               }
@@ -383,7 +389,7 @@ export default function App() {
             <Route
               path="/admin/settings"
               element={
-                <ProtectedRoute allowedRoles={['ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={ADMIN_PORTAL_ALLOWED_ROLES}>
                   <AdminSettingsAndTicketsPage />
                 </ProtectedRoute>
               }
@@ -391,7 +397,7 @@ export default function App() {
             <Route
               path="/admin/audit-logs"
               element={
-                <ProtectedRoute allowedRoles={['ADMIN', 'SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={ADMIN_PORTAL_ALLOWED_ROLES}>
                   <AdminAuditLogsPage />
                 </ProtectedRoute>
               }
@@ -402,7 +408,7 @@ export default function App() {
             <Route
               path="/superadmin/dashboard"
               element={
-                <ProtectedRoute allowedRoles={['SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={SUPERADMIN_PORTAL_ALLOWED_ROLES}>
                   <SuperAdminDashboardPage />
                 </ProtectedRoute>
               }
@@ -410,7 +416,7 @@ export default function App() {
             <Route
               path="/superadmin/roles"
               element={
-                <ProtectedRoute allowedRoles={['SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={SUPERADMIN_PORTAL_ALLOWED_ROLES}>
                   <SuperAdminRolesPage />
                 </ProtectedRoute>
               }
@@ -418,7 +424,7 @@ export default function App() {
             <Route
               path="/superadmin/permissions"
               element={
-                <ProtectedRoute allowedRoles={['SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={SUPERADMIN_PORTAL_ALLOWED_ROLES}>
                   <SuperAdminPermissionsPage />
                 </ProtectedRoute>
               }
@@ -426,7 +432,7 @@ export default function App() {
             <Route
               path="/superadmin/qr-generator"
               element={
-                <ProtectedRoute allowedRoles={['SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={SUPERADMIN_PORTAL_ALLOWED_ROLES}>
                   <SuperAdminQrGeneratorPage />
                 </ProtectedRoute>
               }
@@ -434,7 +440,7 @@ export default function App() {
             <Route
               path="/superadmin/system-settings"
               element={
-                <ProtectedRoute allowedRoles={['SUPERADMIN']}>
+                <ProtectedRoute allowedRoles={SUPERADMIN_PORTAL_ALLOWED_ROLES}>
                   <SuperAdminSystemSettingsPage />
                 </ProtectedRoute>
               }

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { getRoleDashboardPath, isCustomerOnlyPath } from '../lib/roleNavigation';
 import type { UserRole } from '../types';
 
 interface ProtectedRouteProps {
@@ -51,16 +52,11 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRoles, ch
     return <Navigate to="/verify-email" replace />;
   }
 
-  if (!allowedRoles.includes(userRecord.role)) {
-    const fallback =
-      userRecord.role === 'SUPERADMIN'
-        ? '/superadmin/dashboard'
-        : userRecord.role === 'ADMIN'
-          ? '/admin/dashboard'
-          : userRecord.role === 'PRINTER'
-            ? '/printer/dashboard'
-            : '/dashboard';
-    return <Navigate to={fallback} replace />;
+  if (
+    !allowedRoles.includes(userRecord.role) ||
+    (userRecord.role === 'PRINTER' && isCustomerOnlyPath(location.pathname))
+  ) {
+    return <Navigate to={getRoleDashboardPath(userRecord.role)} replace />;
   }
 
   return <>{children}</>;

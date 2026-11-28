@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, Smartphone, Shield, Truck } from 'lucide-react';
 import { PublicLayout } from '../../components/PublicLayout';
+import { SmartCardLink } from '../../components/SmartCardLink';
 import { CardCanvasPreview } from '../../components/CardCanvasPreview';
 import { DEFAULT_CARD_TEMPLATES } from '../../lib/constants';
 import { getCardTemplates } from '../../lib/firestoreService';
@@ -44,10 +45,10 @@ export const HowItWorksPage: React.FC = () => (
         ))}
       </div>
       <div className="mt-10">
-        <Link to="/register" className="inline-flex items-center gap-2 px-6 py-3 bg-[#0B1D3A] text-white rounded-xl text-sm font-semibold">
+        <SmartCardLink className="inline-flex items-center gap-2 px-6 py-3 bg-[#0B1D3A] text-white rounded-xl text-sm font-semibold">
           <span>Get Your Smart Card</span>
           <ArrowRight className="h-4 w-4" />
-        </Link>
+        </SmartCardLink>
       </div>
     </section>
   </PublicLayout>
@@ -101,9 +102,9 @@ export const CardDesignsPage: React.FC = () => {
               All designs adhere to ISO/IEC 7810 ID-1 (85.6 × 54 mm) with 3 mm print bleed.
             </p>
           </div>
-          <Link to="/dashboard/card-design" className="px-5 py-2.5 bg-[#0B1D3A] text-white rounded-xl text-sm font-semibold whitespace-nowrap">
+          <SmartCardLink className="px-5 py-2.5 bg-[#0B1D3A] text-white rounded-xl text-sm font-semibold whitespace-nowrap">
             Customize in Studio
-          </Link>
+          </SmartCardLink>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -119,12 +120,11 @@ export const CardDesignsPage: React.FC = () => {
                 </div>
                 <CardCanvasPreview side={tpl.frontSpec} orientation="landscape" personalInfo={SAMPLE_INFO} />
               </div>
-              <Link
-                to="/dashboard/card-design"
+              <SmartCardLink
                 className="mt-5 block text-center py-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-sm font-semibold text-[#0B1D3A]"
               >
                 Use This Template
-              </Link>
+              </SmartCardLink>
             </div>
           ))}
         </div>
@@ -195,9 +195,9 @@ export const PricingPage: React.FC = () => (
                 ))}
               </ul>
             </div>
-            <Link to="/register" className="mt-6 block text-center py-2.5 bg-[#0B1D3A] text-white rounded-xl text-sm font-semibold">
+            <SmartCardLink className="mt-6 block text-center py-2.5 bg-[#0B1D3A] text-white rounded-xl text-sm font-semibold">
               Order Now
-            </Link>
+            </SmartCardLink>
           </div>
         ))}
       </div>

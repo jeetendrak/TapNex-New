@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { MailCheck, Lock, UserPlus, LogIn, RefreshCw, ShieldAlert } from 'lucide-react';
 import { PublicLayout, TAPNEX_LOGO_URL } from '../../components/PublicLayout';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
-import type { UserRole } from '../../types';
+import { getRoleDashboardPath, getSafePostAuthRedirect } from '../../lib/roleNavigation';
 
 const GoogleLogoIcon: React.FC<{ className?: string }> = ({ className = 'h-5 w-5 shrink-0' }) => (
   <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
@@ -27,19 +27,8 @@ const GoogleLogoIcon: React.FC<{ className?: string }> = ({ className = 'h-5 w-5
   </svg>
 );
 
-function routeForRole(role: UserRole): string {
-  if (role === 'SUPERADMIN') return '/superadmin/dashboard';
-  if (role === 'ADMIN') return '/admin/dashboard';
-  if (role === 'PRINTER') return '/printer/dashboard';
-  return '/dashboard';
-}
-
-function getSafeRedirectTarget(searchParams: URLSearchParams, role: UserRole): string {
-  const raw = searchParams.get('redirect') || '';
-  if (raw.startsWith('/') && !raw.startsWith('//')) {
-    return raw;
-  }
-  return routeForRole(role);
+function getSafeRedirectTarget(searchParams: URLSearchParams, role: Parameters<typeof getSafePostAuthRedirect>[1]): string {
+  return getSafePostAuthRedirect(searchParams.get('redirect'), role);
 }
 
 function mapAuthError(err: unknown): string {
@@ -192,7 +181,7 @@ export const LoginPage: React.FC = () => {
 };
 
 export const RegisterPage: React.FC = () => {
-  const { loginWithGoogle, registerWithEmail } = useAuth();
+  const { firebaseUser, userRecord, loading, loginWithGoogle, registerWithEmail } = useAuth();
   const { notify } = useToast();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -202,6 +191,10 @@ export const RegisterPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  if (!loading && firebaseUser && userRecord?.role === 'PRINTER') {
+    return <Navigate to="/printer/dashboard" replace />;
+  }
 
   const handleGoogle = async () => {
     setErrorMsg('');
@@ -391,7 +384,7 @@ export const ForgotPasswordPage: React.FC = () => {
 };
 
 export const VerifyEmailPage: React.FC = () => {
-  const { firebaseUser, resendVerificationEmail, refreshSession, logout } = useAuth();
+  const { firebaseUser, userRecord, resendVerificationEmail, refreshSession, logout } = useAuth();
   const { notify } = useToast();
   const navigate = useNavigate();
   const [checking, setChecking] = useState(false);
@@ -401,8 +394,8 @@ export const VerifyEmailPage: React.FC = () => {
     try {
       await refreshSession();
       if (firebaseUser?.emailVerified) {
-        notify('Email verified', 'Your customer portal is now unlocked.', 'success');
-        navigate('/dashboard');
+        notify('Email verified', 'Your portal access is now unlocked.', 'success');
+        navigate(getRoleDashboardPath(userRecord?.role));
       } else {
         notify('Not yet verified', 'Please click the verification link in your email inbox first.', 'info');
       }

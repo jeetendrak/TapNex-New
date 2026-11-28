@@ -17,8 +17,10 @@ import {
   X,
 } from 'lucide-react';
 import { PublicLayout } from '../../components/PublicLayout';
+import { SmartCardLink } from '../../components/SmartCardLink';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
+import { getRoleDashboardPath } from '../../lib/roleNavigation';
 import {
   createPendingShopOrder,
   getShopCategories,
@@ -143,7 +145,7 @@ export const ShopPage: React.FC = () => {
   }, [cart]);
 
   useEffect(() => {
-    if (!userRecord) {
+    if (!userRecord || userRecord.role === 'PRINTER') {
       setUserProfiles([]);
       return;
     }
@@ -268,6 +270,15 @@ export const ShopPage: React.FC = () => {
         'info'
       );
       navigate('/login?redirect=/shop');
+      return;
+    }
+    if (userRecord.role === 'PRINTER') {
+      notify(
+        'Printer Portal Account',
+        'Printer accounts are operational accounts and cannot place customer orders. Redirecting to the Printer Portal.',
+        'info'
+      );
+      navigate('/printer/dashboard');
       return;
     }
     if (!activeGatewayConfig) {
@@ -488,13 +499,12 @@ export const ShopPage: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <Link
-              to="/dashboard/card-design"
+            <SmartCardLink
               className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white text-sm font-semibold transition-colors whitespace-nowrap"
             >
               <Sparkles className="h-4 w-4 text-cyan-300" />
               <span>Design Custom Smart Card</span>
-            </Link>
+            </SmartCardLink>
             <button
               type="button"
               onClick={() => {
@@ -710,10 +720,16 @@ export const ShopPage: React.FC = () => {
             </div>
             <div className="flex flex-wrap items-center gap-3 shrink-0">
               <Link
-                to={userRecord ? '/dashboard' : '/register'}
+                to={userRecord ? getRoleDashboardPath(userRecord.role) : '/register'}
                 className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#1D4ED8] hover:bg-blue-700 text-white text-sm font-semibold whitespace-nowrap"
               >
-                <span>{userRecord ? 'Manage Digital Profiles' : 'Create Free Profile'}</span>
+                <span>
+                  {userRecord?.role === 'PRINTER'
+                    ? 'Open Printer Portal'
+                    : userRecord
+                      ? 'Manage Digital Profiles'
+                      : 'Create Free Profile'}
+                </span>
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
@@ -1136,6 +1152,16 @@ export const ShopPage: React.FC = () => {
                           'info'
                         );
                         navigate('/login?redirect=/shop');
+                        return;
+                      }
+                      if (userRecord.role === 'PRINTER') {
+                        notify(
+                          'Printer Portal Account',
+                          'Printer accounts cannot access customer checkout. Redirecting to the Printer Portal.',
+                          'info'
+                        );
+                        setBagOpen(false);
+                        navigate('/printer/dashboard');
                         return;
                       }
                       setCheckoutStep('checkout');

@@ -13,6 +13,7 @@ import {
   Download,
 } from 'lucide-react';
 import { PublicLayout } from '../../components/PublicLayout';
+import { SmartCardLink } from '../../components/SmartCardLink';
 import { CardCanvasPreview } from '../../components/CardCanvasPreview';
 import {
   BLANK_CARD_TEMPLATE,
@@ -144,13 +145,12 @@ export const HomePage: React.FC = () => {
               Share your contact details, business information and social media profiles instantly with a premium SMART business card.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-4">
-              <Link
-                to="/register"
+              <SmartCardLink
                 className="inline-flex items-center justify-center gap-2 px-6 py-3.5 text-sm font-semibold text-white bg-[#0B1D3A] hover:bg-[#132A52] rounded-xl transition-colors whitespace-nowrap"
               >
                 <span>Get Your Smart Card</span>
                 <ArrowRight className="h-4 w-4" />
-              </Link>
+              </SmartCardLink>
               <Link
                 to="/shop"
                 className="inline-flex items-center justify-center gap-2 px-6 py-3.5 text-sm font-semibold text-[#0B1D3A] bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors whitespace-nowrap"
@@ -261,12 +261,11 @@ export const HomePage: React.FC = () => {
                   Customize background colors, upload logos, adjust typography, and preview both front and back in exact 85.6 × 54 mm proportions.
                 </p>
               </div>
-              <Link
-                to="/dashboard/card-design"
+              <SmartCardLink
                 className="mt-6 inline-flex items-center text-sm font-semibold text-[#1D4ED8] hover:underline"
               >
                 Open Design Studio →
-              </Link>
+              </SmartCardLink>
             </div>
 
             <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6">
@@ -338,13 +337,12 @@ export const HomePage: React.FC = () => {
               </div>
 
               <div className="mt-6">
-                <Link
-                  to="/dashboard/card-design"
+                <SmartCardLink
                   className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#1D4ED8] hover:bg-blue-700 text-white text-sm font-semibold transition-colors"
                 >
                   <span>Customize {selectedTpl.name}</span>
                   <ArrowRight className="h-4 w-4" />
-                </Link>
+                </SmartCardLink>
               </div>
             </div>
 
@@ -505,12 +503,11 @@ export const HomePage: React.FC = () => {
                   <li className="flex items-center gap-2"><Check className="h-4 w-4 text-cyan-400" /><span>Live digital profile & vCard download</span></li>
                 </ul>
               </div>
-              <Link
-                to="/register"
+              <SmartCardLink
                 className="mt-7 block text-center py-3 rounded-xl bg-white text-[#0B1D3A] text-sm font-semibold hover:bg-slate-100 transition-colors"
               >
                 Start Designing
-              </Link>
+              </SmartCardLink>
             </div>
 
             <div className="bg-slate-900/90 border border-blue-500/40 rounded-2xl p-7 flex flex-col justify-between">
@@ -524,12 +521,11 @@ export const HomePage: React.FC = () => {
                   <li className="flex items-center gap-2"><Check className="h-4 w-4 text-cyan-400" /><span>Tracked pan-India courier shipping</span></li>
                 </ul>
               </div>
-              <Link
-                to="/register"
+              <SmartCardLink
                 className="mt-7 block text-center py-3 rounded-xl bg-[#1D4ED8] text-white text-sm font-semibold hover:bg-blue-600 transition-colors"
               >
                 Order Executive Card
-              </Link>
+              </SmartCardLink>
             </div>
           </div>
         </div>

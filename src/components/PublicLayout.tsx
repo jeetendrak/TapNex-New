@@ -2,30 +2,29 @@ import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Menu, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { getPublicHeaderPortalLink } from '../lib/roleNavigation';
+import { SmartCardLink } from './SmartCardLink';
 
 export const TAPNEX_LOGO_URL = '/assets/aistudio/TapNex_Smart_Connections_Logo_79022558.png';
 export const TAPNEX_PUBLIC_BADGE_LOGO_URL = '/assets/aistudio/TapNex_Neon_Contactless_Icon__1__7967dbb5.webp';
 
 export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { userRecord } = useAuth();
+  const { firebaseUser, userRecord, loading } = useAuth();
   const location = useLocation();
 
-  const portalPath =
-    userRecord?.role === 'SUPERADMIN'
-      ? '/superadmin/dashboard'
-      : userRecord?.role === 'ADMIN'
-        ? '/admin/dashboard'
-        : userRecord?.role === 'PRINTER'
-          ? '/printer/dashboard'
-          : '/dashboard';
+  const headerPortalLink = getPublicHeaderPortalLink({
+    isAuthenticated: Boolean(firebaseUser && userRecord),
+    loading,
+    role: userRecord?.role,
+  });
 
   const navLinks = [
     { label: 'Shop', to: '/shop' },
     { label: 'How It Works', to: '/how-it-works' },
     { label: 'Card Designs', to: '/card-designs' },
     { label: 'Pricing', to: '/pricing' },
-    { label: userRecord ? 'Portal' : 'Login', to: userRecord ? portalPath : '/login' },
+    { label: headerPortalLink.label, to: headerPortalLink.to },
   ];
 
   return (
@@ -66,12 +65,11 @@ export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children
 
           {/* Zone 3: 1 primary CTA */}
           <div className="flex items-center gap-3 shrink-0">
-            <Link
-              to={userRecord ? '/dashboard/card-design' : '/register'}
+            <SmartCardLink
               className="hidden sm:inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-white bg-[#0B1D3A] hover:bg-[#132A52] rounded-lg transition-colors whitespace-nowrap shrink-0 min-h-[40px]"
             >
               Get Your Smart Card
-            </Link>
+            </SmartCardLink>
             <button
               type="button"
               onClick={() => setMobileMenuOpen((v) => !v)}
@@ -124,13 +122,12 @@ export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children
             >
               Contact
             </Link>
-            <Link
-              to={userRecord ? '/dashboard/card-design' : '/register'}
+            <SmartCardLink
               onClick={() => setMobileMenuOpen(false)}
               className="block text-center mt-2 px-4 py-3 rounded-lg text-sm font-semibold text-white bg-[#0B1D3A]"
             >
               Get Your Smart Card
-            </Link>
+            </SmartCardLink>
           </div>
         )}
       </header>
@@ -171,7 +168,14 @@ export const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children
               <li><Link to="/faq" className="hover:text-white transition-colors">FAQ</Link></li>
               <li><Link to="/nfc-guide" className="hover:text-white transition-colors">Smartcard Compatibility Guide</Link></li>
               <li><Link to="/contact" className="hover:text-white transition-colors">Contact Support</Link></li>
-              <li><Link to="/login" className="hover:text-white transition-colors">Portal Login</Link></li>
+              <li>
+                <Link
+                  to={headerPortalLink.isPrinterPortal ? headerPortalLink.to : '/login'}
+                  className="hover:text-white transition-colors"
+                >
+                  {headerPortalLink.isPrinterPortal ? 'Printer Portal' : 'Portal Login'}
+                </Link>
+              </li>
             </ul>
           </div>
 
