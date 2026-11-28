@@ -294,7 +294,9 @@ export function populateSideWithProfileInfo(
   info: Partial<PersonalInformation>
 ): CardSideDesign {
   const cloned = JSON.parse(JSON.stringify(side)) as CardSideDesign;
-  const resolvedAvatarUrl = cloned.avatarDataUrl || info.photoDataUrl || '';
+  const resolvedAvatarUrl = cloned.showAvatar
+    ? cloned.avatarDataUrl || info.photoDataUrl || ''
+    : cloned.avatarDataUrl || '';
   return {
     ...cloned,
     ...(resolvedAvatarUrl ? { avatarDataUrl: resolvedAvatarUrl } : {}),
@@ -313,9 +315,16 @@ export function refreshUneditedSideWithProfileInfo(
   info: Partial<PersonalInformation>
 ): CardSideDesign {
   const cloned = JSON.parse(JSON.stringify(side)) as CardSideDesign;
-  const resolvedAvatarUrl = cloned.avatarDataUrl || info.photoDataUrl || '';
+  const isRedundantProfilePhoto =
+    !cloned.showAvatar && Boolean(info.photoDataUrl) && cloned.avatarDataUrl === info.photoDataUrl;
+  const resolvedAvatarUrl = cloned.showAvatar
+    ? cloned.avatarDataUrl || info.photoDataUrl || ''
+    : isRedundantProfilePhoto
+    ? ''
+    : cloned.avatarDataUrl || '';
+  const { avatarDataUrl: _ignoredAvatar, ...restCloned } = cloned;
   return {
-    ...cloned,
+    ...restCloned,
     ...(resolvedAvatarUrl ? { avatarDataUrl: resolvedAvatarUrl } : {}),
     elements: (cloned.elements || []).map((el) => materializeElementWithProfile(el, info)),
   };

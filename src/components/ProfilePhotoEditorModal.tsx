@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Check, Maximize2, Minimize2, RotateCw, Upload, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { encodeCanvasWithinBudget, imageHasTransparentPixels } from '../lib/qrArtwork';
 
 interface ProfilePhotoEditorModalProps {
   open: boolean;
@@ -12,29 +13,7 @@ interface ProfilePhotoEditorModalProps {
 
 const VIEWPORT_PX = 256;
 const OUTPUT_PX = 420;
-
-function isAlphaFriendlySource(src: string, img: HTMLImageElement): boolean {
-  if (/^data:image\/(png|webp|svg\+xml)/i.test(src) || /\.(png|webp|svg)(\?|$)/i.test(src)) {
-    return true;
-  }
-  try {
-    const probeW = Math.min(64, Math.max(1, img.width));
-    const probeH = Math.min(64, Math.max(1, img.height));
-    const probe = document.createElement('canvas');
-    probe.width = probeW;
-    probe.height = probeH;
-    const pCtx = probe.getContext('2d');
-    if (!pCtx) return false;
-    pCtx.drawImage(img, 0, 0, probeW, probeH);
-    const pixels = pCtx.getImageData(0, 0, probeW, probeH).data;
-    for (let i = 3; i < pixels.length; i += 4) {
-      if (pixels[i] < 250) return true;
-    }
-  } catch {
-    // CORS-tainted remote image
-  }
-  return false;
-}
+const PHOTO_MAX_CHARS = 140_000;
 
 export function autoFitImageToSquareDataUrl(src: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -49,7 +28,7 @@ export function autoFitImageToSquareDataUrl(src: string): Promise<string> {
         reject(new Error('Canvas unavailable'));
         return;
       }
-      const keepAlpha = isAlphaFriendlySource(src, img);
+      const keepAlpha = imageHasTransparentPixels(src, img);
       if (keepAlpha) {
         ctx.clearRect(0, 0, OUTPUT_PX, OUTPUT_PX);
       } else {
@@ -64,7 +43,13 @@ export function autoFitImageToSquareDataUrl(src: string): Promise<string> {
       // Slightly bias vertical portraits upward so heads/eyes remain well-framed
       const dy = img.height > img.width ? (OUTPUT_PX - drawH) * 0.28 : (OUTPUT_PX - drawH) / 2;
       ctx.drawImage(img, dx, dy, drawW, drawH);
-      resolve(keepAlpha ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.88));
+      resolve(
+        encodeCanvasWithinBudget(canvas, {
+          maxChars: PHOTO_MAX_CHARS,
+          preserveAlpha: keepAlpha,
+          backdropColor: '#FFFFFF',
+        })
+      );
     };
     img.onerror = () => reject(new Error('Failed to load image'));
     img.src = src;
@@ -180,7 +165,7 @@ export const ProfilePhotoEditorModal: React.FC<ProfilePhotoEditorModalProps> = (
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      const keepAlpha = isAlphaFriendlySource(currentSrc, img);
+      const keepAlpha = imageHasTransparentPixels(currentSrc, img);
       if (keepAlpha) {
         ctx.clearRect(0, 0, OUTPUT_PX, OUTPUT_PX);
       } else {
@@ -204,7 +189,12 @@ export const ProfilePhotoEditorModal: React.FC<ProfilePhotoEditorModalProps> = (
       );
       ctx.restore();
 
-      onSave(keepAlpha ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.88));
+      const encoded = encodeCanvasWithinBudget(canvas, {
+        maxChars: PHOTO_MAX_CHARS,
+        preserveAlpha: keepAlpha,
+        backdropColor: '#F8FAFC',
+      });
+      onSave(encoded);
       onClose();
     } finally {
       setSaving(false);

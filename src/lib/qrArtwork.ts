@@ -89,6 +89,203 @@ export function generatePrinterAuthId(): string {
   return `prt_${ts}_${rand}`;
 }
 
+export function canvasHasTransparentPixels(
+  canvas: HTMLCanvasElement,
+  fallbackOnError = false
+): boolean {
+  try {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return fallbackOnError;
+    const probeW = Math.min(96, Math.max(1, canvas.width));
+    const probeH = Math.min(96, Math.max(1, canvas.height));
+    let data: Uint8ClampedArray;
+    if (probeW === canvas.width && probeH === canvas.height) {
+      data = ctx.getImageData(0, 0, probeW, probeH).data;
+    } else {
+      const probe = document.createElement('canvas');
+      probe.width = probeW;
+      probe.height = probeH;
+      const pCtx = probe.getContext('2d');
+      if (!pCtx) return fallbackOnError;
+      pCtx.drawImage(canvas, 0, 0, probeW, probeH);
+      data = pCtx.getImageData(0, 0, probeW, probeH).data;
+    }
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] < 250) return true;
+    }
+    return false;
+  } catch {
+    return fallbackOnError;
+  }
+}
+
+export function imageHasTransparentPixels(
+  src: string,
+  img: HTMLImageElement
+): boolean {
+  try {
+    const probeW = Math.min(96, Math.max(1, img.width));
+    const probeH = Math.min(96, Math.max(1, img.height));
+    const probe = document.createElement('canvas');
+    probe.width = probeW;
+    probe.height = probeH;
+    const pCtx = probe.getContext('2d');
+    if (!pCtx) return false;
+    pCtx.clearRect(0, 0, probeW, probeH);
+    pCtx.drawImage(img, 0, 0, probeW, probeH);
+    const pixels = pCtx.getImageData(0, 0, probeW, probeH).data;
+    for (let i = 3; i < pixels.length; i += 4) {
+      if (pixels[i] < 250) return true;
+    }
+    return false;
+  } catch {
+    // Only fall back to extension/MIME guess when CORS prevents pixel inspection
+    return /^data:image\/(png|webp|svg\+xml)/i.test(src) || /\.(png|webp|svg)(\?|$)/i.test(src);
+  }
+}
+
+function encodeOpaqueCanvasAsJpegWithinBudget(
+  sourceCanvas: HTMLCanvasElement,
+  maxChars: number,
+  backdropColor = '#FFFFFF'
+): string {
+  const work = document.createElement('canvas');
+  work.width = Math.max(1, sourceCanvas.width);
+  work.height = Math.max(1, sourceCanvas.height);
+  const wCtx = work.getContext('2d');
+  if (!wCtx) return sourceCanvas.toDataURL('image/jpeg', 0.82);
+
+  const fillAndDraw = (w: number, h: number) => {
+    work.width = w;
+    work.height = h;
+    wCtx.fillStyle = backdropColor;
+    wCtx.fillRect(0, 0, w, h);
+    wCtx.drawImage(sourceCanvas, 0, 0, w, h);
+  };
+
+  fillAndDraw(work.width, work.height);
+  for (const quality of [0.9, 0.82, 0.72, 0.62, 0.52, 0.42]) {
+    const encoded = work.toDataURL('image/jpeg', quality);
+    if (encoded.length <= maxChars) return encoded;
+  }
+
+  let w = work.width;
+  let h = work.height;
+  for (let step = 0; step < 8; step += 1) {
+    w = Math.max(48, Math.round(w * 0.78));
+    h = Math.max(48, Math.round(h * 0.78));
+    fillAndDraw(w, h);
+    for (const quality of [0.76, 0.62, 0.48, 0.36]) {
+      const encoded = work.toDataURL('image/jpeg', quality);
+      if (encoded.length <= maxChars) return encoded;
+    }
+    if (w <= 48 && h <= 48) break;
+  }
+  return work.toDataURL('image/jpeg', 0.36);
+}
+
+export function encodeCanvasWithinBudget(
+  canvas: HTMLCanvasElement,
+  options: { maxChars: number; preserveAlpha?: boolean; backdropColor?: string }
+): string {
+  const maxChars = Math.max(4_000, Math.floor(options.maxChars));
+  const wantAlpha = Boolean(options.preserveAlpha) && canvasHasTransparentPixels(canvas, true);
+
+  if (!wantAlpha) {
+    return encodeOpaqueCanvasAsJpegWithinBudget(canvas, maxChars, options.backdropColor || '#FFFFFF');
+  }
+
+  const pngUrl = canvas.toDataURL('image/png');
+  if (pngUrl.length <= maxChars) return pngUrl;
+
+  for (const quality of [0.9, 0.8, 0.68, 0.55, 0.42]) {
+    const webpUrl = canvas.toDataURL('image/webp', quality);
+    if (webpUrl.startsWith('data:image/webp') && webpUrl.length <= maxChars) {
+      return webpUrl;
+    }
+  }
+
+  const work = document.createElement('canvas');
+  const wCtx = work.getContext('2d');
+  if (!wCtx) return pngUrl;
+
+  let w = canvas.width;
+  let h = canvas.height;
+  for (let step = 0; step < 8; step += 1) {
+    w = Math.max(48, Math.round(w * 0.78));
+    h = Math.max(48, Math.round(h * 0.78));
+    work.width = w;
+    work.height = h;
+    wCtx.clearRect(0, 0, w, h);
+    wCtx.drawImage(canvas, 0, 0, w, h);
+
+    const resizedPng = work.toDataURL('image/png');
+    if (resizedPng.length <= maxChars) return resizedPng;
+
+    for (const quality of [0.82, 0.66, 0.5, 0.38]) {
+      const resizedWebp = work.toDataURL('image/webp', quality);
+      if (resizedWebp.startsWith('data:image/webp') && resizedWebp.length <= maxChars) {
+        return resizedWebp;
+      }
+    }
+    if (w <= 48 && h <= 48) break;
+  }
+
+  // Final safety fallback if budget is extremely tight so caller never receives an oversized string
+  const fallback = encodeOpaqueCanvasAsJpegWithinBudget(work, maxChars, options.backdropColor || '#FFFFFF');
+  return fallback.length <= work.toDataURL('image/png').length ? fallback : work.toDataURL('image/png');
+}
+
+export async function compressDataUrlWithinBudget(
+  dataUrl: string,
+  options: { maxWidth?: number; maxHeight?: number; maxChars: number; preserveAlpha?: boolean }
+): Promise<string> {
+  if (!dataUrl || !dataUrl.startsWith('data:image/')) {
+    return dataUrl;
+  }
+  const maxChars = Math.max(4_000, Math.floor(options.maxChars));
+  if (dataUrl.length <= maxChars) {
+    return dataUrl;
+  }
+  if (typeof Image === 'undefined' || typeof document === 'undefined') {
+    return dataUrl;
+  }
+
+  const maxWidth = options.maxWidth ?? 1082;
+  const maxHeight = options.maxHeight ?? 1082;
+
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error('Unsupported image format'));
+    el.src = dataUrl;
+  });
+
+  const scale = Math.min(1, maxWidth / Math.max(1, img.width), maxHeight / Math.max(1, img.height));
+  const targetW = Math.max(1, Math.round(img.width * scale));
+  const targetH = Math.max(1, Math.round(img.height * scale));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = targetW;
+  canvas.height = targetH;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return dataUrl;
+
+  const hasAlpha = Boolean(options.preserveAlpha) && imageHasTransparentPixels(dataUrl, img);
+  if (hasAlpha) {
+    ctx.clearRect(0, 0, targetW, targetH);
+  } else {
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, targetW, targetH);
+  }
+  ctx.drawImage(img, 0, 0, targetW, targetH);
+
+  return encodeCanvasWithinBudget(canvas, {
+    maxChars,
+    preserveAlpha: hasAlpha,
+  });
+}
+
 export async function compressImageFileToDataUrl(
   file: File,
   options: { maxWidth?: number; maxHeight?: number; maxChars?: number; preserveAlpha?: boolean } = {}
@@ -104,10 +301,6 @@ export async function compressImageFileToDataUrl(
     reader.onerror = () => reject(new Error('Failed to read image file'));
     reader.readAsDataURL(file);
   });
-
-  if (rawDataUrl.length <= maxChars && !preserveAlpha) {
-    // Still normalize huge dimensions if needed; attempt canvas resize below
-  }
 
   if (typeof Image === 'undefined' || typeof document === 'undefined') {
     return rawDataUrl;
@@ -130,39 +323,17 @@ export async function compressImageFileToDataUrl(
   const ctx = canvas.getContext('2d');
   if (!ctx) return rawDataUrl;
 
-  if (!preserveAlpha) {
+  const keepAlpha = preserveAlpha && imageHasTransparentPixels(rawDataUrl, img);
+  if (keepAlpha) {
+    ctx.clearRect(0, 0, targetW, targetH);
+  } else {
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, targetW, targetH);
-    ctx.drawImage(img, 0, 0, targetW, targetH);
-    for (const quality of [0.9, 0.82, 0.72, 0.62, 0.5]) {
-      const encoded = canvas.toDataURL('image/jpeg', quality);
-      if (encoded.length <= maxChars) return encoded;
-    }
-    return canvas.toDataURL('image/jpeg', 0.45);
   }
-
-  ctx.clearRect(0, 0, targetW, targetH);
   ctx.drawImage(img, 0, 0, targetW, targetH);
-  const pngUrl = canvas.toDataURL('image/png');
-  if (pngUrl.length <= maxChars) return pngUrl;
 
-  for (const quality of [0.9, 0.8, 0.68, 0.55]) {
-    const webpUrl = canvas.toDataURL('image/webp', quality);
-    if (webpUrl.length <= maxChars && webpUrl.startsWith('data:image/webp')) return webpUrl;
-  }
-
-  // Fallback progressive PNG downscale to retain transparency everywhere
-  let w = targetW;
-  let h = targetH;
-  for (let i = 0; i < 4; i++) {
-    w = Math.max(64, Math.round(w * 0.78));
-    h = Math.max(64, Math.round(h * 0.78));
-    canvas.width = w;
-    canvas.height = h;
-    ctx.clearRect(0, 0, w, h);
-    ctx.drawImage(img, 0, 0, w, h);
-    const resizedPng = canvas.toDataURL('image/png');
-    if (resizedPng.length <= maxChars) return resizedPng;
-  }
-  return canvas.toDataURL('image/png');
+  return encodeCanvasWithinBudget(canvas, {
+    maxChars,
+    preserveAlpha: keepAlpha,
+  });
 }

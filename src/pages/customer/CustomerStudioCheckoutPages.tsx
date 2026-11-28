@@ -93,6 +93,7 @@ import {
   verifyPayment,
 } from '../../lib/paymentApi';
 import { getActiveStudioDraft, saveActiveStudioDraft } from '../../lib/studioDraft';
+import { formatFirestoreErrorMessage } from '../../lib/cardDesignSize';
 import { compressImageFileToDataUrl } from '../../lib/qrArtwork';
 import { resolveCardTokens } from '../../lib/printPdf';
 import { resolveCardPricing } from '../../lib/pricing';
@@ -353,15 +354,18 @@ export const CustomerCardStudioPage: React.FC = () => {
     });
   }, [userRecord, selectedProfile, selectedTpl, cardTechnology, orientation, frontDesign, backDesign]);
 
-  // Automatically fetch user photo when profile switcher changes (unless custom uploaded)
+  // Automatically fetch user photo when profile switcher changes (unless custom uploaded or avatar hidden)
   useEffect(() => {
     const profilePhoto = selectedProfile?.personalInformation?.photoDataUrl;
     if (!profilePhoto) return;
-    setFrontDesign((prev) => ({
-      ...prev,
-      avatarDataUrl: prev.avatarDataUrl || profilePhoto,
-      avatarSizeMm: prev.avatarSizeMm || 15,
-    }));
+    setFrontDesign((prev) => {
+      if (!prev.showAvatar && !prev.avatarDataUrl) return prev;
+      return {
+        ...prev,
+        avatarDataUrl: prev.avatarDataUrl || profilePhoto,
+        avatarSizeMm: prev.avatarSizeMm || 15,
+      };
+    });
   }, [selectedProfile]);
 
   const activeStudioProfileType: ProfileType = selectedProfile?.profileType || 'adult';
@@ -1237,11 +1241,18 @@ export const CustomerCardStudioPage: React.FC = () => {
         createdAt: '',
         updatedAt: '',
       };
-      await saveCardDesign(record);
-      setSavedDesigns((prev) => [record, ...prev]);
+      const prepared = await saveCardDesign(record);
+      const savedRecord: CardDesignRecord = {
+        ...record,
+        frontDesign: prepared.frontDesign,
+        backDesign: prepared.backDesign,
+      };
+      setFrontDesign(prepared.frontDesign);
+      setBackDesign(prepared.backDesign);
+      setSavedDesigns((prev) => [savedRecord, ...prev]);
       notify('Custom design saved', 'You can preview or resume this customized design anytime.', 'success');
     } catch (err) {
-      notify('Save failed', err instanceof Error ? err.message : 'Unable to save card design.', 'error');
+      notify('Save failed', formatFirestoreErrorMessage(err, 'Unable to save card design.'), 'error');
     } finally {
       setSaving(false);
     }
@@ -1256,7 +1267,7 @@ export const CustomerCardStudioPage: React.FC = () => {
     setSaving(true);
     try {
       const designId = `des_${userRecord.uid.slice(0, 8)}_${Date.now()}`;
-      await saveCardDesign({
+      const prepared = await saveCardDesign({
         designId,
         uid: userRecord.uid,
         profileId: selectedProfile.profileId,
@@ -1271,10 +1282,12 @@ export const CustomerCardStudioPage: React.FC = () => {
         locked: false,
         version: 1,
       });
+      setFrontDesign(prepared.frontDesign);
+      setBackDesign(prepared.backDesign);
       notify('Design approved & saved', 'Proceeding to checkout.', 'success');
       navigate(`/dashboard/checkout?designId=${designId}`);
     } catch (err) {
-      notify('Save failed', err instanceof Error ? err.message : 'Unable to save card design.', 'error');
+      notify('Save failed', formatFirestoreErrorMessage(err, 'Unable to save card design.'), 'error');
     } finally {
       setSaving(false);
     }

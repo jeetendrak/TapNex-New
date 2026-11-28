@@ -28,6 +28,8 @@ import {
 } from './constants';
 import { sanitizeRichBioHtml } from './richText';
 import { clearAllLocalStudioDrafts } from './studioDraft';
+import { prepareCardDesignForFirestore } from './cardDesignSize';
+import { compressDataUrlWithinBudget } from './qrArtwork';
 import type {
   AppSettingsRecord,
   AuditLogRecord,
@@ -688,7 +690,29 @@ export async function saveProfileAndSyncPublic(
 ): Promise<void> {
   const batch = writeBatch(db);
   const cleanSlug = sanitizeSlug(profile.slug);
-  const updatedProfile: ProfileRecord = { ...profile, slug: cleanSlug };
+  let normalizedPhoto = profile.personalInformation?.photoDataUrl || '';
+  if (normalizedPhoto.startsWith('data:image/') && normalizedPhoto.length > 180_000) {
+    try {
+      normalizedPhoto = await compressDataUrlWithinBudget(normalizedPhoto, {
+        maxWidth: 420,
+        maxHeight: 420,
+        maxChars: 160_000,
+        preserveAlpha: true,
+      });
+    } catch {
+      // Keep original if headless or decode fails
+    }
+  }
+  const updatedProfile: ProfileRecord = {
+    ...profile,
+    slug: cleanSlug,
+    personalInformation: {
+      ...profile.personalInformation,
+      ...(normalizedPhoto !== (profile.personalInformation?.photoDataUrl || '')
+        ? { photoDataUrl: normalizedPhoto }
+        : {}),
+    },
+  };
 
   let existingPublicDocExists = false;
   try {
@@ -1277,12 +1301,12 @@ export async function getCardDesignById(designId: string): Promise<CardDesignRec
 export async function saveCardDesign(
   design: Omit<CardDesignRecord, 'createdAt' | 'updatedAt'>,
   options?: { isExisting?: boolean }
-): Promise<void> {
+): Promise<Omit<CardDesignRecord, 'createdAt' | 'updatedAt'>> {
   const ref = doc(db, 'cardDesigns', design.designId);
   const approvedAt = design.approved ? design.approvedAt || new Date().toISOString() : '';
   const cardTechnology =
     design.cardTechnology || (design.frontDesign?.showNfcIcon ? 'qr_smart' : 'qr_only');
-  const payload = {
+  const rawPayload: Omit<CardDesignRecord, 'createdAt' | 'updatedAt'> = {
     designId: design.designId,
     uid: design.uid,
     profileId: design.profileId,
@@ -1299,6 +1323,8 @@ export async function saveCardDesign(
     approvedAt,
     version: Math.max(1, Number(design.version) || 1),
   };
+
+  const payload = await prepareCardDesignForFirestore(rawPayload);
 
   try {
     if (options?.isExisting) {
@@ -1322,6 +1348,7 @@ export async function saveCardDesign(
         updatedAt: serverTimestamp(),
       });
     }
+    return payload;
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, `cardDesigns/${design.designId}`);
   }
